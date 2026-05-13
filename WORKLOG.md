@@ -196,3 +196,105 @@ xcodebuild -target HealthManager -project HealthManager.xcodeproj \
 2. Round 4 —— 每日对账 R-001。
 3. Round 5 —— 数据质量评分 + 缺失告警进仪表盘红点。
 
+---
+
+## Round 3 — 2026-05-13 手动一键同步（F-002）
+
+**目标（PRD §12 第 4 项 / F-002）**
+- 用户点「立即同步」→ 拉一遍 → 提示去外部 App → 用户回 App → 再拉一遍
+- `scenePhase` 进入 `.active` 时自动续跑，不强制点「已完成」
+- `sync_jobs` 出现 `job_type=manual, trigger=user`，envelope 一行，内部两次 pass 共享同一 anchor 存储
+
+**已完成（文件级清单）**
+
+新增
+- `Core/Sync/ManualSyncCoordinator.swift` — 两阶段 envelope。
+  - 单条 `manual` sync_jobs 行包住两次 `IncrementalSyncCoordinator.executePass`
+  - 中段 `await promptForExternalSync()` —— UI 无感的纯 async hook
+  - 合并 per-type 计数，first non-nil error 上报
+  - 不重复创建 incremental 行；anchor 仍由 `IncrementalSyncCoordinator` 持久化
+
+修改
+- `Core/Sync/IncrementalSyncCoordinator.swift` — 抽出 `executePass(progress:) -> PassResult`；原 `run` 改为薄包装。`insertJob` 改成多态（接 `jobType`）让 manual envelope 复用。
+- `Core/Sync/SyncEngine.swift` —
+  - 替换 `runManualSync` stub：装配 `ManualSyncCoordinator`，驱动 `startManual → userPromptedForExternal → userResumedFromExternal → incrementalFinished → reconcileFinished` 完整路径
+  - 新增 `@Published manualSyncPrompt: ManualSyncPrompt?` 给 UI 监听
+  - 新增 `acknowledgeExternalSyncDone()` 让 UI / scenePhase 唤醒等待
+  - 内部 `CheckedContinuation<Void, Never>` 实现 wait-for-user；`defer` 里做防漏 cont.resume 兜底
+- `App/HealthManagerApp.swift` — `.onChange(of: scenePhase)`（iOS 17 零参形态）在 `.active` + `manualSyncPrompt != nil` 时 sleep 800ms 后自动 `acknowledgeExternalSyncDone()`，给 HK 一点时间消化外部 App 的写入
+- `UI/SyncCenter/SyncCenterView.swift` —
+  - 「立即同步」按钮启用（不再是占位）
+  - `.alert` 绑 `sync.manualSyncPrompt`，提供「已完成」按钮，关闭时也调 ack 兜底
+
+**数据流**
+
+```
+SyncCenter「立即同步」按钮
+   │
+   ▼
+SyncEngine.runManualSync (isBusy 单工)
+   │ startManual → syncingIncremental
+   ▼
+ManualSyncCoordinator.run
+   ├─ insertJob (manual, running)
+   ├─ Pass 1: incremental.executePass  ─── 拉当前 HK
+   ├─ await promptForExternalSync()
+   │     │
+   │     ▼ (SyncEngine 内部)
+   │     userPromptedForExternal → waitingExternalSync
+   │     设 manualSyncPrompt → 等 CheckedContinuation
+   │
+   │  «UI 显示 alert / 用户离开 App 到 Garmin / 米家»
+   │  «用户回到本 App → scenePhase=.active»
+   │  «scenePhase 监听器 800ms 后调 acknowledgeExternalSyncDone()»
+   │     │
+   │     ▼
+   │     resume continuation → userResumedFromExternal → syncingIncremental2
+   │
+   ├─ Pass 2: incremental.executePass  ─── 拉外部 App 刚写入的
+   └─ finaliseJob (succeeded/failed + 合并 stats)
+
+最后 SyncEngine：incrementalFinished → reconcileFinished → completed
+```
+
+**当前编译状态**
+
+| 项 | 状态 |
+|---|---|
+| `swiftc -typecheck` 全量 25 个 HealthManager 源文件 | ✅ 0 errors |
+| GRDB.swift 6.29.3 编译 | ✅ |
+| `xcodegen generate` | ✅ |
+| Asset Catalog 编译 | ⚠️ 同 Round 1/2：本机无 simulator runtime |
+
+Round 3 引入了独立的 `swiftc -typecheck` 验证步骤，弥补 Round 1/2 中"actool 早夭导致 HealthManager target 的 Swift 阶段实际未跑"的盲区。命令：
+
+```bash
+SDK=$(xcrun --sdk iphonesimulator --show-sdk-path)
+GRDB_MODULE_DIR="/tmp/HMbuild/Products/Debug-iphonesimulator"
+CSQLITE_MAP="$HOME/Library/Developer/Xcode/DerivedData/HealthManager-*/SourcePackages/checkouts/GRDB.swift/Sources/CSQLite/module.modulemap"
+find App Core UI -name "*.swift" -print0 | xargs -0 swiftc -typecheck \
+  -target arm64-apple-ios17.0-simulator -sdk "$SDK" \
+  -I "$GRDB_MODULE_DIR" -Xcc -fmodule-map-file="$CSQLITE_MAP"
+```
+
+需先跑一遍 `xcodebuild` 让 GRDB 产物落到 `$GRDB_MODULE_DIR`。
+
+**功能验证清单（需 simulator runtime 或真机）**
+1. SyncCenter 点「立即同步」→ 看到 `progressDescription: 第 1 次拉取 HealthKit…`
+2. 出现 alert：「请前往外部 App 同步」
+3. 切到 Garmin Connect / 米家 → 触发其同步 → 回到本 App
+4. ~0.8s 后自动 alert 消失 + progressDescription 变 `第 2 次拉取…`
+5. 完成 → `sync_jobs` 表多一行 `job_type=manual, trigger=user, state=succeeded`
+6. 也可不离开 App：直接点 alert 上的「已完成」 → 立刻续跑
+
+**风险与未完成**
+1. 用户在 alert 出现时关掉 App，第一次 pass 已落库；下次启动 isBusy=false，再次点「立即同步」即可。无需特殊恢复逻辑。
+2. iOS 17 Scene `onChange(of:)` 必须用零参闭包形态（含值闭包不存在或被解析为 deprecated 单参重载）—— 已用零参 + 闭包内读取 `scenePhase`。
+3. reconcile 阶段仍是占位；Round 4 真正实现 R-001 时填实。
+4. 「已完成」按钮 + scenePhase 自动 ack 是双触发，CheckedContinuation 已经在 ack 时 nil 化，重复调用是无害的 no-op。
+
+**下一步（最多 3 条）**
+1. Round 4 —— 每日对账 R-001：基于 `health_samples_raw + source_coverage_daily` 计算 `data_quality_daily`，写 `missing_data_alerts`。Dashboard 红点暂留 Round 5。
+2. Round 5 —— 数据质量评分 UI + 缺失告警面板（PRD F-005）。
+3. Round 6 —— 饮食 / 用药模块骨架（PRD F-003 / F-004）。
+

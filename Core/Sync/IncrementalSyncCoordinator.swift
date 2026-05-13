@@ -39,14 +39,49 @@ final class IncrementalSyncCoordinator {
         let error: Error?
     }
 
+    /// Result of one full pass over every read sample type. Job-row agnostic.
+    /// `ManualSyncCoordinator` invokes `executePass` twice under a single `manual` job row.
+    struct PassResult {
+        var perTypeCounts: [String: Int]
+        var firstError: Error?
+    }
+
     func run(
         trigger: SyncJob.Trigger,
         progress: @escaping (String) -> Void
     ) async throws -> SyncEngine.LastResult {
 
         let jobStart = Date()
-        let jobId = try insertJob(trigger: trigger, startedAt: jobStart)
+        let jobId = try insertJob(jobType: .incremental, trigger: trigger, startedAt: jobStart)
 
+        let pass = await executePass(progress: progress)
+
+        let endedAt = Date()
+        let totalSamples = pass.perTypeCounts.values.reduce(0, +)
+        let succeeded = (pass.firstError == nil)
+        try finaliseJob(
+            id: jobId,
+            endedAt: endedAt,
+            succeeded: succeeded,
+            errorMessage: pass.firstError?.localizedDescription,
+            stats: pass.perTypeCounts
+        )
+
+        return SyncEngine.LastResult(
+            jobId: jobId,
+            jobType: .incremental,
+            succeeded: succeeded,
+            startedAt: jobStart,
+            endedAt: endedAt,
+            totalSamples: totalSamples,
+            perTypeCounts: pass.perTypeCounts,
+            errorMessage: pass.firstError?.localizedDescription
+        )
+    }
+
+    /// Iterate every read sample type once: load anchor → anchored fetch → persist → save anchor.
+    /// Returns aggregated counts so callers can manage their own sync_jobs envelope.
+    func executePass(progress: @escaping (String) -> Void) async -> PassResult {
         var perTypeCounts: [String: Int] = [:]
         var firstError: Error?
 
@@ -72,27 +107,7 @@ final class IncrementalSyncCoordinator {
             }
         }
 
-        let endedAt = Date()
-        let totalSamples = perTypeCounts.values.reduce(0, +)
-        let succeeded = (firstError == nil)
-        try finaliseJob(
-            id: jobId,
-            endedAt: endedAt,
-            succeeded: succeeded,
-            errorMessage: firstError?.localizedDescription,
-            stats: perTypeCounts
-        )
-
-        return SyncEngine.LastResult(
-            jobId: jobId,
-            jobType: .incremental,
-            succeeded: succeeded,
-            startedAt: jobStart,
-            endedAt: endedAt,
-            totalSamples: totalSamples,
-            perTypeCounts: perTypeCounts,
-            errorMessage: firstError?.localizedDescription
-        )
+        return PassResult(perTypeCounts: perTypeCounts, firstError: firstError)
     }
 
     // MARK: - Per-type sync with retry
@@ -208,10 +223,10 @@ final class IncrementalSyncCoordinator {
 
     // MARK: - Job lifecycle
 
-    private func insertJob(trigger: SyncJob.Trigger, startedAt: Date) throws -> Int64 {
+    private func insertJob(jobType: SyncJob.JobType, trigger: SyncJob.Trigger, startedAt: Date) throws -> Int64 {
         var job = SyncJob(
             id: nil,
-            jobType: .incremental,
+            jobType: jobType,
             state: .running,
             trigger: trigger,
             startedAt: Int64(startedAt.timeIntervalSince1970),

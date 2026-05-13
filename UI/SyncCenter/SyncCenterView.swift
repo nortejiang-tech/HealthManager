@@ -36,10 +36,10 @@ struct SyncCenterView: View {
                     Button {
                         Task { await sync.runManualSync() }
                     } label: {
-                        Label("立即同步（占位）", systemImage: "arrow.down.circle")
+                        Label("立即同步", systemImage: "arrow.down.circle")
                     }
-                    .disabled(true)
-                    Text("Round 4 实现：包含回前台二次拉取。")
+                    .disabled(sync.isBusy)
+                    Text("会先拉一次，再提示你打开 Garmin / 米家等外部 App，回到本 App 后自动续跑。")
                         .font(.footnote).foregroundStyle(.secondary)
                 }
 
@@ -64,6 +64,18 @@ struct SyncCenterView: View {
             .navigationTitle("同步中心")
             .task { await refreshReports() }
             .refreshable { await refreshReports() }
+            .alert(
+                sync.manualSyncPrompt?.title ?? "",
+                isPresented: Binding(
+                    get: { sync.manualSyncPrompt != nil },
+                    set: { presented in if !presented { sync.acknowledgeExternalSyncDone() } }
+                ),
+                presenting: sync.manualSyncPrompt
+            ) { _ in
+                Button("已完成") { sync.acknowledgeExternalSyncDone() }
+            } message: { prompt in
+                Text(prompt.message)
+            }
         }
     }
 

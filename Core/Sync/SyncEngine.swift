@@ -2,10 +2,6 @@ import Foundation
 import Combine
 
 /// Public surface for triggering syncs. UI calls into this; coordinators do the work.
-///
-/// V1 wiring (Round 1):
-/// - `runBackfill` is real (delegates to BackfillCoordinator).
-/// - `runIncremental` / `runManualSync` are stubs that will be filled in Rounds 3/4.
 @MainActor
 final class SyncEngine: ObservableObject {
 
@@ -20,10 +16,19 @@ final class SyncEngine: ObservableObject {
         let errorMessage: String?
     }
 
+    /// Shown to the user during the wait-for-external-app phase of a manual sync.
+    /// UI binds to `manualSyncPrompt` and presents an alert / sheet; tapping "已完成"
+    /// (or `scenePhase` returning to `.active`) calls `acknowledgeExternalSyncDone()`.
+    struct ManualSyncPrompt: Equatable {
+        let title: String
+        let message: String
+    }
+
     @Published private(set) var phase: SyncStateMachine.Phase = .idle
     @Published private(set) var lastResult: LastResult?
     @Published private(set) var isBusy: Bool = false
     @Published private(set) var progressDescription: String = ""
+    @Published private(set) var manualSyncPrompt: ManualSyncPrompt?
 
     let database: DatabaseManager
     let healthKitManager: HealthKitManager
@@ -35,8 +40,13 @@ final class SyncEngine: ObservableObject {
         healthKitManager: healthKitManager,
         database: database
     )
+    private(set) lazy var manualCoordinator = ManualSyncCoordinator(
+        incremental: incrementalCoordinator,
+        database: database
+    )
 
     private var stateMachine = SyncStateMachine()
+    private var externalSyncContinuation: CheckedContinuation<Void, Never>?
 
     init(database: DatabaseManager, healthKitManager: HealthKitManager) {
         self.database = database
@@ -120,10 +130,87 @@ final class SyncEngine: ObservableObject {
         }
     }
 
-    // MARK: - Manual one-shot (F-002) — stub for Round 4
+    // MARK: - Manual one-shot (F-002)
 
-    func runManualSync() async {
-        AppLogger.shared.sync.info("runManualSync: stub — to be implemented in Round 4")
+    /// Two-pass sync framed by a user-initiated prompt: pull → ask user to open the external
+    /// app → pull again. Wakes up automatically when `scenePhase` returns to `.active`.
+    func runManualSync(trigger: SyncJob.Trigger = .user) async {
+        guard !isBusy else {
+            AppLogger.shared.sync.info("runManualSync skipped: busy")
+            return
+        }
+        isBusy = true
+        defer {
+            isBusy = false
+            manualSyncPrompt = nil
+            // Defensive: if we exit while a continuation is pending (shouldn't happen on the
+            // happy path), resume it so we don't strand the coordinator's await.
+            if let cont = externalSyncContinuation {
+                externalSyncContinuation = nil
+                cont.resume()
+            }
+        }
+
+        do {
+            try stateMachine.handle(.startManual)
+            phase = stateMachine.phase
+            progressDescription = "手动同步：第 1 次拉取…"
+
+            let result = try await manualCoordinator.run(
+                trigger: trigger,
+                progress: { [weak self] desc in
+                    Task { @MainActor in self?.progressDescription = desc }
+                },
+                promptForExternalSync: { [weak self] in
+                    await self?.waitForExternalSync()
+                }
+            )
+
+            try stateMachine.handle(.incrementalFinished)
+            phase = stateMachine.phase
+            try stateMachine.handle(.reconcileFinished)  // Round 4 makes this do real work.
+            phase = stateMachine.phase
+
+            lastResult = result
+            progressDescription = result.succeeded
+                ? "手动同步完成：共新增 \(result.totalSamples) 条。"
+                : "手动同步失败：\(result.errorMessage ?? "未知错误")"
+        } catch {
+            try? stateMachine.handle(.fail)
+            phase = stateMachine.phase
+            progressDescription = "手动同步失败：\(error.localizedDescription)"
+            AppLogger.shared.sync.error(
+                "runManualSync failed: \(error.localizedDescription, privacy: .public)"
+            )
+        }
+    }
+
+    /// Called by UI / scenePhase observer to tell the coordinator the user has finished
+    /// (or skipped) the external-app step. Safe to call when no prompt is active — no-op.
+    func acknowledgeExternalSyncDone() {
+        guard let cont = externalSyncContinuation else { return }
+        externalSyncContinuation = nil
+        cont.resume()
+    }
+
+    /// Coordinator-facing wait. Drives the state machine into `waitingExternalSync`, exposes
+    /// the prompt struct to UI, and suspends until `acknowledgeExternalSyncDone()` resumes us.
+    private func waitForExternalSync() async {
+        try? stateMachine.handle(.userPromptedForExternal)
+        phase = stateMachine.phase
+
+        manualSyncPrompt = ManualSyncPrompt(
+            title: "请前往外部 App 同步",
+            message: "打开 Garmin Connect / 米家 / 小米运动健康 等数据源 App，等待它们同步至「健康」后回到本 App 即可继续。"
+        )
+
+        await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
+            externalSyncContinuation = cont
+        }
+
+        manualSyncPrompt = nil
+        try? stateMachine.handle(.userResumedFromExternal)
+        phase = stateMachine.phase
     }
 
     // MARK: - Reset
