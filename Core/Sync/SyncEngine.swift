@@ -31,6 +31,10 @@ final class SyncEngine: ObservableObject {
         healthKitManager: healthKitManager,
         database: database
     )
+    private(set) lazy var incrementalCoordinator = IncrementalSyncCoordinator(
+        healthKitManager: healthKitManager,
+        database: database
+    )
 
     private var stateMachine = SyncStateMachine()
 
@@ -71,10 +75,49 @@ final class SyncEngine: ObservableObject {
         }
     }
 
-    // MARK: - Incremental (F-001) — stub for Round 3
+    // MARK: - Incremental (F-001)
 
     func runIncremental(trigger: SyncJob.Trigger = .timer) async {
-        AppLogger.shared.sync.info("runIncremental: stub — to be implemented in Round 3")
+        // Single-flight: observer / BG task / timer can all converge here in quick succession.
+        // Dropping concurrent calls is safe — whoever wins picks up everything new since the
+        // last anchor on the next pass.
+        guard !isBusy else {
+            AppLogger.shared.sync.info("runIncremental skipped: busy")
+            return
+        }
+        isBusy = true
+        defer { isBusy = false }
+
+        do {
+            try stateMachine.handle(.startIncremental)
+            phase = stateMachine.phase
+            progressDescription = "增量同步中…"
+
+            let result = try await incrementalCoordinator.run(
+                trigger: trigger,
+                progress: { [weak self] desc in
+                    Task { @MainActor in self?.progressDescription = desc }
+                }
+            )
+
+            try stateMachine.handle(.incrementalFinished)
+            phase = stateMachine.phase
+            // Round 4 will fill in real reconcile work; for now we transition through.
+            try stateMachine.handle(.reconcileFinished)
+            phase = stateMachine.phase
+
+            lastResult = result
+            progressDescription = result.succeeded
+                ? "增量同步完成：本轮新增 \(result.totalSamples) 条。"
+                : "增量同步失败：\(result.errorMessage ?? "未知错误")"
+        } catch {
+            try? stateMachine.handle(.fail)
+            phase = stateMachine.phase
+            progressDescription = "增量同步失败：\(error.localizedDescription)"
+            AppLogger.shared.sync.error(
+                "runIncremental failed: \(error.localizedDescription, privacy: .public)"
+            )
+        }
     }
 
     // MARK: - Manual one-shot (F-002) — stub for Round 4

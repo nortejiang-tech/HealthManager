@@ -16,6 +16,10 @@ struct RootView: View {
         }
         .task {
             await healthKit.refreshAuthorizationGate()
+            AppEnvironment.shared.onAuthorizationChange()
+        }
+        .onChange(of: healthKit.authorizationGate) { _, _ in
+            AppEnvironment.shared.onAuthorizationChange()
         }
     }
 }

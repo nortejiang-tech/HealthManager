@@ -109,3 +109,90 @@ xcodebuild -target HealthManager \
 2. Round 3 —— 手动一键同步 F-002：UI 引导 + `scenePhase` 回前台二次拉取，沿用增量协调器。
 3. Round 4 —— 每日对账 R-001：基于 `health_samples_raw + source_coverage_daily` 计算 `data_quality_daily`，写 `missing_data_alerts`，在仪表盘暴露红点。
 
+---
+
+## Round 2 — 2026-05-13 自动增量同步（F-001）
+
+**目标（PRD §12 第 3 项 / F-001）**
+- `HKAnchoredObjectQuery` 落地每类型增量拉取
+- `HKObserverQuery` + `enableBackgroundDelivery(.immediate)`：HK 写入后秒级触发
+- `sync_anchors` 持久化 anchor BLOB（SecureCoding）
+- 删除事件 → `health_samples_raw.is_deleted` 软删
+- BGAppRefresh 真正委托 `runIncremental`，过期时 cancel 当前 Task
+- `SyncEngine.runIncremental` 走完 `idle → syncingIncremental → reconciling → completed/failed`
+
+**已完成（文件级清单）**
+
+新增
+- `Core/Sync/IncrementalSyncCoordinator.swift` — 本轮核心。
+  - 每类型 anchor 读取（`NSKeyedUnarchiver.unarchivedObject(ofClass: HKQueryAnchor.self, ...)`）→ `anchoredFetch` → 写 added（`INSERT OR IGNORE` on `sample_uuid`）→ 写 deleted（`UPDATE ... SET is_deleted=1`，IN 子句按 400 行分块）→ UPSERT `sync_anchors`。
+  - 单类型失败重试：指数退避（0.5s、1.5s），最多 3 次；最终仍失败则记录到 `sync_jobs.error_message` 并继续下个类型，不阻塞整体。
+  - `sync_jobs` 完整生命周期：running → succeeded/failed + stats_json。
+- `Core/Sync/HealthKitObserver.swift` — 全集 `HKObserverQuery` + `enableBackgroundDelivery(.immediate)`，回调里 `Task { @MainActor in await syncEngine.runIncremental(trigger: .observer) }`，通过 `SyncEngine.isBusy` 单工收敛突发触发。
+
+修改
+- `Core/Sync/SyncEngine.swift` — `runIncremental` 不再是 stub：装配 `IncrementalSyncCoordinator`，驱动状态机，发布 `progressDescription` / `lastResult`；`isBusy` 单工。
+- `Core/Sync/BackgroundTaskScheduler.swift` — `handleIncremental` 持有 `Task` 句柄，`expirationHandler` 调 `work.cancel()` 后再 `setTaskCompleted(success:false)`。
+- `App/AppEnvironment.swift` — 新增 `healthKitObserver`；`bootstrap()` 调 `scheduleIncrementalIfNeeded()` 排第一个 BG 槽位；新增 `onAuthorizationChange()` 在 gate 进入 granted/partiallyGranted 时启动 observer。
+- `App/RootView.swift` — `.task` 与 `.onChange(of: authorizationGate)` 都调 `AppEnvironment.shared.onAuthorizationChange()`。
+
+**数据流**
+
+```
+HK 写入  ─►  HKObserverQuery 回调 (前/后台)
+              │
+              ▼
+        SyncEngine.runIncremental(.observer)
+              │ isBusy 单工
+              ▼
+   IncrementalSyncCoordinator.run
+     ├─ insertJob (incremental, running)
+     ├─ for each HKSampleType:
+     │    load anchor → anchoredFetch → persist added/deleted → save anchor
+     │    (失败：0.5s/1.5s 指数退避，最多 3 次)
+     └─ finaliseJob (succeeded/failed + stats_json)
+
+兜底链路：BGAppRefresh(≥1h) → handleIncremental → 同一个 runIncremental
+```
+
+**当前编译状态**
+
+| 项 | 状态 |
+|---|---|
+| Swift 编译 (HealthManager target，182 个 SwiftCompile 步骤) | ✅ 0 errors |
+| GRDB.swift 6.29.3 解析 / 编译 | ✅ |
+| `xcodegen generate` | ✅ 文件被自动纳入 target |
+| Asset Catalog 编译 | ⚠️ 同 Round 1：本机无 simulator runtime，actool 仍报 "No available simulator runtimes" |
+
+**可运行验证步骤**
+
+```bash
+cd /Users/nortepro/HealthManager
+xcodegen generate
+xcodebuild -target HealthManager -project HealthManager.xcodeproj \
+  -configuration Debug -sdk iphonesimulator \
+  BUILD_DIR=/tmp/HMbuild/Products BUILD_ROOT=/tmp/HMbuild/Build \
+  OBJROOT=/tmp/HMbuild/Intermediates SYMROOT=/tmp/HMbuild/Products \
+  CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO \
+  ARCHS=arm64 ONLY_ACTIVE_ARCH=YES SKIP_INSTALL=YES
+# Swift 阶段通过；actool 仍受 simulator runtime 缺失阻挡（已知限制）。
+```
+
+功能验证（需 simulator runtime 或真机）：
+1. 完成 Onboarding → 授权后 Observer 自动 `start()`
+2. 在 Apple Health App 手动写一条体重 → 几秒内 dashboard 累计样本数 +1
+3. 在 Apple Health 删一条 → DB 中对应 `sample_uuid.is_deleted` = 1
+4. `sync_anchors` 表 14 行（每类型一行），重启 App 再写入仍能从断点继续
+5. `sync_jobs` 出现 `job_type=incremental, trigger=observer/bg_task` 的记录
+
+**风险与未完成**
+1. Apple Watch 锁屏 / 系统压力下，Observer 不保证立即唤醒；BG App Refresh 是兜底但最低 1 小时。PRD F-001 的「≤ 1 小时」目标在 99% 路径满足，极端场景仍依赖 manual sync（Round 3）。
+2. 当前 reconcile 阶段是占位（状态机走过，但没有真正对账逻辑）；Round 4 做 R-001 时再填实。
+3. `enableBackgroundDelivery` 在权限被部分关闭的类型上会回调 `success=false`，目前仅写日志、不阻塞其他类型 —— 与 PRD §4.1「不删样本 / 不预过滤」一致。
+4. `IncrementalSyncCoordinator` 的 anchor BLOB 大小约 200 B/类型 × 14 类型 = ~3 KB，存 SQLite blob 列；没有压力。
+
+**下一步（最多 3 条）**
+1. Round 3 —— 手动一键同步 F-002：UI 引导 + `scenePhase` 回前台二次拉取，沿用 `IncrementalSyncCoordinator` 与 `SyncStateMachine` 的 manual 路径。
+2. Round 4 —— 每日对账 R-001。
+3. Round 5 —— 数据质量评分 + 缺失告警进仪表盘红点。
+

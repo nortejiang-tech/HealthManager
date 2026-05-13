@@ -61,14 +61,19 @@ final class BackgroundTaskScheduler {
     private func handleIncremental(task: BGAppRefreshTask) {
         scheduleIncrementalIfNeeded() // always reschedule next slot first
 
-        task.expirationHandler = {
-            AppLogger.shared.bg.warning("Incremental BG task expired")
-            task.setTaskCompleted(success: false)
+        let work = Task { @MainActor in
+            await self.syncEngine.runIncremental(trigger: .bgTask)
+            // If the system already called expirationHandler, this is a no-op (Apple's
+            // documented contract); otherwise it tells the system we're done.
+            if !Task.isCancelled {
+                task.setTaskCompleted(success: true)
+            }
         }
 
-        Task { @MainActor in
-            await self.syncEngine.runIncremental(trigger: .bgTask)
-            task.setTaskCompleted(success: true)
+        task.expirationHandler = {
+            AppLogger.shared.bg.warning("Incremental BG task expired — cancelling sync")
+            work.cancel()
+            task.setTaskCompleted(success: false)
         }
     }
 
