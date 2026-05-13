@@ -1,0 +1,211 @@
+import Foundation
+import GRDB
+
+/// GRDB migrations. **Never** edit an applied migration in-place; add a new one.
+enum Migrations {
+
+    static func run(on pool: DatabasePool) throws {
+        var migrator = DatabaseMigrator()
+
+        // MARK: v1 — initial schema (12 PRD tables + 2 auxiliary)
+
+        migrator.registerMigration("v1_initial_schema") { db in
+
+            // 1. sync_jobs — every sync attempt, success or failure
+            try db.create(table: "sync_jobs") { t in
+                t.autoIncrementedPrimaryKey("id")
+                t.column("job_type", .text).notNull()          // backfill | incremental | manual | reconcile
+                t.column("state", .text).notNull()             // pending | running | succeeded | failed
+                t.column("trigger", .text)                     // user | timer | bg_task | observer
+                t.column("started_at", .integer).notNull()
+                t.column("ended_at", .integer)
+                t.column("error_code", .text)
+                t.column("error_message", .text)
+                t.column("stats_json", .text)                  // counts per hk_type
+                t.column("attempt", .integer).notNull().defaults(to: 1)
+            }
+            try db.create(index: "idx_sync_jobs_started_at", on: "sync_jobs", columns: ["started_at"])
+            try db.create(index: "idx_sync_jobs_type_state", on: "sync_jobs", columns: ["job_type", "state"])
+
+            // 2. health_samples_raw — every sample we've ever ingested, append-only-ish
+            try db.create(table: "health_samples_raw") { t in
+                t.column("sample_uuid", .text).primaryKey()    // HK uuid guarantees uniqueness
+                t.column("hk_type", .text).notNull()           // identifier string e.g. HKQuantityTypeIdentifierBodyMass
+                t.column("kind", .text).notNull()              // quantity | category | workout
+                t.column("value", .double).notNull()
+                t.column("unit", .text).notNull()
+                t.column("start_at", .integer).notNull()
+                t.column("end_at", .integer).notNull()
+                t.column("source_name", .text)
+                t.column("source_bundle_id", .text)
+                t.column("device_name", .text)
+                t.column("device_model", .text)
+                t.column("ingested_at", .integer).notNull()
+                t.column("is_deleted", .boolean).notNull().defaults(to: false)
+                t.column("extra_json", .text)
+            }
+            try db.create(index: "idx_raw_hk_type_start", on: "health_samples_raw", columns: ["hk_type", "start_at"])
+            try db.create(index: "idx_raw_source", on: "health_samples_raw", columns: ["source_bundle_id"])
+            try db.create(index: "idx_raw_start", on: "health_samples_raw", columns: ["start_at"])
+
+            // 3. body_metrics_daily — derived per-day rollup for weight/body-composition pane
+            try db.create(table: "body_metrics_daily") { t in
+                t.column("date", .text).primaryKey()           // ISO-8601 yyyy-MM-dd in local tz
+                t.column("weight_kg", .double)
+                t.column("body_fat_pct", .double)
+                t.column("bmi", .double)
+                t.column("lean_mass_kg", .double)
+                t.column("height_m", .double)
+                t.column("basal_energy_kcal", .double)
+                t.column("visceral_fat_level", .double)        // manual fallback per PRD §4.2
+                t.column("muscle_mass_kg", .double)            // manual / extra_json projection
+                t.column("water_pct", .double)
+                t.column("protein_pct", .double)
+                t.column("sources_json", .text)                // attribution snapshot per metric
+                t.column("computed_at", .integer).notNull()
+            }
+
+            // 4. activity_metrics_daily
+            try db.create(table: "activity_metrics_daily") { t in
+                t.column("date", .text).primaryKey()
+                t.column("step_count", .integer)
+                t.column("active_energy_kcal", .double)
+                t.column("basal_energy_kcal", .double)
+                t.column("distance_m", .double)
+                t.column("exercise_minutes", .double)
+                t.column("stand_minutes", .double)
+                t.column("flights_climbed", .integer)
+                t.column("resting_hr_bpm", .double)
+                t.column("avg_hr_bpm", .double)
+                t.column("hrv_ms", .double)
+                t.column("vo2_max", .double)
+                t.column("sleep_seconds", .integer)
+                t.column("sleep_efficiency", .double)
+                t.column("sources_json", .text)
+                t.column("computed_at", .integer).notNull()
+            }
+
+            // 5. meal_records
+            try db.create(table: "meal_records") { t in
+                t.autoIncrementedPrimaryKey("id")
+                t.column("meal_type", .text).notNull()         // breakfast | lunch | dinner | snack
+                t.column("eaten_at", .integer).notNull()
+                t.column("calories_kcal", .double)
+                t.column("protein_g", .double)
+                t.column("fat_g", .double)
+                t.column("carbs_g", .double)
+                t.column("photo_path", .text)
+                t.column("notes", .text)
+                t.column("created_at", .integer).notNull()
+            }
+            try db.create(index: "idx_meal_eaten_at", on: "meal_records", columns: ["eaten_at"])
+
+            // 6. medication_plans — tirzepatide / general
+            try db.create(table: "medication_plans") { t in
+                t.autoIncrementedPrimaryKey("id")
+                t.column("name", .text).notNull()
+                t.column("dosage_mg", .double)
+                t.column("frequency", .text)                   // weekly | biweekly | custom
+                t.column("schedule_json", .text)               // reminders, weekday, time
+                t.column("start_date", .text)
+                t.column("end_date", .text)
+                t.column("reminder_enabled", .boolean).notNull().defaults(to: true)
+                t.column("notes", .text)
+                t.column("created_at", .integer).notNull()
+            }
+
+            // 7. medication_logs
+            try db.create(table: "medication_logs") { t in
+                t.autoIncrementedPrimaryKey("id")
+                t.column("plan_id", .integer).references("medication_plans", onDelete: .cascade)
+                t.column("scheduled_at", .integer).notNull()
+                t.column("action", .text).notNull()            // taken | skipped | deferred
+                t.column("action_at", .integer)
+                t.column("dosage_mg", .double)
+                t.column("side_effects", .text)
+                t.column("notes", .text)
+                t.column("created_at", .integer).notNull()
+            }
+            try db.create(index: "idx_med_log_plan_time", on: "medication_logs", columns: ["plan_id", "scheduled_at"])
+
+            // 8. daily_summaries
+            try db.create(table: "daily_summaries") { t in
+                t.column("date", .text).primaryKey()
+                t.column("summary_text", .text)
+                t.column("key_findings_json", .text)
+                t.column("quality_score", .double)
+                t.column("generated_at", .integer).notNull()
+            }
+
+            // 9. weekly_summaries
+            try db.create(table: "weekly_summaries") { t in
+                t.column("week_start_date", .text).primaryKey()
+                t.column("summary_text", .text)
+                t.column("findings_json", .text)
+                t.column("quality_score", .double)
+                t.column("generated_at", .integer).notNull()
+            }
+
+            // 10. source_coverage_daily — for attribution dashboard
+            try db.create(table: "source_coverage_daily") { t in
+                t.column("date", .text).notNull()
+                t.column("source_bundle_id", .text).notNull()
+                t.column("source_name", .text)
+                t.column("sample_count", .integer).notNull().defaults(to: 0)
+                t.column("hk_types_json", .text)               // map: hk_type -> count
+                t.column("last_seen_at", .integer)
+                t.primaryKey(["date", "source_bundle_id"])
+            }
+
+            // 11. data_quality_daily
+            try db.create(table: "data_quality_daily") { t in
+                t.column("date", .text).primaryKey()
+                t.column("completeness_score", .double)
+                t.column("freshness_score", .double)
+                t.column("conflict_score", .double)
+                t.column("missing_metrics_json", .text)
+                t.column("computed_at", .integer).notNull()
+            }
+
+            // 12. backfill_report — F-001A output
+            try db.create(table: "backfill_report") { t in
+                t.autoIncrementedPrimaryKey("id")
+                t.column("job_id", .integer).references("sync_jobs", onDelete: .setNull)
+                t.column("started_at", .integer).notNull()
+                t.column("ended_at", .integer)
+                t.column("requested_days", .integer).notNull()
+                t.column("hk_type", .text).notNull()
+                t.column("sample_count", .integer).notNull().defaults(to: 0)
+                t.column("missing", .boolean).notNull().defaults(to: false)
+                t.column("status", .text).notNull()            // running | succeeded | failed | skipped
+                t.column("error_message", .text)
+                t.column("coverage_summary_json", .text)
+                t.column("created_at", .integer).notNull()
+            }
+            try db.create(index: "idx_backfill_job_type", on: "backfill_report", columns: ["job_id", "hk_type"])
+
+            // --- auxiliary tables (needed for incremental + alerts) ---
+
+            // sync_anchors — per-hk_type HKQueryAnchor blob for incremental queries
+            try db.create(table: "sync_anchors") { t in
+                t.column("hk_type", .text).primaryKey()
+                t.column("anchor_data", .blob).notNull()
+                t.column("updated_at", .integer).notNull()
+            }
+
+            // missing_data_alerts — R-001 缺失告警
+            try db.create(table: "missing_data_alerts") { t in
+                t.autoIncrementedPrimaryKey("id")
+                t.column("date", .text).notNull()
+                t.column("metric", .text).notNull()
+                t.column("severity", .text).notNull()          // info | warning | critical
+                t.column("message", .text)
+                t.column("acknowledged", .boolean).notNull().defaults(to: false)
+                t.column("created_at", .integer).notNull()
+            }
+            try db.create(index: "idx_alert_date_metric", on: "missing_data_alerts", columns: ["date", "metric"])
+        }
+
+        try migrator.migrate(pool)
+    }
+}
