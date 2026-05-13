@@ -43,6 +43,19 @@ struct SyncCenterView: View {
                         .font(.footnote).foregroundStyle(.secondary)
                 }
 
+                Section("数据对账") {
+                    Button {
+                        Task { await sync.runReconcile(windowDays: 7, trigger: .user) }
+                    } label: {
+                        Label(sync.isReconciling ? "对账中…" : "立即对账（7 天）", systemImage: "checkmark.seal")
+                    }
+                    .disabled(sync.isReconciling)
+                    if let outcome = sync.lastReconcileOutcome {
+                        Text("上次：\(outcome.datesProcessed.count) 天，告警 \(outcome.alertsEmitted) 条")
+                            .font(.footnote).foregroundStyle(.secondary)
+                    }
+                }
+
                 Section("最近回补报告") {
                     if recentReports.isEmpty {
                         Text("尚无报告。先执行一次回补。").foregroundStyle(.secondary)

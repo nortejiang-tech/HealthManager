@@ -80,13 +80,17 @@ final class BackgroundTaskScheduler {
     private func handleReconcile(task: BGProcessingTask) {
         scheduleReconcileIfNeeded()
 
-        task.expirationHandler = {
-            AppLogger.shared.bg.warning("Reconcile BG task expired")
-            task.setTaskCompleted(success: false)
+        let work = Task { @MainActor in
+            await self.syncEngine.runReconcile(trigger: .bgTask)
+            if !Task.isCancelled {
+                task.setTaskCompleted(success: true)
+            }
         }
 
-        // Reconcile body filled in Round 6.
-        AppLogger.shared.bg.info("handleReconcile: stub — to be implemented in Round 6")
-        task.setTaskCompleted(success: true)
+        task.expirationHandler = {
+            AppLogger.shared.bg.warning("Reconcile BG task expired — cancelling")
+            work.cancel()
+            task.setTaskCompleted(success: false)
+        }
     }
 }

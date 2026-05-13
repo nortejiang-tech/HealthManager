@@ -44,9 +44,13 @@ final class SyncEngine: ObservableObject {
         incremental: incrementalCoordinator,
         database: database
     )
+    private(set) lazy var dailyReconciler = DailyReconciler(database: database)
 
     private var stateMachine = SyncStateMachine()
     private var externalSyncContinuation: CheckedContinuation<Void, Never>?
+
+    @Published private(set) var isReconciling: Bool = false
+    @Published private(set) var lastReconcileOutcome: DailyReconciler.Outcome?
 
     init(database: DatabaseManager, healthKitManager: HealthKitManager) {
         self.database = database
@@ -211,6 +215,36 @@ final class SyncEngine: ObservableObject {
         manualSyncPrompt = nil
         try? stateMachine.handle(.userResumedFromExternal)
         phase = stateMachine.phase
+    }
+
+    // MARK: - Reconcile (R-001)
+
+    /// Daily data-quality reconciliation. Independent of `isBusy` because it is read-only
+    /// over raw / coverage tables; safe to run alongside backfill / incremental sync.
+    func runReconcile(windowDays: Int? = nil, trigger: SyncJob.Trigger = .timer) async {
+        guard !isReconciling else {
+            AppLogger.shared.sync.info("runReconcile skipped: already reconciling")
+            return
+        }
+        isReconciling = true
+        defer { isReconciling = false }
+
+        do {
+            let outcome = try await dailyReconciler.run(
+                windowDays: windowDays,
+                trigger: trigger,
+                progress: { [weak self] desc in
+                    Task { @MainActor in self?.progressDescription = desc }
+                }
+            )
+            lastReconcileOutcome = outcome
+            progressDescription = outcome.succeeded
+                ? "对账完成：\(outcome.datesProcessed.count) 天 / \(outcome.alertsEmitted) 条告警。"
+                : "对账失败：\(outcome.errorMessage ?? "未知错误")"
+        } catch {
+            AppLogger.shared.sync.error("runReconcile failed: \(error.localizedDescription, privacy: .public)")
+            progressDescription = "对账失败：\(error.localizedDescription)"
+        }
     }
 
     // MARK: - Reset
