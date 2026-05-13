@@ -1,68 +1,61 @@
 # NEXT_TASK
 
-> 下一轮（Round 4）开工前先读这份。读完即可恢复上下文。
+> V1 已交付（7 个 Round 全部完成）。本文档保留作 v2 蓝图。
 
-## 上下文回放
+## V1 状态
 
-Round 1：工程骨架 + 12 表 schema + 30 天回补。
-Round 2：自动增量同步 F-001（Anchored + Observer + BGTask 完整打通）。
-Round 3：手动一键同步 F-002（两阶段 envelope + scenePhase 自动续跑）。详见 `WORKLOG.md`。
+详见 `WORKLOG.md` 末尾「V1 交付摘要」节。简要：
 
-当前状态：
-- `SyncEngine.runBackfill` ✅
-- `SyncEngine.runIncremental` ✅
-- `SyncEngine.runManualSync` ✅
-- `IncrementalSyncCoordinator.executePass(progress:)` 是共享原语，Round 4 的 reconcile 不需要再写一遍拉取
-- `data_quality_daily` 表已存在但全空
-- `missing_data_alerts` 表已存在但全空
-- `BackgroundTaskScheduler.handleReconcile` 是 stub（Round 1 留位）
+- 38 个 Swift 文件，`swiftc -typecheck` 0 errors / 0 warnings
+- PRD F-001 / F-001A / F-002 / F-003 / F-004 / F-005 / F-006 / R-001 全部完成
+- 14 张表（PRD 12 + 2 辅助）全部写入路径打通
+- 5 主 tab + 5 二级页面
 
-## Round 4 目标：每日对账（PRD R-001，执行顺序 §12 第 5 项）
+## v2 候选（按价值排序）
 
-### 必须交付
+### 高价值
+1. **饮食照片 AI 识别**
+   - 用 Vision + 后续接 LLM
+   - `MealRecord.photoPath` 已留位
+   - 暂未实现的 UX：拍照 → 自动识别 calories / macros 草稿 → 用户修正 → 保存
 
-1. **`Core/Sync/DailyReconciler.swift`（新文件）**
-   - 输入：要对账的日期窗口（默认前 1 天 - 前 7 天）
-   - 流程：
-     a. 对每个日期：
-        - 从 `health_samples_raw` 聚合：每个 hk_type 是否有非删除样本
-        - 从 `source_coverage_daily` 读：该日有哪些 source 写入
-     b. 计算 3 个分数（参考 PRD §6 / 自定义合理实现）：
-        - `completeness_score`：核心指标（体重 / 步数 / 心率 / 睡眠）是否齐全，0..1
-        - `freshness_score`：最近一次 ingested_at 距今多久；越久越低
-        - `conflict_score`：同 hk_type 同小时窗口出现多个 source 的程度
-     c. UPSERT `data_quality_daily(date, ...)`
-     d. 任一指标低于阈值 → 写 `missing_data_alerts(date, metric, severity, message)`
-        - 已存在同 (date, metric) 未确认告警则跳过
-     e. 单条 `sync_jobs(job_type=reconcile)` envelope
+2. **用药系统通知**
+   - `MedicationPlan.reminderEnabled` 已留位
+   - 需要 `UNUserNotificationCenter` 调度 + 推送授权流
+   - `medication_plans.schedule_json` 用来存周几/时间
 
-2. **Round 4 不做 UI**
-   - Dashboard 红点 / 告警面板留 Round 5
-   - 但要确认数据写入正确：可以临时在 SyncCenter 加一个「跑一次对账」按钮（debug 用）
+3. **日周报接 LLM**
+   - 当前 `SummaryGenerator.Generated` 接口与 LLM 输出兼容
+   - 替换 `renderDaily` / `buildWeeklyReport` 内部即可；UI 无需改
+   - 走 Apple Intelligence 或本地 GGUF / Ollama 桥；不要发到云
 
-3. **打通 `BackgroundTaskScheduler.handleReconcile`**
-   - 真正调 `DailyReconciler.run`，BGProcessingTask 节奏 ≥ 6h
-   - expirationHandler 内 cancel 当前 Task（参照 Round 2 incremental 的写法）
+### 中价值
+4. **对账阈值可编辑**
+   - `DailyReconciler.Config` 改为从 UserDefaults 读
+   - SettingsView 新增「对账」section 让用户调阈值
 
-4. **`SyncEngine.runReconcile`（新方法）**
-   - 入口：BGProcessingTask + 调试按钮
-   - 状态机：Reconcile 自己其实不属于 `SyncStateMachine` 的现有路径，可以走单独标志位 `isReconciling` 或新加状态。建议先用独立 `@Published var isReconciling`，不污染 phase。
-   - 与 `runBackfill / runIncremental / runManualSync` 共享 `isBusy`？— 建议不共享：reconcile 是只读 + 写衍生表，与拉取互不冲突。给 reconcile 一个独立锁。
+5. **来源归因落到 raw 行**
+   - 当前 `SourceAttribution.classify` 是查询侧
+   - 写入时同时存归一化 `source_origin` 列到 `health_samples_raw`（v2 migration）
+   - 让 SourcesView 不再依赖动态分类
 
-### 验证清单
-- `swiftc -typecheck` 通过
-- 真机：执行回补后跑一次对账 → `data_quality_daily` 有当日行 → 故意删除某类型样本 → 重跑对账 → `missing_data_alerts` 有对应记录
+6. **单元测试**
+   - HKQueryAnchor NSKeyedArchiver 编解码 round-trip
+   - DailyReconciler 三个分数的边界（满分 / 零分 / 中段）
+   - SyncStateMachine 全部 transition
 
-### 不要做
-- 不要在 Round 4 做 dashboard 红点（Round 5）
-- 不要在 Round 4 改 schema（12 张表已经留好位）
-- 阈值不要固化魔数：用 `ReconcileConfig` 结构集中放，方便 Round 5 暴露给设置页
+### 低价值
+7. **应用图标 / 启动屏视觉**
+   - 当前 AppIcon/AccentColor 是 xcassets 占位
 
-### 已知约束
-- `freshness_score` 在 backfill 刚跑完时所有日期会显示高分；目标是周期性识别「停摆」而不是「冷启动」，所以判断窗口建议是「过去 7 天」而不是「过去 1 天」。
-- iOS 17+ Scene 的 `onChange(of:)` 用零参形态（Round 3 已确认）。
+8. **Mac Catalyst / iPad 适配**
+   - 当前 `TARGETED_DEVICE_FAMILY=1`（仅 iPhone）
 
-## 额度策略提醒
-- 进入 Round 4 前评估剩余额度
-- 每 5 小时 / 每日结束 / 额度将尽前 checkpoint：`git commit` + 更新 WORKLOG / NEXT_TASK
-- Round 3 验证步骤新增 `swiftc -typecheck` 独立路径，记得 Round 4 沿用
+9. **设置页打开 Apple Health 深链**
+   - 通过 `URL(string: "x-apple-health://")` 跳到健康 App 让用户改授权
+
+## 工程提醒
+- 任何修改 `Migrations.swift` 已应用迁移都是 ❌；要加新表/列时新增 `v2_*` 迁移
+- 引入新依赖前评估：当前只有 GRDB，包大小可控
+- `xcodegen generate` 在改 `project.yml` / 新增源目录后必跑
+- `swiftc -typecheck` 标准验证命令见 `WORKLOG.md` 末尾

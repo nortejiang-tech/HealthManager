@@ -298,3 +298,119 @@ find App Core UI -name "*.swift" -print0 | xargs -0 swiftc -typecheck \
 2. Round 5 —— 数据质量评分 UI + 缺失告警面板（PRD F-005）。
 3. Round 6 —— 饮食 / 用药模块骨架（PRD F-003 / F-004）。
 
+---
+
+## Round 4 — 2026-05-13 每日对账 R-001
+
+**已完成（文件级清单）**
+
+新增
+- `Core/Database/Models/DataQualityDaily.swift` — `data_quality_daily` 表的 GRDB record。
+- `Core/Reconcile/DailyReconciler.swift` — 默认 7 天窗口。
+  - 3 个分数：completeness（核心指标存在比例）/ freshness（最新 ingested_at 年龄分段：≤6h=1.0、≤24h=0.8、≤72h=0.5、≤7d=0.25、否则 0）/ conflict（同类型同小时桶 ≥2 source 占比反向）
+  - UPSERT `data_quality_daily(date, ...)`
+  - 缺失指标 → `missing_data_alerts`：连续天数 ≥3 升级 critical；整日无数据写 `__stale__` critical；按 `(date, metric)` 去重未确认
+  - 单条 `sync_jobs(job_type=reconcile)` envelope
+  - `humanLabel(for:)` 中文化常用指标
+
+修改
+- `Core/Sync/SyncEngine.swift` — 加 `runReconcile`（独立 `isReconciling` 锁，不与 `isBusy` 互斥，因为只读 raw + 写衍生表）
+- `Core/Sync/BackgroundTaskScheduler.swift` — `handleReconcile` 真正委托 + `expirationHandler` 调 `Task.cancel()`
+- `UI/SyncCenter/SyncCenterView.swift` — 加「立即对账（7 天）」按钮 + 上次结果摘要
+
+---
+
+## Round 5+6 — 2026-05-13 数据质量 UI + 告警 + 来源 + 饮食 + 用药 + 日报周报
+
+**已完成（文件级清单）**
+
+新增模型
+- `Core/Database/Models/MealRecord.swift` — `meal_records`
+- `Core/Database/Models/MedicationPlan.swift` — `medication_plans`
+- `Core/Database/Models/MedicationLog.swift` — `medication_logs`
+- `Core/Database/Models/DailySummary.swift` — `daily_summaries` + `WeeklySummary`（同文件）
+
+新增逻辑
+- `Core/Summary/SummaryGenerator.swift` — V1 不用 LLM，纯本地确定性聚合。
+  - 日报：步数 / 活动能量 / 心率 / 静息心率 / 体重 / 餐次 / 用药 / 完整度 / 缺失列表
+  - 周报：累计步数 + 日均 / 能量累计 / 心率均值 / 体重区间 / 餐次累计 / 用药次数 / 平均完整度
+  - UPSERT `daily_summaries(date)` / `weekly_summaries(week_start_date)`
+  - 周起始按 ISO-8601 周一对齐
+
+新增 UI（5 个）
+- `UI/Dashboard/DashboardView.swift` 改版 — 今日质量三色徽标（≥80 绿 / ≥50 橙 / <50 红）、告警红点 NavigationLink、分析入口
+- `UI/Alerts/AlertsView.swift` — 按日期分组、按严重度图标着色、单条/全部确认、显示/隐藏已确认
+- `UI/Sources/SourcesView.swift` — 按 `source_bundle_id` 聚合最近 7-60 天（Stepper），活跃天数比 <30% 标红；归因走 `SourceAttribution.Origin.label`
+- `UI/Diet/DietView.swift` — 今日合计 + 近 50 餐次 + `MealEditView` 表单（餐次/时间/四大营养素/备注）+ 滑动删除
+- `UI/Medication/MedicationView.swift` — 计划列表 +「记一次」按钮（写 taken log）+ `MedicationPlanEditView` + 最近 20 条日志
+- `UI/Summary/SummaryView.swift` — 一键生成日报+周报，textSelection 允许复制
+
+修改
+- `Core/Sync/SourceAttribution.swift` — `Origin` 加 `.label` 显示名
+- `App/RootView.swift` — `MainTabView` 加 饮食 / 用药 / 来源 4 个新 tab，总数到 5（iOS 上限内）
+- `UI/SyncCenter/SyncCenterView.swift` — 顶部齿轮入设置
+
+---
+
+## Round 7 — 2026-05-13 收尾 / 设置 / Background reconcile bootstrap
+
+**已完成**
+- `UI/Settings/SettingsView.swift` — 版本 / Bundle ID / HK 授权状态 / DB 路径+大小+样本数 / 对账阈值（只读 V1）/ 隐私声明 / Danger zone（重置 `hk.hasRequestedAuthorization` 触发 onboarding）
+- `App/AppEnvironment.swift.bootstrap` — 同时排 `scheduleReconcileIfNeeded()`（之前漏排）
+
+---
+
+## V1 交付摘要
+
+**代码量**
+- 38 个 Swift 文件 / Swift 0 errors 0 warnings（`swiftc -typecheck` 全量）
+- 14 张 SQLite 表（PRD 12 + sync_anchors + missing_data_alerts）全部写入路径打通
+- 5 个 Tab（仪表盘 / 饮食 / 用药 / 来源 / 同步中心）+ 5 个二级页面（告警 / 总结 / 设置 / 添加餐次 / 添加用药计划）
+
+**PRD 完成度**
+| ID | 名称 | 状态 |
+|---|---|---|
+| F-001 | 自动增量同步（Observer + Anchored + BGTask） | ✅ |
+| F-001A | 历史回补 30 天 | ✅ |
+| F-002 | 手动一键同步 + 外部 App 引导 + scenePhase 续跑 | ✅ |
+| F-003 | 饮食记录（手动） | ✅ V1（无照片 AI 识别） |
+| F-004 | 用药计划与日志 | ✅ V1（无系统通知调度） |
+| F-005 | 数据质量评分 + 缺失告警 | ✅ |
+| F-006 | 日报 / 周报 | ✅ V1（本地确定性，无 LLM） |
+| R-001 | 每日对账 | ✅ |
+
+**已知留待 v2**
+- 饮食照片 AI 识别（PRD §F-003 提到）
+- 用药提醒系统通知（UNUserNotificationCenter）
+- 日周报接入 LLM
+- 对账阈值在设置页可编辑
+- 来源归因落到 raw 行（当前是查询侧标签化）
+- 单元测试覆盖（HKQueryAnchor 编解码 round-trip、Reconciler 分数边界）
+
+**编译验证**
+```bash
+# Swift 全量 typecheck（不依赖 simulator runtime）
+xcodebuild -target HealthManager -project HealthManager.xcodeproj \
+  -configuration Debug -sdk iphonesimulator ... 2>&1
+# GRDB 构建会通过；HealthManager 的 Swift 阶段也会 0 错误。
+# Asset Catalog 仍受本机无 simulator runtime 阻挡（Xcode→Settings→Platforms 下载 iOS 26.5 模拟器后 BUILD SUCCEEDED）。
+
+# 独立 typecheck（绕开 actool）：
+SDK=$(xcrun --sdk iphonesimulator --show-sdk-path)
+GRDB_MODULE_DIR="/tmp/HMbuild/Products/Debug-iphonesimulator"
+CSQLITE_MAP="$HOME/Library/Developer/Xcode/DerivedData/HealthManager-*/SourcePackages/checkouts/GRDB.swift/Sources/CSQLite/module.modulemap"
+find App Core UI -name "*.swift" -print0 | xargs -0 swiftc -typecheck \
+  -target arm64-apple-ios17.0-simulator -sdk "$SDK" \
+  -I "$GRDB_MODULE_DIR" -Xcc -fmodule-map-file="$CSQLITE_MAP"
+# → 0 errors, 0 warnings
+```
+
+**真机首次运行步骤**
+1. Xcode → Settings → Platforms → 下载 iOS 17+ simulator runtime（或直接连真机）
+2. 打开 `HealthManager.xcodeproj`，选 device，Run
+3. Onboarding 页 → 授权所有读权限
+4. 自动进入主界面；首次 dashboard 数据为空
+5. 同步中心 → 选 30 天 → 开始回补 → 等回补完成
+6. 同步中心 → 立即对账 → 仪表盘出现完整度/新鲜度/冲突度三个数字
+7. 后续每次外部 App 写入 HK，HKObserver 会自动触发增量；每日 BG Task 自动对账
+

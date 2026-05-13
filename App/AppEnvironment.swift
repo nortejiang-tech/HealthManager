@@ -34,9 +34,10 @@ final class AppEnvironment: ObservableObject {
     func bootstrap() {
         AppLogger.shared.info("AppEnvironment bootstrap; dbPath=\(database.databasePath)")
         backgroundScheduler.registerLaunchHandlers()
-        // Schedule the first BG App Refresh slot so the system has something queued even
-        // if the user never opens the Sync Center.
+        // Schedule the first BG slots so the system has something queued even if the user
+        // never opens the Sync Center.
         backgroundScheduler.scheduleIncrementalIfNeeded()
+        backgroundScheduler.scheduleReconcileIfNeeded()
     }
 
     /// Called by `RootView` whenever the authorization gate changes. Idempotent.

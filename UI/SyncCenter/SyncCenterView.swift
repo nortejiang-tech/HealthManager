@@ -75,6 +75,15 @@ struct SyncCenterView: View {
                 }
             }
             .navigationTitle("同步中心")
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    NavigationLink {
+                        SettingsView()
+                    } label: {
+                        Image(systemName: "gearshape")
+                    }
+                }
+            }
             .task { await refreshReports() }
             .refreshable { await refreshReports() }
             .alert(
