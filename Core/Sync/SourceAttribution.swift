@@ -14,6 +14,18 @@ enum SourceAttribution {
         case hutool                  // 华为/华米等其他
         case manual
         case unknown
+
+        var label: String {
+            switch self {
+            case .garmin: return "Garmin"
+            case .xiaomiMijia: return "米家 / 小米健康"
+            case .xiaomiSports: return "小米运动 / Zepp"
+            case .apple: return "Apple Health / Watch"
+            case .hutool: return "华为 / 华米"
+            case .manual: return "手动录入"
+            case .unknown: return "未识别来源"
+            }
+        }
     }
 
     /// Best-effort mapping based on bundle id + source name. Add new mappings here as new

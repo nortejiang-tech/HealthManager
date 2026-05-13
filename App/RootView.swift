@@ -29,6 +29,12 @@ struct MainTabView: View {
         TabView {
             DashboardView()
                 .tabItem { Label("仪表盘", systemImage: "heart.text.square") }
+            DietView()
+                .tabItem { Label("饮食", systemImage: "fork.knife") }
+            MedicationView()
+                .tabItem { Label("用药", systemImage: "pills") }
+            NavigationStack { SourcesView() }
+                .tabItem { Label("来源", systemImage: "antenna.radiowaves.left.and.right") }
             SyncCenterView()
                 .tabItem { Label("同步中心", systemImage: "arrow.triangle.2.circlepath") }
         }
