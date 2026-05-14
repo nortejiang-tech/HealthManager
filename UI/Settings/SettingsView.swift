@@ -4,11 +4,21 @@ import GRDB
 struct SettingsView: View {
     @EnvironmentObject private var environment: AppEnvironment
     @EnvironmentObject private var healthKit: HealthKitManager
+    @Environment(\.openURL) private var openURL
 
     @State private var dbSizeBytes: Int64 = 0
     @State private var sampleCount: Int = 0
     @State private var alertCount: Int = 0
     @State private var showingResetConfirm: Bool = false
+    @State private var showingResetThresholdsConfirm: Bool = false
+
+    // Editable threshold state — mirrors `ReconcilerSettings` and persists on change.
+    @State private var completenessPct: Double = ReconcilerSettings.completenessThreshold * 100
+    @State private var conflictMinSources: Int = ReconcilerSettings.conflictMinSources
+    @State private var consecutiveCritical: Int = ReconcilerSettings.consecutiveMissingForCritical
+    @State private var defaultWindowDays: Int = ReconcilerSettings.defaultWindowDays
+
+    @State private var exportURL: URL?
 
     var body: some View {
         List {
@@ -25,6 +35,13 @@ struct SettingsView: View {
                 } label: {
                     Label("重新检查授权", systemImage: "arrow.clockwise")
                 }
+                Button {
+                    if let url = URL(string: "x-apple-health://") {
+                        openURL(url)
+                    }
+                } label: {
+                    Label("打开 Apple 健康 App", systemImage: "heart.text.square")
+                }
             }
 
             Section("数据库") {
@@ -34,15 +51,68 @@ struct SettingsView: View {
                 LabeledContent("文件大小", value: formatBytes(dbSizeBytes))
                 LabeledContent("有效样本数", value: "\(sampleCount)")
                 LabeledContent("未确认告警", value: "\(alertCount)")
+
+                Button {
+                    Task { await exportDatabase() }
+                } label: {
+                    Label("导出本地数据库快照…", systemImage: "square.and.arrow.up")
+                }
             }
 
-            Section("对账阈值（只读 V1）") {
-                LabeledContent("核心指标", value: "体重 / 步数 / 心率 / 睡眠")
-                LabeledContent("完整度警戒", value: "75%")
-                LabeledContent("升级 critical", value: "连续 3 天缺失")
-                LabeledContent("默认对账窗口", value: "过去 7 天")
-                Text("V1 阈值固化；后续版本会暴露为可编辑设置项。")
-                    .font(.footnote).foregroundStyle(.secondary)
+            Section {
+                Stepper(value: $completenessPct, in: 30...100, step: 5) {
+                    HStack {
+                        Text("完整度警戒线")
+                        Spacer()
+                        Text("\(Int(completenessPct))%").foregroundStyle(.secondary)
+                    }
+                }
+                .onChange(of: completenessPct) { _, new in
+                    ReconcilerSettings.completenessThreshold = new / 100.0
+                }
+
+                Stepper(value: $conflictMinSources, in: 2...6) {
+                    HStack {
+                        Text("冲突阈值（同小时来源数）")
+                        Spacer()
+                        Text("≥ \(conflictMinSources)").foregroundStyle(.secondary)
+                    }
+                }
+                .onChange(of: conflictMinSources) { _, new in
+                    ReconcilerSettings.conflictMinSources = new
+                }
+
+                Stepper(value: $consecutiveCritical, in: 1...14) {
+                    HStack {
+                        Text("升级 critical 的连续缺失天数")
+                        Spacer()
+                        Text("\(consecutiveCritical) 天").foregroundStyle(.secondary)
+                    }
+                }
+                .onChange(of: consecutiveCritical) { _, new in
+                    ReconcilerSettings.consecutiveMissingForCritical = new
+                }
+
+                Stepper(value: $defaultWindowDays, in: 1...30) {
+                    HStack {
+                        Text("默认对账窗口")
+                        Spacer()
+                        Text("\(defaultWindowDays) 天").foregroundStyle(.secondary)
+                    }
+                }
+                .onChange(of: defaultWindowDays) { _, new in
+                    ReconcilerSettings.defaultWindowDays = new
+                }
+
+                Button(role: .destructive) {
+                    showingResetThresholdsConfirm = true
+                } label: {
+                    Label("恢复默认阈值", systemImage: "arrow.counterclockwise")
+                }
+            } header: {
+                Text("对账阈值")
+            } footer: {
+                Text("修改后立即生效，下次「立即对账」按新阈值执行。核心指标固定为 体重/步数/心率/睡眠。")
             }
 
             Section("隐私") {
@@ -63,6 +133,9 @@ struct SettingsView: View {
         .navigationTitle("设置")
         .task { await refresh() }
         .refreshable { await refresh() }
+        .sheet(item: $exportURL) { url in
+            ShareSheet(items: [url])
+        }
         .confirmationDialog(
             "重新触发 onboarding 授权页？",
             isPresented: $showingResetConfirm,
@@ -75,6 +148,20 @@ struct SettingsView: View {
             Button("取消", role: .cancel) {}
         } message: {
             Text("不会删除任何数据，仅重置「是否请求过授权」标记。仍需进入「设置 → 隐私 → 健康」修改实际授权。")
+        }
+        .confirmationDialog(
+            "恢复对账阈值为默认值？",
+            isPresented: $showingResetThresholdsConfirm,
+            titleVisibility: .visible
+        ) {
+            Button("恢复默认", role: .destructive) {
+                ReconcilerSettings.resetToDefaults()
+                completenessPct = ReconcilerSettings.completenessThreshold * 100
+                conflictMinSources = ReconcilerSettings.conflictMinSources
+                consecutiveCritical = ReconcilerSettings.consecutiveMissingForCritical
+                defaultWindowDays = ReconcilerSettings.defaultWindowDays
+            }
+            Button("取消", role: .cancel) {}
         }
     }
 
@@ -109,11 +196,43 @@ struct SettingsView: View {
         }
     }
 
+    /// Copy the live SQLite file (plus -wal / -shm if present) into a tmp file the user
+    /// can share via the system share sheet. The original DB pool stays open; we copy
+    /// rather than vacuum-into so the operation is read-only and fast.
+    private func exportDatabase() async {
+        do {
+            let srcPath = environment.database.databasePath
+            let tmpDir = FileManager.default.temporaryDirectory
+            let stamp = ISO8601DateFormatter().string(from: Date())
+                .replacingOccurrences(of: ":", with: "-")
+            let dstURL = tmpDir.appendingPathComponent("HealthManager-\(stamp).sqlite")
+            if FileManager.default.fileExists(atPath: dstURL.path) {
+                try FileManager.default.removeItem(at: dstURL)
+            }
+            try FileManager.default.copyItem(atPath: srcPath, toPath: dstURL.path)
+            await MainActor.run { exportURL = dstURL }
+        } catch {
+            AppLogger.shared.error("DB export failed: \(error.localizedDescription)")
+        }
+    }
+
     private func formatBytes(_ bytes: Int64) -> String {
         let formatter = ByteCountFormatter()
         formatter.countStyle = .file
         return formatter.string(fromByteCount: bytes)
     }
+}
+
+extension URL: Identifiable {
+    public var id: String { absoluteString }
+}
+
+private struct ShareSheet: UIViewControllerRepresentable {
+    let items: [Any]
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        UIActivityViewController(activityItems: items, applicationActivities: nil)
+    }
+    func updateUIViewController(_ vc: UIActivityViewController, context: Context) {}
 }
 
 private extension Bundle {

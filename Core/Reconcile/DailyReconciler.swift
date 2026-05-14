@@ -13,29 +13,53 @@ actor DailyReconciler {
 
     struct Config {
         /// 核心指标：缺一个就会触发 alert。
-        var coreMetrics: [String] = [
-            "HKQuantityTypeIdentifierBodyMass",
-            "HKQuantityTypeIdentifierStepCount",
-            "HKQuantityTypeIdentifierHeartRate",
-            "HKCategoryTypeIdentifierSleepAnalysis"
-        ]
+        var coreMetrics: [String]
         /// `completeness_score = core_present / core_total`，低于这个就 warning。
-        var completenessWarningThreshold: Double = 0.75
+        var completenessWarningThreshold: Double
         /// 同一类型同一小时桶有 ≥2 source 就算一次冲突。
-        var conflictMinSources: Int = 2
+        var conflictMinSources: Int
         /// 「最近 N 天连续缺失」升级为 critical。
-        var consecutiveMissingForCritical: Int = 3
+        var consecutiveMissingForCritical: Int
         /// 默认对账窗口（含今日）。Round 4 调度时按需覆盖。
-        var defaultWindowDays: Int = 7
+        var defaultWindowDays: Int
+
+        init(
+            coreMetrics: [String] = ReconcilerSettings.defaultCoreMetrics,
+            completenessWarningThreshold: Double = 0.75,
+            conflictMinSources: Int = 2,
+            consecutiveMissingForCritical: Int = 3,
+            defaultWindowDays: Int = 7
+        ) {
+            self.coreMetrics = coreMetrics
+            self.completenessWarningThreshold = completenessWarningThreshold
+            self.conflictMinSources = conflictMinSources
+            self.consecutiveMissingForCritical = consecutiveMissingForCritical
+            self.defaultWindowDays = defaultWindowDays
+        }
+
+        /// Snapshot user-editable thresholds at run() time so changes from Settings
+        /// take effect without restart.
+        static func fromUserDefaults() -> Config {
+            Config(
+                coreMetrics: ReconcilerSettings.coreMetrics,
+                completenessWarningThreshold: ReconcilerSettings.completenessThreshold,
+                conflictMinSources: ReconcilerSettings.conflictMinSources,
+                consecutiveMissingForCritical: ReconcilerSettings.consecutiveMissingForCritical,
+                defaultWindowDays: ReconcilerSettings.defaultWindowDays
+            )
+        }
     }
 
     let database: DatabaseManager
-    let config: Config
+    private let configOverride: Config?
 
-    init(database: DatabaseManager, config: Config = Config()) {
+    init(database: DatabaseManager, config: Config? = nil) {
         self.database = database
-        self.config = config
+        self.configOverride = config
     }
+
+    /// Effective config: explicit override (tests) wins over `UserDefaults` snapshot.
+    private var config: Config { configOverride ?? Config.fromUserDefaults() }
 
     struct Outcome {
         let datesProcessed: [String]

@@ -27,6 +27,8 @@ enum SampleMapper {
         let unit = HealthKitTypeCatalog.preferredUnit(for: sample.quantityType)
         let value = sample.quantity.doubleValue(for: unit)
         let extra = makeExtra(metadata: sample.metadata)
+        let bundleId = sample.sourceRevision.source.bundleIdentifier
+        let sourceName = sample.sourceRevision.source.name
 
         return HealthSampleRaw(
             sampleUUID: sample.uuid.uuidString,
@@ -36,13 +38,14 @@ enum SampleMapper {
             unit: unit.unitString,
             startAt: Int64(sample.startDate.timeIntervalSince1970),
             endAt: Int64(sample.endDate.timeIntervalSince1970),
-            sourceName: sample.sourceRevision.source.name,
-            sourceBundleId: sample.sourceRevision.source.bundleIdentifier,
+            sourceName: sourceName,
+            sourceBundleId: bundleId,
             deviceName: sample.device?.name,
             deviceModel: sample.device?.model,
             ingestedAt: Int64(ingestedAt.timeIntervalSince1970),
             isDeleted: false,
-            extraJson: extra
+            extraJson: extra,
+            sourceOrigin: SourceAttribution.classify(bundleId: bundleId, sourceName: sourceName).rawValue
         )
     }
 
@@ -59,6 +62,8 @@ enum SampleMapper {
             extraDict["sleepStage"] = sleepStageLabel(stage)
         }
 
+        let bundleId = sample.sourceRevision.source.bundleIdentifier
+        let sourceName = sample.sourceRevision.source.name
         return HealthSampleRaw(
             sampleUUID: sample.uuid.uuidString,
             hkType: sample.categoryType.identifier,
@@ -67,13 +72,14 @@ enum SampleMapper {
             unit: "category",
             startAt: Int64(sample.startDate.timeIntervalSince1970),
             endAt: Int64(sample.endDate.timeIntervalSince1970),
-            sourceName: sample.sourceRevision.source.name,
-            sourceBundleId: sample.sourceRevision.source.bundleIdentifier,
+            sourceName: sourceName,
+            sourceBundleId: bundleId,
             deviceName: sample.device?.name,
             deviceModel: sample.device?.model,
             ingestedAt: Int64(ingestedAt.timeIntervalSince1970),
             isDeleted: false,
-            extraJson: jsonString(extraDict)
+            extraJson: jsonString(extraDict),
+            sourceOrigin: SourceAttribution.classify(bundleId: bundleId, sourceName: sourceName).rawValue
         )
     }
 
@@ -92,6 +98,8 @@ enum SampleMapper {
             extra["metadata"] = stringifyMetadata(meta)
         }
 
+        let bundleId = workout.sourceRevision.source.bundleIdentifier
+        let sourceName = workout.sourceRevision.source.name
         return HealthSampleRaw(
             sampleUUID: workout.uuid.uuidString,
             hkType: HKWorkoutTypeIdentifier,
@@ -100,13 +108,14 @@ enum SampleMapper {
             unit: "second",
             startAt: Int64(workout.startDate.timeIntervalSince1970),
             endAt: Int64(workout.endDate.timeIntervalSince1970),
-            sourceName: workout.sourceRevision.source.name,
-            sourceBundleId: workout.sourceRevision.source.bundleIdentifier,
+            sourceName: sourceName,
+            sourceBundleId: bundleId,
             deviceName: workout.device?.name,
             deviceModel: workout.device?.model,
             ingestedAt: Int64(ingestedAt.timeIntervalSince1970),
             isDeleted: false,
-            extraJson: jsonString(extra)
+            extraJson: jsonString(extra),
+            sourceOrigin: SourceAttribution.classify(bundleId: bundleId, sourceName: sourceName).rawValue
         )
     }
 

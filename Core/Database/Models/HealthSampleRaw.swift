@@ -22,6 +22,7 @@ struct HealthSampleRaw: Codable, FetchableRecord, PersistableRecord, Equatable {
     var ingestedAt: Int64
     var isDeleted: Bool
     var extraJson: String?
+    var sourceOrigin: String?
 
     enum CodingKeys: String, CodingKey {
         case sampleUUID = "sample_uuid"
@@ -38,5 +39,6 @@ struct HealthSampleRaw: Codable, FetchableRecord, PersistableRecord, Equatable {
         case ingestedAt = "ingested_at"
         case isDeleted = "is_deleted"
         case extraJson = "extra_json"
+        case sourceOrigin = "source_origin"
     }
 }

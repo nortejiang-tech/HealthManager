@@ -206,6 +206,54 @@ enum Migrations {
             try db.create(index: "idx_alert_date_metric", on: "missing_data_alerts", columns: ["date", "metric"])
         }
 
+        // MARK: v2 — denormalize SourceAttribution.Origin onto raw rows
+        //
+        // Round 9 / v2: SourcesView previously classified bundle_id + source_name on
+        // every read. Storing the classification at write time lets the view be a
+        // simple GROUP BY source_origin and lets unit tests assert against the column
+        // directly. Existing rows are back-filled by an UPDATE that mirrors
+        // `SourceAttribution.classify` in SQL.
+        migrator.registerMigration("v2_add_source_origin") { db in
+            try db.alter(table: "health_samples_raw") { t in
+                t.add(column: "source_origin", .text)
+            }
+            try db.create(index: "idx_raw_source_origin", on: "health_samples_raw", columns: ["source_origin"])
+
+            // Back-fill existing rows. Mirrors `SourceAttribution.classify` order/logic.
+            // CASE ladder; order matters because we test the most specific tokens first.
+            try db.execute(sql: """
+                UPDATE health_samples_raw
+                SET source_origin = CASE
+                    WHEN LOWER(COALESCE(source_bundle_id, '')) LIKE '%garmin%'
+                         OR LOWER(COALESCE(source_name, '')) LIKE '%garmin%'
+                        THEN 'garmin'
+                    WHEN LOWER(COALESCE(source_bundle_id, '')) LIKE '%mijia%'
+                         OR LOWER(COALESCE(source_name, '')) LIKE '%mijia%'
+                         OR COALESCE(source_name, '') LIKE '%米家%'
+                        THEN 'xiaomiMijia'
+                    WHEN LOWER(COALESCE(source_bundle_id, '')) LIKE '%xiaomi%'
+                         OR LOWER(COALESCE(source_bundle_id, '')) LIKE '%mi.fit%'
+                         OR LOWER(COALESCE(source_name, '')) LIKE '%xiaomi%'
+                         OR COALESCE(source_name, '') LIKE '%小米运动%'
+                         OR LOWER(COALESCE(source_name, '')) LIKE '%zepp%'
+                        THEN 'xiaomiSports'
+                    WHEN LOWER(COALESCE(source_bundle_id, '')) LIKE 'com.apple.%'
+                         OR LOWER(COALESCE(source_name, '')) = 'health'
+                         OR LOWER(COALESCE(source_name, '')) LIKE '%apple%'
+                         OR LOWER(COALESCE(source_name, '')) LIKE '%watch%'
+                        THEN 'apple'
+                    WHEN LOWER(COALESCE(source_bundle_id, '')) LIKE '%huawei%'
+                         OR LOWER(COALESCE(source_name, '')) LIKE '%huawei%'
+                         OR COALESCE(source_name, '') LIKE '%华为%'
+                        THEN 'hutool'
+                    WHEN LOWER(COALESCE(source_bundle_id, '')) LIKE '%com.norte.healthmanager%'
+                        THEN 'manual'
+                    ELSE 'unknown'
+                END
+                WHERE source_origin IS NULL
+                """)
+        }
+
         try migrator.migrate(pool)
     }
 }
