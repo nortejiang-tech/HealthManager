@@ -16,6 +16,27 @@ final class DatabaseManager: @unchecked Sendable {
         self.databasePath = path
     }
 
+    /// In-memory database for unit tests. Migrations are applied so the schema mirrors prod.
+    static func makeInMemoryForTesting() -> DatabaseManager {
+        do {
+            var config = Configuration()
+            config.prepareDatabase { db in
+                try db.execute(sql: "PRAGMA foreign_keys = ON;")
+            }
+            // GRDB on iOS only exposes DatabaseQueue for in-memory; wrap it in a
+            // DatabasePool-shaped API would change call sites. Use a temp-file pool
+            // instead so the real read/write methods still go through DatabasePool.
+            let tmp = FileManager.default.temporaryDirectory
+                .appendingPathComponent("hm-test-\(UUID().uuidString).sqlite")
+            let pool = try DatabasePool(path: tmp.path, configuration: config)
+            let manager = DatabaseManager(pool: pool, path: tmp.path)
+            try Migrations.run(on: pool)
+            return manager
+        } catch {
+            fatalError("Failed to create in-memory test DB: \(error)")
+        }
+    }
+
     static func makeDefault() -> DatabaseManager {
         do {
             let fm = FileManager.default

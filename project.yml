@@ -76,3 +76,20 @@ targets:
     dependencies:
       - package: GRDB
         product: GRDB
+
+  HealthManagerTests:
+    type: bundle.unit-test
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      - path: Tests
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.norte.HealthManagerTests
+        GENERATE_INFOPLIST_FILE: YES
+        TARGETED_DEVICE_FAMILY: "1"
+        SWIFT_VERSION: "5.10"
+    dependencies:
+      - target: HealthManager
+      - package: GRDB
+        product: GRDB
