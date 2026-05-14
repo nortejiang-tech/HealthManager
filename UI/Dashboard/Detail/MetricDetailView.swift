@@ -52,9 +52,18 @@ struct MetricDetailView: View {
 
     private var summaryHeader: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(inspectedLabel ?? headerLabel)
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            HStack(spacing: 6) {
+                Text(inspectedLabel ?? headerLabel)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                if inspectedDate == nil {
+                    let trendSeries = points.compactMap { p -> DatedDouble? in
+                        guard let v = p.value else { return nil }
+                        return DatedDouble(date: p.date, value: v)
+                    }
+                    TrendChip(series: trendSeries, lowerIsBetter: lowerIsBetter, theme: config.theme)
+                }
+            }
             HStack(alignment: .firstTextBaseline, spacing: 4) {
                 Text(displayValue)
                     .font(.system(size: 34, weight: .bold, design: .rounded))
@@ -69,6 +78,13 @@ struct MetricDetailView: View {
             Text(inspectedDateLabel ?? periodRangeLabel)
                 .font(.caption2)
                 .foregroundStyle(.secondary)
+        }
+    }
+
+    private var lowerIsBetter: Bool {
+        switch config.title {
+        case "静息心率", "体重", "体脂率": return true
+        default: return false
         }
     }
 

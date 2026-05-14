@@ -5,6 +5,17 @@ struct HeroHeader: View {
     let snapshot: DashboardSnapshot
     let onAlertsTap: () -> Void
     let onQualityTap: () -> Void
+    let onMetricTap: (MetricRoute) -> Void
+
+    init(snapshot: DashboardSnapshot,
+         onAlertsTap: @escaping () -> Void,
+         onQualityTap: @escaping () -> Void,
+         onMetricTap: @escaping (MetricRoute) -> Void = { _ in }) {
+        self.snapshot = snapshot
+        self.onAlertsTap = onAlertsTap
+        self.onQualityTap = onQualityTap
+        self.onMetricTap = onMetricTap
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -26,19 +37,23 @@ struct HeroHeader: View {
                 heroMetric(icon: "figure.walk",
                            value: snapshot.activity.todaySteps.map { "\($0)" } ?? "—",
                            label: "步数",
-                           tint: CardTheme.activity.primary)
+                           tint: CardTheme.activity.primary,
+                           route: .steps)
                 heroMetric(icon: "flame.fill",
                            value: snapshot.activity.todayActiveKcal.map { String(format: "%.0f", $0) } ?? "—",
                            label: "活动 kcal",
-                           tint: CardTheme.diet.primary)
+                           tint: CardTheme.diet.primary,
+                           route: .activeKcal)
                 heroMetric(icon: "flame",
                            value: snapshot.deficit.todayDeficit.map { String(format: "%+.0f", $0) } ?? "—",
                            label: "热量缺口",
-                           tint: CardTheme.deficit.primary)
+                           tint: CardTheme.deficit.primary,
+                           route: .deficit)
                 heroMetric(icon: "figure.arms.open",
                            value: snapshot.body_.latestWeight.map { String(format: "%.1f", $0) } ?? "—",
                            label: "体重 kg",
-                           tint: CardTheme.body.primary)
+                           tint: CardTheme.body.primary,
+                           route: .weight)
             }
         }
         .padding(.horizontal, 16)
@@ -82,19 +97,24 @@ struct HeroHeader: View {
         }
     }
 
-    private func heroMetric(icon: String, value: String, label: String, tint: Color) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Image(systemName: icon)
-                .font(.caption.bold())
-                .foregroundStyle(tint)
-            Text(value)
-                .font(.system(.title3, design: .rounded).weight(.semibold))
-                .foregroundStyle(.primary)
-            Text(label)
-                .font(.system(size: 10))
-                .foregroundStyle(.secondary)
+    private func heroMetric(icon: String, value: String, label: String, tint: Color,
+                            route: MetricRoute) -> some View {
+        Button { onMetricTap(route) } label: {
+            VStack(alignment: .leading, spacing: 2) {
+                Image(systemName: icon)
+                    .font(.caption.bold())
+                    .foregroundStyle(tint)
+                Text(value)
+                    .font(.system(.title3, design: .rounded).weight(.semibold))
+                    .foregroundStyle(.primary)
+                Text(label)
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .buttonStyle(.plain)
     }
 
     private var greeting: String {

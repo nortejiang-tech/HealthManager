@@ -1,15 +1,15 @@
 # NEXT_TASK
 
-> V1 已交付（7 个 Round 全部完成）。本文档保留作 v2 蓝图。
+> V1 + Round 8/9/10/11 已交付。本文档保留作 v2 蓝图。
 
-## V1 状态
+## 当前状态（Round 11 后）
 
-详见 `WORKLOG.md` 末尾「V1 交付摘要」节。简要：
+详见 `WORKLOG.md`。简要：
 
-- 38 个 Swift 文件，`swiftc -typecheck` 0 errors / 0 warnings
 - PRD F-001 / F-001A / F-002 / F-003 / F-004 / F-005 / F-006 / R-001 全部完成
-- 14 张表（PRD 12 + 2 辅助）全部写入路径打通
-- 5 主 tab + 5 二级页面
+- 14 张表（PRD 12 + 2 辅助），双天级投影表 (`body_metrics_daily` / `activity_metrics_daily`) 通过 `DailyAggregator` 实时填充
+- 仪表盘 Apple Health 风格：hero 4 大数字（可下钻）+ 2 列 6 卡片 + 趋势 chip + 「更多指标」二级入口；每项可进 周/月/年 详情页（拖动点选 + 期内趋势）
+- 0 errors / 0 warnings；xcodegen 后 xcodebuild Debug iphonesimulator BUILD SUCCEEDED
 
 ## v2 候选（按价值排序）
 

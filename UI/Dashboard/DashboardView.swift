@@ -11,6 +11,7 @@ struct DashboardView: View {
     @State private var isLoading: Bool = true
     @State private var showAlerts: Bool = false
     @State private var showQuality: Bool = false
+    @State private var metricPath: [MetricRoute] = []
 
     private let cardGrid: [GridItem] = [
         GridItem(.flexible(), spacing: 12),
@@ -18,13 +19,14 @@ struct DashboardView: View {
     ]
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $metricPath) {
             ScrollView {
                 VStack(spacing: 14) {
                     HeroHeader(
                         snapshot: snapshot,
                         onAlertsTap: { showAlerts = true },
-                        onQualityTap: { showQuality = true }
+                        onQualityTap: { showQuality = true },
+                        onMetricTap: { metricPath.append($0) }
                     )
 
                     LazyVGrid(columns: cardGrid, spacing: 12) {
@@ -67,6 +69,10 @@ struct DashboardView: View {
                             .padding(.horizontal, 16)
                     }
 
+                    moreMetricsSection
+                        .padding(.horizontal, 12)
+                        .padding(.top, 8)
+
                     NavigationLink {
                         DataQualityDetailView()
                     } label: {
@@ -100,6 +106,52 @@ struct DashboardView: View {
             .refreshable { await refresh() }
             .task { await refresh() }
         }
+    }
+
+    @ViewBuilder
+    private var moreMetricsSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("更多指标")
+                .font(.system(.subheadline, design: .rounded).weight(.semibold))
+                .foregroundStyle(.secondary)
+                .padding(.leading, 4)
+
+            VStack(spacing: 0) {
+                moreMetricRow(route: .activeKcal, icon: "flame.fill", tint: CardTheme.activity.primary, title: "活动能量")
+                Divider().padding(.leading, 44)
+                moreMetricRow(route: .exercise, icon: "stopwatch.fill", tint: CardTheme.activity.primary, title: "锻炼时长")
+                Divider().padding(.leading, 44)
+                moreMetricRow(route: .distance, icon: "figure.walk.motion", tint: CardTheme.activity.primary, title: "距离")
+                Divider().padding(.leading, 44)
+                moreMetricRow(route: .hrv, icon: "waveform.path.ecg", tint: CardTheme.heart.primary, title: "心率变异性")
+                Divider().padding(.leading, 44)
+                moreMetricRow(route: .bodyFat, icon: "figure", tint: CardTheme.body.primary, title: "体脂率")
+            }
+            .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        }
+    }
+
+    @ViewBuilder
+    private func moreMetricRow(route: MetricRoute, icon: String, tint: Color, title: String) -> some View {
+        NavigationLink(value: route) {
+            HStack(spacing: 12) {
+                Image(systemName: icon)
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(tint)
+                    .frame(width: 24, height: 24)
+                    .background(tint.opacity(0.12), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+                Text(title)
+                    .font(.subheadline)
+                    .foregroundStyle(.primary)
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.caption.bold())
+                    .foregroundStyle(.tertiary)
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 11)
+        }
+        .buttonStyle(.plain)
     }
 
     private func refresh() async {

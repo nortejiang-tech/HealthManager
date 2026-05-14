@@ -562,3 +562,37 @@ xcodebuild ... → ** BUILD SUCCEEDED **
 1. 摘要页：每张卡右上角看到 ↑/↓ 百分比胶囊（体重/心率绿=好、橙=差；其他色按指标主题）。数据少于 4 天的卡片不显示胶囊。
 2. 点饮食卡片：详情页显示「饮食热量」周/月/年柱图；点缺口卡片显示「热量缺口」详情，正负值通过 `%+.0f` 标注。
 3. 任意详情页：用手指在图表上拖动 → 选中天的虚线 + 高亮点 + 顶部「选中 · M月D日 · 数值」；双击图表空白处清除选中；切周/月/年自动清除。
+
+---
+
+## Round 11 · 二级指标入口 + 详情期内趋势 + Hero 下钻（2026-05-14）
+
+**目标**：把 Apple Health「显示所有健康类别」对应的"更多指标"二级入口补上；让 hero header 的 4 大数字也可以点进详情；详情页加期内趋势 chip。
+
+**改动**
+
+| Commit | 主题 | 影响 |
+|---|---|---|
+| 1 | `MetricDetailView.summaryHeader` 加 `TrendChip`：复用卡片同款拦腰算法，体重/体脂/静息心率开 `lowerIsBetter`；选中态时隐藏 chip（防止与「选中 X 月 Y 日」冲突） | 详情页一眼看出环比 |
+| 2 | `DashboardView` 加 `moreMetricsSection`：卡片式 List 5 行（活动能量 / 锻炼时长 / 距离 / HRV / 体脂率），每行 NavigationLink(value:) 跳对应 detail；ThinMaterial 圆角容器配色统一 | 摘要页能进所有二级指标 |
+| 3 | `HeroHeader` 加 `onMetricTap: (MetricRoute) -> Void` 回调；4 个大数字改为 Button；`DashboardView` 用 `NavigationStack(path: $metricPath)` 程序化推栈 | hero 数字可点击下钻 |
+| 4 | `NEXT_TASK.md` 更新到 Round 11 状态 | 文档同步 |
+
+**新增/修改文件**
+- 改动：
+  - `UI/Dashboard/Detail/MetricDetailView.swift`（summaryHeader TrendChip + lowerIsBetter switch）
+  - `UI/Dashboard/DashboardView.swift`（NavigationStack path + moreMetricsSection + moreMetricRow）
+  - `UI/Dashboard/Cards/HeroHeader.swift`（onMetricTap + heroMetric 改 Button + route 参数）
+  - `NEXT_TASK.md`
+
+**编译验证**
+```
+xcodegen generate
+xcodebuild ... → ** BUILD SUCCEEDED **
+```
+0 errors / 0 warnings（除 AppIntents 系统提示）。
+
+**功能验证（待用户实测）**
+1. 摘要页：6 卡片下方有「更多指标」卡片列出活动能量 / 锻炼时长 / 距离 / HRV / 体脂率，点任一行直接进对应详情。
+2. Hero 4 数字（步数 / 活动 kcal / 缺口 / 体重）：直接点击数字也能下钻进详情。
+3. 任意详情页：顶部小字标签旁出现 ↑/↓ 百分比胶囊（相对窗口前半 → 后半的均值变化）；拖动选中某一天时胶囊隐藏，松开手指（双击图表空白）后恢复。
