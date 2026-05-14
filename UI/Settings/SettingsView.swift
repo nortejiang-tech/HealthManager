@@ -1,5 +1,6 @@
 import SwiftUI
 import GRDB
+import UserNotifications
 
 struct SettingsView: View {
     @EnvironmentObject private var environment: AppEnvironment
@@ -19,6 +20,7 @@ struct SettingsView: View {
     @State private var defaultWindowDays: Int = ReconcilerSettings.defaultWindowDays
 
     @State private var exportURL: URL?
+    @State private var notifStatus: UNAuthorizationStatus = .notDetermined
 
     var body: some View {
         List {
@@ -115,6 +117,28 @@ struct SettingsView: View {
                 Text("修改后立即生效，下次「立即对账」按新阈值执行。核心指标固定为 体重/步数/心率/睡眠。")
             }
 
+            Section("通知") {
+                LabeledContent("用药提醒授权", value: notifStatusLabel)
+                if notifStatus == .denied {
+                    Button {
+                        if let url = URL(string: UIApplication.openSettingsURLString) {
+                            openURL(url)
+                        }
+                    } label: {
+                        Label("前往系统设置开启通知", systemImage: "bell.badge")
+                    }
+                } else if notifStatus == .notDetermined {
+                    Button {
+                        Task {
+                            _ = await NotificationScheduler.shared.requestAuthorization()
+                            await refreshNotifStatus()
+                        }
+                    } label: {
+                        Label("请求通知权限", systemImage: "bell")
+                    }
+                }
+            }
+
             Section("隐私") {
                 Text("所有数据存储在本地 SQLite 中。本 App 不上传任何健康数据到云端，不接入第三方分析服务。")
                     .font(.footnote)
@@ -131,8 +155,14 @@ struct SettingsView: View {
             }
         }
         .navigationTitle("设置")
-        .task { await refresh() }
-        .refreshable { await refresh() }
+        .task {
+            await refresh()
+            await refreshNotifStatus()
+        }
+        .refreshable {
+            await refresh()
+            await refreshNotifStatus()
+        }
         .sheet(item: $exportURL) { url in
             ShareSheet(items: [url])
         }
@@ -163,6 +193,22 @@ struct SettingsView: View {
             }
             Button("取消", role: .cancel) {}
         }
+    }
+
+    private var notifStatusLabel: String {
+        switch notifStatus {
+        case .notDetermined: return "尚未请求"
+        case .denied: return "已拒绝"
+        case .authorized: return "已授权"
+        case .provisional: return "临时授权"
+        case .ephemeral: return "临时（App Clip）"
+        @unknown default: return "未知"
+        }
+    }
+
+    private func refreshNotifStatus() async {
+        let status = await NotificationScheduler.shared.currentAuthorizationStatus()
+        await MainActor.run { notifStatus = status }
     }
 
     private var gateLabel: String {

@@ -2,23 +2,41 @@ import SwiftUI
 import GRDB
 
 /// Shows where data comes from — attribution dashboard for PRD §4 / 来源归因.
-/// Aggregates `source_coverage_daily` over the past 14 days to surface
-/// "this source has been quiet for 5 days" patterns.
+///
+/// V3: queries the `source_origin` column populated by `SampleMapper` /
+/// `v2_add_source_origin` migration. The view supports two groupings:
+/// - by attribution Origin (Garmin / 米家 / Apple …) — coarse, defensible
+/// - by raw `source_bundle_id` — fine-grained, useful when you suspect a specific app
+///
+/// Aggregates over `health_samples_raw` directly so the freshness reflects today's
+/// writes, not just the last source_coverage_daily rollup.
 struct SourcesView: View {
     @EnvironmentObject private var environment: AppEnvironment
 
     @State private var rows: [SourceRow] = []
     @State private var windowDays: Int = 14
+    @State private var grouping: Grouping = .origin
+
+    enum Grouping: String, CaseIterable, Identifiable {
+        case origin, bundle
+        var id: String { rawValue }
+        var label: String {
+            switch self {
+            case .origin: return "按来源类型"
+            case .bundle: return "按 App"
+            }
+        }
+    }
 
     struct SourceRow: Identifiable, Hashable {
-        let sourceBundleId: String
+        let key: String
+        let label: String
         let sourceName: String?
         let totalSamples: Int
         let daysActive: Int
         let lastSeenAt: Int64
-        let label: String
 
-        var id: String { sourceBundleId }
+        var id: String { key }
     }
 
     var body: some View {
@@ -28,6 +46,15 @@ struct SourcesView: View {
                     .onChange(of: windowDays) {
                         Task { await refresh() }
                     }
+                Picker("分组", selection: $grouping) {
+                    ForEach(Grouping.allCases) { g in
+                        Text(g.label).tag(g)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .onChange(of: grouping) {
+                    Task { await refresh() }
+                }
             }
 
             if rows.isEmpty {
@@ -49,43 +76,46 @@ struct SourcesView: View {
 
     private func refresh() async {
         do {
-            let formatter = DateFormatter()
-            formatter.dateFormat = "yyyy-MM-dd"
-            formatter.timeZone = .current
-            formatter.locale = Locale(identifier: "en_US_POSIX")
-
             let calendar = Calendar.current
             let today = calendar.startOfDay(for: Date())
             let earliest = calendar.date(byAdding: .day, value: -(windowDays - 1), to: today) ?? today
-            let earliestKey = formatter.string(from: earliest)
+            let earliestEpoch = Int64(earliest.timeIntervalSince1970)
+            let grouping = self.grouping
 
             let mapped = try await environment.database.asyncRead { db -> [SourceRow] in
-                let dbRows = try Row.fetchAll(db, sql: """
+                let groupColumn: String = grouping == .origin
+                    ? "COALESCE(source_origin, 'unknown')"
+                    : "COALESCE(source_bundle_id, 'unknown')"
+
+                let sql = """
                     SELECT
-                        COALESCE(source_bundle_id, 'unknown') AS bid,
+                        \(groupColumn) AS grp,
                         MIN(source_name) AS source_name,
-                        SUM(sample_count) AS total,
-                        COUNT(DISTINCT date) AS days_active,
-                        MAX(last_seen_at) AS last_seen_at
-                    FROM source_coverage_daily
-                    WHERE date >= ?
-                    GROUP BY bid
+                        COUNT(*) AS total,
+                        COUNT(DISTINCT strftime('%Y-%m-%d', datetime(start_at, 'unixepoch', 'localtime'))) AS days_active,
+                        MAX(ingested_at) AS last_seen_at
+                    FROM health_samples_raw
+                    WHERE is_deleted = 0 AND start_at >= ?
+                    GROUP BY grp
                     ORDER BY total DESC
-                    """, arguments: [earliestKey])
+                    """
+                let dbRows = try Row.fetchAll(db, sql: sql, arguments: [earliestEpoch])
                 return dbRows.map { r in
-                    let bid: String = r["bid"] ?? "unknown"
+                    let key: String = r["grp"] ?? "unknown"
                     let sname: String? = r["source_name"]
                     let total: Int = r["total"] ?? 0
                     let daysActive: Int = r["days_active"] ?? 0
                     let lastSeen: Int64 = r["last_seen_at"] ?? 0
-                    let kind = SourceAttribution.classify(bundleId: bid, sourceName: sname)
+                    let label: String = grouping == .origin
+                        ? (SourceAttribution.Origin(rawValue: key)?.label ?? key)
+                        : (sname ?? key)
                     return SourceRow(
-                        sourceBundleId: bid,
+                        key: key,
+                        label: label,
                         sourceName: sname,
                         totalSamples: total,
                         daysActive: daysActive,
-                        lastSeenAt: lastSeen,
-                        label: kind.label
+                        lastSeenAt: lastSeen
                     )
                 }
             }
@@ -110,9 +140,11 @@ private struct SourceRowView: View {
                     .foregroundStyle(.secondary)
                     .font(.footnote)
             }
-            Text(row.sourceName ?? row.sourceBundleId)
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            if let sname = row.sourceName, sname != row.label {
+                Text(sname)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
             HStack {
                 Text("活跃 \(row.daysActive) / \(windowDays) 天")
                 Spacer()
