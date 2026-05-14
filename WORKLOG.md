@@ -556,3 +556,80 @@ xcodebuild -scheme HealthManager test
   UI/Medication/MedicationView.swift         (Edit 模式 + WeekdayPicker + 调度)
   UI/Diet/DietView.swift                     (PhotosPicker + thumbnail)
 ```
+
+---
+
+## V3 自主交付 — 2026-05-15
+
+V2 之后第二轮自主迭代。继续把 v3 候选里能本地完成、不依赖联网/外部 key 的项做掉。
+
+**完成**
+
+### 1. iPad 支持
+- `project.yml` → `TARGETED_DEVICE_FAMILY=1,2` + iPad 4 向横竖屏。
+- 现有 SwiftUI 代码用的是 `NavigationStack` / `List` / `Form`，原生自适应 iPad 双栏，无需逐页改造。
+- iPhone 行为不变（`UISupportedInterfaceOrientations` 仍仅竖屏）。
+
+### 2. SourcesView 走 source_origin 新列（V2 落列的 UI 层迁移）
+- 直接查 `health_samples_raw`（不再依赖 `source_coverage_daily` 滚动）；
+  freshness 反映当下，不滞后到 backfill 跑过一次为止。
+- 「分组」segmented picker：按 origin（Garmin/米家/Apple/…）或按 source_bundle_id。
+- 活跃天数按 `strftime('%Y-%m-%d', start_at, 'localtime')` 计算，时区正确。
+
+### 3. Settings 通知权限 section
+- 显示当前 `UNAuthorizationStatus`（未请求 / 已拒绝 / 已授权 / 临时…）。
+- 拒绝时按钮跳 `UIApplication.openSettingsURLString`。
+- 未请求时按钮 inline 调 `requestAuthorization`。
+
+### 4. Vision 食物照片标签
+- `UI/Diet/MealImageClassifier`：`VNClassifyImageRequest`，置信度阈值 0.15，top-3。
+  英文 identifier → 中文映射表（40+ 常见食物：苹果/披萨/汉堡/咖啡/…）；未知 fallthrough。
+- 失败/空图返回空数组，不抛错——这是 UX 提示而非硬契约。
+- `MealEditView` 接通：picked → 异步识别 → chip 列表，点 chip 追加到「备注」字段。
+- 自写 `FlowLayout: Layout`（iOS 17）解决 chip 自动换行。
+
+### 5. Workouts 列表页
+- `UI/Workouts/WorkoutsView`：查 `health_samples_raw` `hk_type='HKWorkoutTypeIdentifier'`，
+  解析 V1 已经写入的 `extra_json`（activityType / totalEnergyKcal / totalDistanceMeters / duration）。
+- 入口放仪表盘「数据质量」分组下面，新增一条 NavigationLink。
+- `activityType` Int → 中文标签映射（骑行/跑步/游泳/瑜伽/力量/HIIT/登山/…），未知 fallthrough。
+- Source label 走 V2 落库的 `source_origin` 列。
+
+### 6. 更多单元测试（40 → 50）
+- `MealPhotoStoreTests` × 4：save / removeIfManaged / 绝对路径忽略 / 缺失文件 nil
+- `MealImageClassifierTests` × 3：localize 已知/未知/大小写；空图返回 []
+- `WorkoutsViewTests` × 3：activityType 标签已知/未知/0
+
+### 7. 清理
+- 删 `Resources/Logo-source.png`（自 Round 9 已被 xcassets AppIcon 取代，未被任何 target 引用）。
+
+**未做（留 v4 或等用户决策）**
+- LLM 日周报：PRD 明确不联网，等用户决定走 Apple Intelligence / 本地 GGUF / 用户提供 key
+- 拍照走 `.camera` source（PhotosPicker 不接相机；目前用户从相册选）：相机需 UIImagePickerController 包装，单独一轮处理
+- iPad 自定义双栏导航（`NavigationSplitView`）：当前是 iPhone 风格的单栏 + iPadAuto 行为，足以可用但不利用 iPad 大屏
+
+**编译 & 测试验证**
+```
+xcodebuild -target HealthManager → BUILD SUCCEEDED
+xcodebuild -scheme HealthManager test
+  Unit: Executed 50 tests, 0 failures (0.14s)
+  UI:   Executed  1 test,  0 failures (24.7s)
+```
+
+**新增 / 修改文件**
+```
+新文件
+  UI/Diet/MealImageClassifier.swift
+  UI/Workouts/WorkoutsView.swift
+  Tests/{MealPhotoStore,MealImageClassifier,WorkoutsView}Tests.swift
+
+修改
+  project.yml                  (+ TARGETED_DEVICE_FAMILY=1,2; iPad 横竖屏)
+  UI/Sources/SourcesView.swift  (走 source_origin + grouping picker)
+  UI/Settings/SettingsView.swift (+ 通知权限 section)
+  UI/Diet/DietView.swift         (+ classifier chip UI; FlowLayout)
+  UI/Dashboard/DashboardView.swift (+ Workouts NavigationLink)
+
+删除
+  Resources/Logo-source.png
+```
