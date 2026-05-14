@@ -47,7 +47,6 @@ struct SourcesView: View {
         .task { await refresh() }
     }
 
-    @MainActor
     private func refresh() async {
         do {
             let formatter = DateFormatter()
@@ -60,8 +59,8 @@ struct SourcesView: View {
             let earliest = calendar.date(byAdding: .day, value: -(windowDays - 1), to: today) ?? today
             let earliestKey = formatter.string(from: earliest)
 
-            let dbRows = try environment.database.read { db in
-                try Row.fetchAll(db, sql: """
+            let mapped = try await environment.database.asyncRead { db -> [SourceRow] in
+                let dbRows = try Row.fetchAll(db, sql: """
                     SELECT
                         COALESCE(source_bundle_id, 'unknown') AS bid,
                         MIN(source_name) AS source_name,
@@ -73,24 +72,24 @@ struct SourcesView: View {
                     GROUP BY bid
                     ORDER BY total DESC
                     """, arguments: [earliestKey])
+                return dbRows.map { r in
+                    let bid: String = r["bid"] ?? "unknown"
+                    let sname: String? = r["source_name"]
+                    let total: Int = r["total"] ?? 0
+                    let daysActive: Int = r["days_active"] ?? 0
+                    let lastSeen: Int64 = r["last_seen_at"] ?? 0
+                    let kind = SourceAttribution.classify(bundleId: bid, sourceName: sname)
+                    return SourceRow(
+                        sourceBundleId: bid,
+                        sourceName: sname,
+                        totalSamples: total,
+                        daysActive: daysActive,
+                        lastSeenAt: lastSeen,
+                        label: kind.label
+                    )
+                }
             }
-
-            rows = dbRows.map { r in
-                let bid: String = r["bid"] ?? "unknown"
-                let sname: String? = r["source_name"]
-                let total: Int = r["total"] ?? 0
-                let daysActive: Int = r["days_active"] ?? 0
-                let lastSeen: Int64 = r["last_seen_at"] ?? 0
-                let kind = SourceAttribution.classify(bundleId: bid, sourceName: sname)
-                return SourceRow(
-                    sourceBundleId: bid,
-                    sourceName: sname,
-                    totalSamples: total,
-                    daysActive: daysActive,
-                    lastSeenAt: lastSeen,
-                    label: kind.label
-                )
-            }
+            await MainActor.run { rows = mapped }
         } catch {
             AppLogger.shared.error("Sources refresh failed: \(error.localizedDescription)")
         }

@@ -56,6 +56,31 @@ struct SyncCenterView: View {
                     }
                 }
 
+                if let errors = sync.lastResult?.perTypeErrors, !errors.isEmpty {
+                    Section {
+                        DisclosureGroup("失败明细（\(errors.count)）") {
+                            ForEach(errors, id: \.hkType) { err in
+                                VStack(alignment: .leading, spacing: 4) {
+                                    HStack(spacing: 6) {
+                                        Image(systemName: err.isAuthDenied
+                                              ? "lock.fill"
+                                              : "exclamationmark.triangle.fill")
+                                            .foregroundStyle(err.isAuthDenied ? .orange : .red)
+                                        Text(DailyReconciler.humanLabel(for: err.hkType)).bold()
+                                    }
+                                    Text("阶段：\(err.stage.rawValue)")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                    Text(err.underlying)
+                                        .font(.caption)
+                                        .foregroundStyle(err.isAuthDenied ? .orange : .red)
+                                }
+                                .padding(.vertical, 2)
+                            }
+                        }
+                    }
+                }
+
                 Section("最近回补报告") {
                     if recentReports.isEmpty {
                         Text("尚无报告。先执行一次回补。").foregroundStyle(.secondary)
@@ -115,15 +140,15 @@ struct SyncCenterView: View {
         }
     }
 
-    @MainActor
     private func refreshReports() async {
         do {
-            recentReports = try environment.database.read { db in
+            let reports = try await environment.database.asyncRead { db -> [BackfillReport] in
                 try BackfillReport
                     .order(Column("started_at").desc)
                     .limit(20)
                     .fetchAll(db)
             }
+            await MainActor.run { recentReports = reports }
         } catch {
             AppLogger.shared.error("Reports refresh failed: \(error.localizedDescription)")
         }

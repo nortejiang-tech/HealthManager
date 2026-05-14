@@ -14,7 +14,7 @@ import GRDB
 /// 4. Finalise the job (succeeded/failed) and return aggregated result.
 ///
 /// Idempotency: rerunning is safe because the PK on `sample_uuid` collapses duplicates.
-final class BackfillCoordinator {
+actor BackfillCoordinator {
 
     let healthKitManager: HealthKitManager
     let database: DatabaseManager
@@ -43,6 +43,7 @@ final class BackfillCoordinator {
 
         var perTypeCounts: [String: Int] = [:]
         var firstError: Error?
+        var perTypeErrors: [SyncTypeError] = []
 
         let sampleTypes = HealthKitTypeCatalog.allReadSampleTypes
         let total = sampleTypes.count
@@ -52,12 +53,14 @@ final class BackfillCoordinator {
             progress("[\(index + 1)/\(total)] 拉取 \(identifier)…")
 
             let reportStartedAt = Date()
+            var stage: SyncStage = .hkQuery
             do {
                 let samples = try await healthKitManager.fetchSamples(
                     for: sampleType,
                     from: startDate,
                     to: endDate
                 )
+                stage = .persistDB
                 let inserted = try persist(samples: samples)
                 perTypeCounts[identifier] = inserted
 
@@ -74,19 +77,35 @@ final class BackfillCoordinator {
                     "Backfill \(identifier, privacy: .public): \(inserted) samples"
                 )
             } catch {
-                if firstError == nil { firstError = error }
+                let authDenied = SyncTypeError.isAuthorizationDenied(error)
+                perTypeErrors.append(SyncTypeError(
+                    hkType: identifier,
+                    stage: stage,
+                    underlying: error.localizedDescription,
+                    isAuthDenied: authDenied,
+                    occurredAt: Date()
+                ))
+                // Auth denial is a normal outcome when the user granted a partial set.
+                // Mark the per-type report as skipped (not failed) and don't poison firstError.
+                if !authDenied, firstError == nil { firstError = error }
                 try recordBackfillReport(
                     jobId: jobId,
                     identifier: identifier,
                     requestedDays: days,
                     startedAt: reportStartedAt,
                     sampleCount: 0,
-                    status: .failed,
-                    errorMessage: error.localizedDescription
+                    status: authDenied ? .skipped : .failed,
+                    errorMessage: authDenied ? "未授权读取" : error.localizedDescription
                 )
-                AppLogger.shared.sync.error(
-                    "Backfill failed for \(identifier, privacy: .public): \(error.localizedDescription, privacy: .public)"
-                )
+                if authDenied {
+                    AppLogger.shared.sync.info(
+                        "Backfill \(identifier, privacy: .public): authorization denied (soft skip)"
+                    )
+                } else {
+                    AppLogger.shared.sync.error(
+                        "Backfill failed for \(identifier, privacy: .public) at stage \(stage.rawValue): \(error.localizedDescription, privacy: .public)"
+                    )
+                }
             }
         }
 
@@ -117,6 +136,7 @@ final class BackfillCoordinator {
             endedAt: endedAt,
             totalSamples: totalSamples,
             perTypeCounts: perTypeCounts,
+            perTypeErrors: perTypeErrors,
             errorMessage: firstError?.localizedDescription
         )
     }

@@ -88,20 +88,22 @@ struct SettingsView: View {
         }
     }
 
-    @MainActor
     private func refresh() async {
         do {
             let path = environment.database.databasePath
             let attrs = try? FileManager.default.attributesOfItem(atPath: path)
-            dbSizeBytes = Int64((attrs?[.size] as? NSNumber)?.int64Value ?? 0)
+            let size = Int64((attrs?[.size] as? NSNumber)?.int64Value ?? 0)
 
-            let (samples, alerts) = try environment.database.read { db -> (Int, Int) in
+            let (samples, alerts) = try await environment.database.asyncRead { db -> (Int, Int) in
                 let s = try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM health_samples_raw WHERE is_deleted = 0") ?? 0
                 let a = try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM missing_data_alerts WHERE acknowledged = 0") ?? 0
                 return (s, a)
             }
-            sampleCount = samples
-            alertCount = alerts
+            await MainActor.run {
+                dbSizeBytes = size
+                sampleCount = samples
+                alertCount = alerts
+            }
         } catch {
             AppLogger.shared.error("Settings refresh failed: \(error.localizedDescription)")
         }

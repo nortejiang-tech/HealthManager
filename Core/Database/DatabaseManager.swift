@@ -3,7 +3,10 @@ import GRDB
 
 /// Long-lived wrapper around the SQLite store. One file per app install at
 /// `Library/Application Support/HealthManager/health.sqlite`.
-final class DatabaseManager {
+///
+/// `@unchecked Sendable`: the only stored properties are an immutable `let pool` (DatabasePool
+/// is thread-safe and Sendable) and an immutable `let databasePath`. No mutation after init.
+final class DatabaseManager: @unchecked Sendable {
 
     let pool: DatabasePool
     let databasePath: String
@@ -56,5 +59,24 @@ final class DatabaseManager {
     @discardableResult
     func write<T>(_ block: (Database) throws -> T) throws -> T {
         try pool.write(block)
+    }
+
+    /// Async variant — dispatches the synchronous GRDB read to a detached task so the
+    /// caller's actor (especially MainActor) isn't blocked while SQLite executes.
+    /// Use from UI code paths instead of `read`.
+    func asyncRead<T: Sendable>(_ block: @escaping @Sendable (Database) throws -> T) async throws -> T {
+        let pool = self.pool
+        return try await Task.detached(priority: .userInitiated) {
+            try pool.read(block)
+        }.value
+    }
+
+    /// Async variant for writes; same rationale as `asyncRead`.
+    @discardableResult
+    func asyncWrite<T: Sendable>(_ block: @escaping @Sendable (Database) throws -> T) async throws -> T {
+        let pool = self.pool
+        return try await Task.detached(priority: .userInitiated) {
+            try pool.write(block)
+        }.value
     }
 }

@@ -56,10 +56,9 @@ struct MedicationView: View {
         return plan.name
     }
 
-    @MainActor
     private func refresh() async {
         do {
-            let (planList, logList) = try environment.database.read { db -> ([MedicationPlan], [MedicationLog]) in
+            let (planList, logList) = try await environment.database.asyncRead { db -> ([MedicationPlan], [MedicationLog]) in
                 let p = try MedicationPlan
                     .order(Column("created_at").desc)
                     .fetchAll(db)
@@ -69,16 +68,17 @@ struct MedicationView: View {
                     .fetchAll(db)
                 return (p, l)
             }
-            plans = planList
-            recentLogs = logList
+            await MainActor.run {
+                plans = planList
+                recentLogs = logList
+            }
         } catch {
             AppLogger.shared.error("Medication refresh failed: \(error.localizedDescription)")
         }
     }
 
-    @MainActor
     private func recordTaken(_ plan: MedicationPlan) async {
-        var log = MedicationLog(
+        let log = MedicationLog(
             id: nil,
             planId: plan.id,
             scheduledAt: Int64(Date().timeIntervalSince1970),
@@ -90,8 +90,9 @@ struct MedicationView: View {
             createdAt: Int64(Date().timeIntervalSince1970)
         )
         do {
-            try environment.database.write { db in
-                try log.insert(db)
+            try await environment.database.asyncWrite { db in
+                var l = log
+                try l.insert(db)
             }
             await refresh()
         } catch {
@@ -99,11 +100,10 @@ struct MedicationView: View {
         }
     }
 
-    @MainActor
     private func delete(_ plan: MedicationPlan) async {
         guard let id = plan.id else { return }
         do {
-            try environment.database.write { db in
+            try await environment.database.asyncWrite { db in
                 _ = try MedicationPlan.deleteOne(db, key: id)
             }
             await refresh()
@@ -220,8 +220,10 @@ struct MedicationPlanEditView: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("保存") {
-                        save()
-                        dismiss()
+                        Task {
+                            await save()
+                            dismiss()
+                        }
                     }
                     .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)
                 }
@@ -229,8 +231,8 @@ struct MedicationPlanEditView: View {
         }
     }
 
-    private func save() {
-        var plan = MedicationPlan(
+    private func save() async {
+        let plan = MedicationPlan(
             id: nil,
             name: name.trimmingCharacters(in: .whitespaces),
             dosageMg: Double(dosageMg),
@@ -243,8 +245,9 @@ struct MedicationPlanEditView: View {
             createdAt: Int64(Date().timeIntervalSince1970)
         )
         do {
-            try environment.database.write { db in
-                try plan.insert(db)
+            try await environment.database.asyncWrite { db in
+                var p = plan
+                try p.insert(db)
             }
         } catch {
             AppLogger.shared.error("Plan save failed: \(error.localizedDescription)")

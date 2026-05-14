@@ -16,7 +16,7 @@ import GRDB
 /// This coordinator stays UI-agnostic: it accepts a `promptForExternalSync` async closure and
 /// suspends until the caller returns. SyncEngine implements that closure with a CheckedContinuation
 /// that the UI (or scenePhase auto-ack) resumes.
-final class ManualSyncCoordinator {
+actor ManualSyncCoordinator {
 
     private let incremental: IncrementalSyncCoordinator
     private let database: DatabaseManager
@@ -51,6 +51,17 @@ final class ManualSyncCoordinator {
         }
         let firstError = pass1.firstError ?? pass2.firstError
 
+        // Merge per-type errors: keep the most recent occurrence per hk_type (pass 2 wins).
+        // Pass 2 is the authoritative state — if pass 1 failed but pass 2 succeeded for the
+        // same type, the user shouldn't see a stale error.
+        var mergedErrorsByType: [String: SyncTypeError] = [:]
+        for e in pass1.errors { mergedErrorsByType[e.hkType] = e }
+        let pass2Successes = Set(pass2.perTypeCounts.compactMap { $0.value > 0 ? $0.key : nil })
+        for k in pass2Successes { mergedErrorsByType.removeValue(forKey: k) }
+        for e in pass2.errors { mergedErrorsByType[e.hkType] = e }
+        let mergedErrors = Array(mergedErrorsByType.values)
+            .sorted { $0.hkType < $1.hkType }
+
         let endedAt = Date()
         let totalSamples = merged.values.reduce(0, +)
         let succeeded = (firstError == nil)
@@ -70,6 +81,7 @@ final class ManualSyncCoordinator {
             endedAt: endedAt,
             totalSamples: totalSamples,
             perTypeCounts: merged,
+            perTypeErrors: mergedErrors,
             errorMessage: firstError?.localizedDescription
         )
     }

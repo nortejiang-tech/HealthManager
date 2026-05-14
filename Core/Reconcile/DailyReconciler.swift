@@ -9,7 +9,7 @@ import GRDB
 ///
 /// Read-only over raw / coverage tables; writes only to derived tables.
 /// Safe to run concurrently with backfill / incremental sync.
-final class DailyReconciler {
+actor DailyReconciler {
 
     struct Config {
         /// 核心指标：缺一个就会触发 alert。

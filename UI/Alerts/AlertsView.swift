@@ -51,11 +51,11 @@ struct AlertsView: View {
         return grouped.sorted(by: { $0.key > $1.key })
     }
 
-    @MainActor
     private func refresh() async {
         do {
-            let rows = try environment.database.read { db -> [MissingDataAlert] in
-                if showingAcked {
+            let includeAcked = showingAcked
+            let rows = try await environment.database.asyncRead { db -> [MissingDataAlert] in
+                if includeAcked {
                     return try MissingDataAlert
                         .order(Column("created_at").desc)
                         .limit(200)
@@ -68,17 +68,16 @@ struct AlertsView: View {
                         .fetchAll(db)
                 }
             }
-            alerts = rows
+            await MainActor.run { alerts = rows }
         } catch {
             AppLogger.shared.error("Alerts refresh failed: \(error.localizedDescription)")
         }
     }
 
-    @MainActor
     private func acknowledge(_ alert: MissingDataAlert) async {
         guard let id = alert.id else { return }
         do {
-            try environment.database.write { db in
+            try await environment.database.asyncWrite { db in
                 try db.execute(
                     sql: "UPDATE missing_data_alerts SET acknowledged = 1 WHERE id = ?",
                     arguments: [id]
@@ -90,10 +89,9 @@ struct AlertsView: View {
         }
     }
 
-    @MainActor
     private func acknowledgeAll() async {
         do {
-            try environment.database.write { db in
+            try await environment.database.asyncWrite { db in
                 try db.execute(sql: "UPDATE missing_data_alerts SET acknowledged = 1 WHERE acknowledged = 0")
             }
             await refresh()

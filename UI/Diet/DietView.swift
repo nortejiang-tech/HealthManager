@@ -59,10 +59,9 @@ struct DietView: View {
         }
     }
 
-    @MainActor
     private func refresh() async {
         do {
-            let (list, totals) = try environment.database.read { db -> ([MealRecord], Totals) in
+            let (list, totals) = try await environment.database.asyncRead { db -> ([MealRecord], Totals) in
                 let rows = try MealRecord
                     .order(Column("eaten_at").desc)
                     .limit(50)
@@ -90,18 +89,19 @@ struct DietView: View {
                 )
                 return (rows, totals)
             }
-            meals = list
-            todayTotals = totals
+            await MainActor.run {
+                meals = list
+                todayTotals = totals
+            }
         } catch {
             AppLogger.shared.error("Diet refresh failed: \(error.localizedDescription)")
         }
     }
 
-    @MainActor
     private func delete(_ meal: MealRecord) async {
         guard let id = meal.id else { return }
         do {
-            try environment.database.write { db in
+            try await environment.database.asyncWrite { db in
                 _ = try MealRecord.deleteOne(db, key: id)
             }
             await refresh()
@@ -186,16 +186,18 @@ struct MealEditView: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("保存") {
-                        save()
-                        dismiss()
+                        Task {
+                            await save()
+                            dismiss()
+                        }
                     }
                 }
             }
         }
     }
 
-    private func save() {
-        var record = MealRecord(
+    private func save() async {
+        let record = MealRecord(
             id: nil,
             mealType: mealType,
             eatenAt: Int64(eatenAt.timeIntervalSince1970),
@@ -208,8 +210,9 @@ struct MealEditView: View {
             createdAt: Int64(Date().timeIntervalSince1970)
         )
         do {
-            try environment.database.write { db in
-                try record.insert(db)
+            try await environment.database.asyncWrite { db in
+                var r = record
+                try r.insert(db)
             }
         } catch {
             AppLogger.shared.error("Meal save failed: \(error.localizedDescription)")

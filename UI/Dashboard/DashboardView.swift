@@ -110,28 +110,43 @@ struct DashboardView: View {
         return try? JSONSerialization.jsonObject(with: data) as? [String]
     }
 
-    @MainActor
     private func refresh() async {
         do {
             let today = Self.dateKeyFormatter.string(from: Date())
-            let (count, ingest, q, unack, critical) = try environment.database.read { db -> (Int, Date?, DataQualityDaily?, Int, Int) in
+            let snapshot = try await environment.database.asyncRead { db -> DashboardSnapshot in
                 let total = try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM health_samples_raw WHERE is_deleted = 0") ?? 0
                 let maxIngested = try Int64.fetchOne(db, sql: "SELECT MAX(ingested_at) FROM health_samples_raw")
                 let date = maxIngested.map { Date(timeIntervalSince1970: TimeInterval($0)) }
                 let quality = try DataQualityDaily.fetchOne(db, key: today)
                 let unackCount = try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM missing_data_alerts WHERE acknowledged = 0") ?? 0
                 let critCount = try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM missing_data_alerts WHERE acknowledged = 0 AND severity = 'critical'") ?? 0
-                return (total, date, quality, unackCount, critCount)
+                return DashboardSnapshot(
+                    rawSampleCount: total,
+                    lastIngest: date,
+                    todayQuality: quality,
+                    unackAlertCount: unackCount,
+                    criticalAlertCount: critCount
+                )
             }
-            rawSampleCount = count
-            lastIngest = ingest
-            todayQuality = q
-            unackAlertCount = unack
-            criticalAlertCount = critical
+            await MainActor.run {
+                rawSampleCount = snapshot.rawSampleCount
+                lastIngest = snapshot.lastIngest
+                todayQuality = snapshot.todayQuality
+                unackAlertCount = snapshot.unackAlertCount
+                criticalAlertCount = snapshot.criticalAlertCount
+            }
         } catch {
             AppLogger.shared.error("Dashboard refresh failed: \(error.localizedDescription)")
         }
     }
+}
+
+private struct DashboardSnapshot: Sendable {
+    let rawSampleCount: Int
+    let lastIngest: Date?
+    let todayQuality: DataQualityDaily?
+    let unackAlertCount: Int
+    let criticalAlertCount: Int
 }
 
 private struct QualityScoreRow: View {

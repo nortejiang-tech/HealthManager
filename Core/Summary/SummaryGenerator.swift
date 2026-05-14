@@ -5,7 +5,10 @@ import GRDB
 ///
 /// V1 is text-template + numeric aggregation, not LLM. Future rounds can swap in an LLM
 /// behind the same `Generated` struct without touching UI.
-final class SummaryGenerator {
+///
+/// Marked `actor` so synchronous GRDB reads inside `generateDaily` / `generateWeekly`
+/// run on the actor's executor and don't block the caller's actor (e.g. MainActor).
+actor SummaryGenerator {
 
     let database: DatabaseManager
 

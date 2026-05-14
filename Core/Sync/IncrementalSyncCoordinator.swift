@@ -15,7 +15,7 @@ import GRDB
 /// 6. On HK failure: exponential backoff retry up to 3x; if still failing, record and continue.
 ///
 /// Idempotency: re-running on the same anchor is a no-op (HealthKit returns 0 added / 0 deleted).
-final class IncrementalSyncCoordinator {
+actor IncrementalSyncCoordinator {
 
     private let healthKitManager: HealthKitManager
     private let database: DatabaseManager
@@ -37,13 +37,17 @@ final class IncrementalSyncCoordinator {
         let deleted: Int
         let attempts: Int
         let error: Error?
+        let failedStage: SyncStage?
     }
 
     /// Result of one full pass over every read sample type. Job-row agnostic.
     /// `ManualSyncCoordinator` invokes `executePass` twice under a single `manual` job row.
     struct PassResult {
         var perTypeCounts: [String: Int]
+        /// `firstError` is the first **non-authorization** failure. Auth-denied per-type
+        /// failures are recorded in `errors` but do not poison the overall job status.
         var firstError: Error?
+        var errors: [SyncTypeError]
     }
 
     func run(
@@ -75,6 +79,7 @@ final class IncrementalSyncCoordinator {
             endedAt: endedAt,
             totalSamples: totalSamples,
             perTypeCounts: pass.perTypeCounts,
+            perTypeErrors: pass.errors,
             errorMessage: pass.firstError?.localizedDescription
         )
     }
@@ -84,6 +89,7 @@ final class IncrementalSyncCoordinator {
     func executePass(progress: @escaping (String) -> Void) async -> PassResult {
         var perTypeCounts: [String: Int] = [:]
         var firstError: Error?
+        var errors: [SyncTypeError] = []
 
         let sampleTypes = HealthKitTypeCatalog.allReadSampleTypes
         let total = sampleTypes.count
@@ -96,10 +102,28 @@ final class IncrementalSyncCoordinator {
             perTypeCounts[identifier] = outcome.added
 
             if let err = outcome.error {
-                if firstError == nil { firstError = err }
-                AppLogger.shared.sync.error(
-                    "Incremental failed for \(identifier, privacy: .public) after \(outcome.attempts) attempts: \(err.localizedDescription, privacy: .public)"
-                )
+                let authDenied = SyncTypeError.isAuthorizationDenied(err)
+                errors.append(SyncTypeError(
+                    hkType: identifier,
+                    stage: outcome.failedStage ?? .hkQuery,
+                    underlying: err.localizedDescription,
+                    isAuthDenied: authDenied,
+                    occurredAt: Date()
+                ))
+                // Auth denial is expected when the user only granted a subset of types.
+                // Don't promote it into firstError — the overall job can still be a success.
+                if !authDenied, firstError == nil {
+                    firstError = err
+                }
+                if authDenied {
+                    AppLogger.shared.sync.info(
+                        "Incremental \(identifier, privacy: .public): authorization denied (soft skip)"
+                    )
+                } else {
+                    AppLogger.shared.sync.error(
+                        "Incremental failed for \(identifier, privacy: .public) at stage \(outcome.failedStage?.rawValue ?? "?") after \(outcome.attempts) attempts: \(err.localizedDescription, privacy: .public)"
+                    )
+                }
             } else {
                 AppLogger.shared.sync.info(
                     "Incremental \(identifier, privacy: .public): +\(outcome.added) / -\(outcome.deleted)"
@@ -107,7 +131,11 @@ final class IncrementalSyncCoordinator {
             }
         }
 
-        return PassResult(perTypeCounts: perTypeCounts, firstError: firstError)
+        return PassResult(
+            perTypeCounts: perTypeCounts,
+            firstError: firstError,
+            errors: errors
+        )
     }
 
     // MARK: - Per-type sync with retry
@@ -118,20 +146,26 @@ final class IncrementalSyncCoordinator {
     ) async -> TypeOutcome {
         var attempt = 0
         var lastError: Error?
+        var lastStage: SyncStage?
 
         while attempt < maxAttempts {
             attempt += 1
+            var currentStage: SyncStage = .loadAnchor
             do {
                 let storedAnchor = try loadAnchor(for: identifier)
+
+                currentStage = .hkQuery
                 let result = try await healthKitManager.anchoredFetch(
                     for: sampleType,
                     anchor: storedAnchor
                 )
 
+                currentStage = .persistDB
                 let addedCount = try persistAdded(result.added)
                 let deletedCount = try persistDeleted(result.deleted)
 
                 if let newAnchor = result.newAnchor {
+                    currentStage = .saveAnchor
                     try saveAnchor(newAnchor, for: identifier)
                 }
 
@@ -140,10 +174,14 @@ final class IncrementalSyncCoordinator {
                     added: addedCount,
                     deleted: deletedCount,
                     attempts: attempt,
-                    error: nil
+                    error: nil,
+                    failedStage: nil
                 )
             } catch {
                 lastError = error
+                lastStage = currentStage
+                // Authorization denial won't succeed on retry — abort retries early.
+                if SyncTypeError.isAuthorizationDenied(error) { break }
                 if attempt < maxAttempts {
                     // Exponential backoff: 0.5s, 1.5s (capped well under BG task budget)
                     let delayNs = UInt64(pow(2.0, Double(attempt - 1)) * 0.5 * 1_000_000_000)
@@ -157,7 +195,8 @@ final class IncrementalSyncCoordinator {
             added: 0,
             deleted: 0,
             attempts: attempt,
-            error: lastError
+            error: lastError,
+            failedStage: lastStage
         )
     }
 
@@ -168,10 +207,25 @@ final class IncrementalSyncCoordinator {
             try SyncAnchor.fetchOne(db, key: identifier)
         }
         guard let row else { return nil }
-        return try NSKeyedUnarchiver.unarchivedObject(
-            ofClass: HKQueryAnchor.self,
-            from: row.anchorData
-        )
+        do {
+            return try NSKeyedUnarchiver.unarchivedObject(
+                ofClass: HKQueryAnchor.self,
+                from: row.anchorData
+            )
+        } catch {
+            // Stored anchor blob is corrupt or written by an incompatible SDK version.
+            // Drop the row and re-fetch the full set; INSERT OR IGNORE on sample_uuid dedupes.
+            AppLogger.shared.sync.warning(
+                "Anchor decode failed for \(identifier, privacy: .public); resetting. Underlying: \(error.localizedDescription, privacy: .public)"
+            )
+            try? database.write { db in
+                try db.execute(
+                    sql: "DELETE FROM sync_anchors WHERE hk_type = ?",
+                    arguments: [identifier]
+                )
+            }
+            return nil
+        }
     }
 
     private func saveAnchor(_ anchor: HKQueryAnchor, for identifier: String) throws {

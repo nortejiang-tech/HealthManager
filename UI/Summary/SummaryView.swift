@@ -55,31 +55,37 @@ struct SummaryView: View {
         .task { await refresh() }
     }
 
-    @MainActor
     private func refresh() async {
         do {
             let todayKey = SummaryGenerator.todayKey()
             let weekKey = SummaryGenerator.currentWeekStartKey()
-            let (d, w) = try environment.database.read { db in
+            let (d, w) = try await environment.database.asyncRead { db -> (DailySummary?, WeeklySummary?) in
                 (try DailySummary.fetchOne(db, key: todayKey),
                  try WeeklySummary.fetchOne(db, key: weekKey))
             }
-            today = d
-            week = w
+            await MainActor.run {
+                today = d
+                week = w
+            }
         } catch {
             AppLogger.shared.error("Summary refresh failed: \(error.localizedDescription)")
         }
     }
 
-    @MainActor
     private func generateBoth() async {
-        generating = true
-        defer { generating = false }
+        await MainActor.run { generating = true }
         do {
-            today = try generator.generateDaily()
-            week = try generator.generateWeekly()
+            let g = generator
+            let d = try await g.generateDaily()
+            let w = try await g.generateWeekly()
+            await MainActor.run {
+                today = d
+                week = w
+                generating = false
+            }
         } catch {
             AppLogger.shared.error("Summary generate failed: \(error.localizedDescription)")
+            await MainActor.run { generating = false }
         }
     }
 

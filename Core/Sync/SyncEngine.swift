@@ -13,6 +13,9 @@ final class SyncEngine: ObservableObject {
         let endedAt: Date
         let totalSamples: Int
         let perTypeCounts: [String: Int]
+        /// Per-type structured diagnostics. Auth-denied entries are present but do not
+        /// affect `succeeded`. Empty on the happy path.
+        let perTypeErrors: [SyncTypeError]
         let errorMessage: String?
     }
 

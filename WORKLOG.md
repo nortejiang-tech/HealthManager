@@ -414,3 +414,61 @@ find App Core UI -name "*.swift" -print0 | xargs -0 swiftc -typecheck \
 6. 同步中心 → 立即对账 → 仪表盘出现完整度/新鲜度/冲突度三个数字
 7. 后续每次外部 App 写入 HK，HKObserver 会自动触发增量；每日 BG Task 自动对账
 
+---
+
+## Round 8 · 稳定性强化（2026-05-14）
+
+V1 在 Xcode 实测发现三类问题：①回补/手动同步报错信息模糊；②anchor 解码失败后续同步无法恢复；③点完「立即对账」后回到仪表盘有概率卡住。本轮全部修复并补诊断 UI。
+
+**根因**
+- `SyncEngine` 是 `@MainActor`，而四个 coordinator（Backfill / Incremental / Manual / DailyReconciler）是普通 class，因此它们继承调用方 actor → 内部同步 `database.read/write`（GRDB 阻塞 API）直接卡 MainActor；7 天对账 × N type × 数十次 SQL 会冻结主线程，Dashboard `.task` refresh 排队等不到机会。
+- `IncrementalSyncCoordinator.loadAnchor` 的 `NSKeyedUnarchiver.unarchivedObject` 抛错被 syncType catch 后只是重试 3 次然后跳过；脏 anchor 行不清理 → 之后每次同步都失败。
+- 任何一个 type 的 HK `authorizationDenied` 都让 `firstError` 非 nil → 整个 job 显示"失败"。
+- catch 块只记 `firstError.localizedDescription`，UI 只能展示一句模糊文字。
+
+**改动**
+
+| Commit | 主题 | 影响 |
+|---|---|---|
+| 1 | `IncrementalSyncCoordinator.loadAnchor` 解码失败降级为 nil 并 `DELETE FROM sync_anchors WHERE hk_type = ?`，下次走全量（PK 去重） | 同步自愈 |
+| 2 | 新增 `Core/Sync/SyncDiagnostics.swift`（`SyncStage` + `SyncTypeError`）；`SyncEngine.LastResult` 加 `perTypeErrors: [SyncTypeError]`；Incremental / Backfill / Manual 三个 coordinator 收集每个 type 的 stage + underlying + isAuthDenied | 诊断结构化 |
+| 3 | Auth-denied 软失败：`status=.skipped`、`missing=true`，但**不**污染 `firstError`；retry 早退（重试授权毫无意义） | 部分授权也算成功 |
+| 4 | 四个 coordinator 改 `actor`（`DailyReconciler` / `IncrementalSyncCoordinator` / `BackfillCoordinator` / `ManualSyncCoordinator`）；`SummaryGenerator` 也改 `actor`；`SyncEngine` 保留 `@MainActor`（继续管 `@Published`），调用 `try await coordinator.run(...)` 自动 hop 到 actor executor（后台线程） | **核心修复对账卡 UI** |
+| 5 | `DatabaseManager` 加 `@unchecked Sendable` + `asyncRead`/`asyncWrite`（detached task 包同步 read/write）；所有 UI 文件（Dashboard / SyncCenter / Diet / Medication / Alerts / Sources / Summary / Settings）的 `database.read/write` 切到 async 版本；结果通过 `await MainActor.run { ... }` 写回 `@State` | UI 不再阻塞主线程 |
+| 6 | `SyncCenterView` 新增「失败明细 DisclosureGroup」：每条 type 错误显示锁/红三角图标 + humanLabel + 阶段 + 原因 | 用户能定位问题 |
+
+**新增/修改文件**
+- 新文件：`Core/Sync/SyncDiagnostics.swift`
+- Core 改动：
+  - `Core/Sync/SyncEngine.swift`（LastResult.perTypeErrors）
+  - `Core/Sync/IncrementalSyncCoordinator.swift`（actor + 收集 errors + auth-denied 软失败 + anchor 兜底）
+  - `Core/Sync/BackfillCoordinator.swift`（actor + 收集 errors + auth-denied 软失败）
+  - `Core/Sync/ManualSyncCoordinator.swift`（actor + pass1/pass2 errors 合并去重）
+  - `Core/Reconcile/DailyReconciler.swift`（class → actor）
+  - `Core/Summary/SummaryGenerator.swift`（class → actor）
+  - `Core/Database/DatabaseManager.swift`（@unchecked Sendable + asyncRead/asyncWrite）
+- UI 改动（每个文件去掉 `@MainActor` private func、改用 `asyncRead/asyncWrite` + `MainActor.run`）：
+  - `UI/Dashboard/DashboardView.swift`（新增 `DashboardSnapshot: Sendable`）
+  - `UI/SyncCenter/SyncCenterView.swift`（+ 失败明细 DisclosureGroup）
+  - `UI/Diet/DietView.swift`（refresh / delete / save → async）
+  - `UI/Medication/MedicationView.swift`（refresh / recordTaken / delete / save → async）
+  - `UI/Alerts/AlertsView.swift`（refresh / acknowledge / acknowledgeAll → async）
+  - `UI/Sources/SourcesView.swift`（refresh：Row 映射移入 asyncRead 闭包内）
+  - `UI/Summary/SummaryView.swift`（refresh / generateBoth → async；await actor 方法）
+  - `UI/Settings/SettingsView.swift`（refresh → async）
+
+**编译验证**
+```
+** BUILD SUCCEEDED **
+```
+0 errors / 0 warnings（除 AppIntents 系统提示，与本工程无关）。
+
+**功能验证（待用户在 Xcode 实测）**
+1. 首次安装 → Onboarding 全选 Allow → 同步中心 → 30 天回补：所有 type 跑完；如有失败，「失败明细」可展开看到 `hk_type / 阶段 / 原因`；未授权 type 整体仍显示成功。
+2. 立即同步（手动一键）：两阶段流程正常。
+3. 立即对账（7 天）→ 切回仪表盘：**不再卡住**；refresh 正常完成。
+4. 手工损坏 anchor（sqlite3 写脏 BLOB）→ 触发增量：日志「Anchor decode failed; resetting」；该 anchor 行被删；同步成功。
+
+**未实施**
+- Round 9（仪表盘对标 Apple Health + 饮食卡片 + 热量缺口卡片）作为下一轮单独交付。
+
