@@ -175,6 +175,9 @@ struct MealEditView: View {
     @State private var suggestions: [MealImageClassifier.Suggestion] = []
     @State private var isClassifying: Bool = false
     @State private var showingCamera: Bool = false
+    @State private var nutritionEstimate: MealNutritionAnalyzer.Estimate?
+    @State private var isAnalyzingNutrition: Bool = false
+    @State private var nutritionError: String?
 
     var body: some View {
         NavigationStack {
@@ -234,7 +237,7 @@ struct MealEditView: View {
                     }
                     if !suggestions.isEmpty {
                         VStack(alignment: .leading, spacing: 6) {
-                            Text("AI 建议（点击加入备注）")
+                            Text("本地识别（点击加入备注）")
                                 .font(.caption).foregroundStyle(.secondary)
                             FlowLayout(spacing: 6) {
                                 ForEach(suggestions, id: \.label) { s in
@@ -252,6 +255,10 @@ struct MealEditView: View {
                             }
                         }
                     }
+                }
+
+                if previewImage != nil {
+                    nutritionSection
                 }
                 Section("营养（可选）") {
                     LabeledTextField(label: "热量 kcal", text: $calories, keyboard: .decimalPad)
@@ -314,6 +321,8 @@ struct MealEditView: View {
     }
 
     /// Shared post-capture pipeline used by both PhotosPicker and CameraPicker.
+    /// Runs (a) on-device Vision classify (cheap, fast) and, if vision LLM is configured,
+    /// (b) cloud nutrition estimate. Both kick off in parallel.
     private func ingestCapturedImage(_ img: UIImage) async {
         let saved = MealPhotoStore.shared.save(image: img)
         await MainActor.run {
@@ -321,11 +330,128 @@ struct MealEditView: View {
             savedPhotoPath = saved
             isClassifying = true
             suggestions = []
+            nutritionEstimate = nil
+            nutritionError = nil
         }
+        async let localTask: () = runLocalClassify(img)
+        async let nutritionTask: () = runNutritionAnalysis(img)
+        _ = await (localTask, nutritionTask)
+    }
+
+    private func runLocalClassify(_ img: UIImage) async {
         let s = await MealImageClassifier.classify(image: img)
         await MainActor.run {
             suggestions = s
             isClassifying = false
+        }
+    }
+
+    private func runNutritionAnalysis(_ img: UIImage) async {
+        guard LLMConfig.enabled, LLMConfig.isVisionConfigured else { return }
+        await MainActor.run { isAnalyzingNutrition = true }
+        do {
+            let est = try await MealNutritionAnalyzer.analyze(image: img)
+            await MainActor.run {
+                nutritionEstimate = est
+                isAnalyzingNutrition = false
+            }
+        } catch {
+            await MainActor.run {
+                nutritionError = error.localizedDescription
+                isAnalyzingNutrition = false
+            }
+            AppLogger.shared.error("Nutrition analysis failed: \(error.localizedDescription)")
+        }
+    }
+
+    @ViewBuilder
+    private var nutritionSection: some View {
+        Section {
+            if isAnalyzingNutrition {
+                HStack(spacing: 8) {
+                    ProgressView().controlSize(.small)
+                    Text("AI 估算营养中（首次约 3–8 秒）…")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            if let est = nutritionEstimate {
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack {
+                        Label(est.name, systemImage: "sparkles")
+                            .font(.body.bold())
+                            .foregroundStyle(.tint)
+                        Spacer()
+                        if let c = est.confidence {
+                            Text(confidenceLabel(c))
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    HStack(spacing: 10) {
+                        if let v = est.calories_kcal { nutritionChip(label: "热", value: "\(Int(v))") }
+                        if let v = est.protein_g { nutritionChip(label: "P", value: "\(Int(v))g") }
+                        if let v = est.fat_g { nutritionChip(label: "F", value: "\(Int(v))g") }
+                        if let v = est.carbs_g { nutritionChip(label: "C", value: "\(Int(v))g") }
+                    }
+                    .font(.footnote)
+                    if let note = est.note, !note.isEmpty {
+                        Text(note).font(.caption).foregroundStyle(.secondary)
+                    }
+                    Button {
+                        applyEstimate(est)
+                    } label: {
+                        Label("一键填入营养字段", systemImage: "arrow.down.to.line")
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                }
+            }
+            if let err = nutritionError {
+                Text(err)
+                    .font(.footnote)
+                    .foregroundStyle(.red)
+                    .textSelection(.enabled)
+            }
+            if nutritionEstimate == nil && !isAnalyzingNutrition && nutritionError == nil {
+                if !LLMConfig.isVisionConfigured {
+                    Text("未配置视觉模型。前往「设置 → AI 摘要」填入 Vision Model 字段（如 glm-4v-flash）即可自动估算。")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+            }
+        } header: {
+            Text("AI 估算营养")
+        }
+    }
+
+    private func confidenceLabel(_ raw: String) -> String {
+        switch raw.lowercased() {
+        case "high": return "置信：高"
+        case "medium": return "置信：中"
+        case "low": return "置信：低"
+        default: return "置信：\(raw)"
+        }
+    }
+
+    private func nutritionChip(label: String, value: String) -> some View {
+        VStack(spacing: 2) {
+            Text(label).font(.caption2).foregroundStyle(.secondary)
+            Text(value).font(.callout.monospacedDigit())
+        }
+        .frame(minWidth: 44)
+        .padding(.vertical, 4)
+        .padding(.horizontal, 8)
+        .background(Color.accentColor.opacity(0.12), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+    }
+
+    private func applyEstimate(_ est: MealNutritionAnalyzer.Estimate) {
+        if let v = est.calories_kcal { calories = String(Int(v)) }
+        if let v = est.protein_g { protein = String(Int(v)) }
+        if let v = est.fat_g { fat = String(Int(v)) }
+        if let v = est.carbs_g { carbs = String(Int(v)) }
+        if !est.name.isEmpty && est.name != "无法识别" {
+            appendToNotes(est.name)
         }
     }
 

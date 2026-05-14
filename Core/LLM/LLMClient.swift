@@ -1,4 +1,5 @@
 import Foundation
+import UIKit
 
 /// OpenAI-compatible Chat Completions client (POST `{baseURL}/chat/completions`).
 ///
@@ -29,11 +30,18 @@ struct LLMClient {
         self.session = session
     }
 
-    /// Convenience init that reads from `LLMConfig`. Returns nil if not configured.
+    /// Convenience init that reads from `LLMConfig`. Returns nil if text-model not configured.
     init?(fromConfig: Bool = true) {
         guard LLMConfig.isConfigured,
               let key = LLMConfig.apiKey else { return nil }
-        self.init(baseURL: LLMConfig.baseURL, model: LLMConfig.model, apiKey: key)
+        self.init(baseURL: LLMConfig.baseURL, model: LLMConfig.textModel, apiKey: key)
+    }
+
+    /// Same as `fromConfig`, but uses the vision model. Returns nil if vision not configured.
+    static func visionClient() -> LLMClient? {
+        guard LLMConfig.isVisionConfigured,
+              let key = LLMConfig.apiKey else { return nil }
+        return LLMClient(baseURL: LLMConfig.baseURL, model: LLMConfig.visionModel, apiKey: key)
     }
 
     // MARK: - Request / Response shapes
@@ -50,6 +58,49 @@ struct LLMClient {
         let stream: Bool
 
         init(model: String, messages: [Message], temperature: Double = 0.5) {
+            self.model = model
+            self.messages = messages
+            self.temperature = temperature
+            self.stream = false
+        }
+    }
+
+    /// Multimodal content part for vision requests.
+    /// Encodes to OpenAI-vision-compatible `{ type, text | image_url }`.
+    enum ContentPart: Encodable, Equatable {
+        case text(String)
+        case imageDataURL(String)
+
+        private enum CodingKeys: String, CodingKey { case type, text, image_url }
+        private struct ImageURLObj: Encodable, Equatable {
+            let url: String
+        }
+
+        func encode(to encoder: Encoder) throws {
+            var c = encoder.container(keyedBy: CodingKeys.self)
+            switch self {
+            case .text(let s):
+                try c.encode("text", forKey: .type)
+                try c.encode(s, forKey: .text)
+            case .imageDataURL(let url):
+                try c.encode("image_url", forKey: .type)
+                try c.encode(ImageURLObj(url: url), forKey: .image_url)
+            }
+        }
+    }
+
+    struct VisionMessage: Encodable, Equatable {
+        let role: String
+        let content: [ContentPart]
+    }
+
+    struct VisionRequest: Encodable, Equatable {
+        let model: String
+        let messages: [VisionMessage]
+        let temperature: Double
+        let stream: Bool
+
+        init(model: String, messages: [VisionMessage], temperature: Double = 0.2) {
             self.model = model
             self.messages = messages
             self.temperature = temperature
@@ -131,6 +182,47 @@ struct LLMClient {
             let snippet = String(data: data, encoding: .utf8)?.prefix(500).description ?? ""
             throw LLMError.decode("\(error.localizedDescription) | body: \(snippet)")
         }
+    }
+
+    /// Analyze an image with a single text prompt. Returns the assistant's plain text.
+    /// Downscales locally to keep token cost reasonable (vision models bill by image size).
+    func analyzeImage(
+        _ image: UIImage,
+        prompt: String,
+        systemPrompt: String? = nil,
+        maxSide: CGFloat = 768,
+        jpegQuality: CGFloat = 0.7,
+        temperature: Double = 0.2
+    ) async throws -> String {
+        let resized = LLMClient.downscale(image, maxSide: maxSide)
+        guard let jpeg = resized.jpegData(compressionQuality: jpegQuality) else {
+            throw LLMError.invalidURL    // reuse — body shape invalid
+        }
+        let dataURL = "data:image/jpeg;base64," + jpeg.base64EncodedString()
+
+        var messages: [VisionMessage] = []
+        if let systemPrompt {
+            // Some providers expect text-only system messages; ContentPart supports that.
+            messages.append(VisionMessage(role: "system", content: [.text(systemPrompt)]))
+        }
+        messages.append(VisionMessage(role: "user", content: [
+            .text(prompt),
+            .imageDataURL(dataURL)
+        ]))
+        let payload = VisionRequest(model: model, messages: messages, temperature: temperature)
+        let body = try JSONEncoder().encode(payload)
+        return try await send(body: body)
+    }
+
+    /// Image down-scaler. Bottlenecks the long side so vision-model token cost
+    /// scales reasonably. Returns the original if it's already within the bound.
+    static func downscale(_ image: UIImage, maxSide: CGFloat) -> UIImage {
+        let longSide = max(image.size.width, image.size.height)
+        guard longSide > maxSide else { return image }
+        let scale = maxSide / longSide
+        let newSize = CGSize(width: image.size.width * scale, height: image.size.height * scale)
+        let renderer = UIGraphicsImageRenderer(size: newSize)
+        return renderer.image { _ in image.draw(in: CGRect(origin: .zero, size: newSize)) }
     }
 
     /// Shared system prompt for health summary analysis. Constrains the model to

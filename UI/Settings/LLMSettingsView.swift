@@ -12,7 +12,8 @@ struct LLMSettingsView: View {
 
     @State private var enabled: Bool = LLMConfig.enabled
     @State private var baseURL: String = LLMConfig.baseURL
-    @State private var model: String = LLMConfig.model
+    @State private var textModel: String = LLMConfig.textModel
+    @State private var visionModel: String = LLMConfig.visionModel
     @State private var apiKey: String = LLMConfig.apiKey ?? ""
     @State private var showingResetConfirm: Bool = false
 
@@ -34,31 +35,44 @@ struct LLMSettingsView: View {
                 ForEach(LLMConfig.presets) { preset in
                     Button {
                         baseURL = preset.baseURL
-                        if model.isEmpty || isCurrentPresetModel() {
-                            model = preset.suggestedModel
+                        // Replace text/vision only if empty OR currently a preset value.
+                        if textModel.isEmpty || isPresetTextModel() {
+                            textModel = preset.suggestedTextModel
+                        }
+                        if visionModel.isEmpty || isPresetVisionModel() {
+                            visionModel = preset.suggestedVisionModel
                         }
                     } label: {
-                        HStack {
+                        VStack(alignment: .leading, spacing: 2) {
                             Text(preset.name)
-                            Spacer()
-                            Text(preset.suggestedModel)
-                                .font(.caption.monospaced())
-                                .foregroundStyle(.secondary)
+                            HStack(spacing: 8) {
+                                Text(preset.suggestedTextModel)
+                                if !preset.suggestedVisionModel.isEmpty {
+                                    Text("·")
+                                    Text(preset.suggestedVisionModel)
+                                }
+                            }
+                            .font(.caption.monospaced())
+                            .foregroundStyle(.secondary)
                         }
                     }
                 }
             }
 
             Section("接口") {
-                TextField("Base URL（如 https://api.deepseek.com/v1）", text: $baseURL)
+                TextField("Base URL（如 https://open.bigmodel.cn/api/paas/v4）", text: $baseURL)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled(true)
                     .font(.callout.monospaced())
-                TextField("模型名（如 deepseek-chat）", text: $model)
+                TextField("文本模型（用于日报/周报）", text: $textModel)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled(true)
                     .font(.callout.monospaced())
-                SecureField("API Key（sk-…）", text: $apiKey)
+                TextField("视觉模型（用于饮食拍照分析，可留空）", text: $visionModel)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled(true)
+                    .font(.callout.monospaced())
+                SecureField("API Key", text: $apiKey)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled(true)
                     .font(.callout.monospaced())
@@ -72,10 +86,10 @@ struct LLMSettingsView: View {
                         if testing {
                             ProgressView().controlSize(.small)
                         }
-                        Text(testing ? "测试中…" : "测试连接")
+                        Text(testing ? "测试中…" : "测试文本模型连接")
                     }
                 }
-                .disabled(testing || baseURL.isEmpty || model.isEmpty || apiKey.isEmpty)
+                .disabled(testing || baseURL.isEmpty || textModel.isEmpty || apiKey.isEmpty)
 
                 if let result = testResult {
                     Label(result, systemImage: testFailed ? "xmark.octagon" : "checkmark.seal")
@@ -112,8 +126,8 @@ struct LLMSettingsView: View {
             Button("清除", role: .destructive) {
                 LLMConfig.reset()
                 enabled = LLMConfig.enabled
+                textModel = ""
                 baseURL = ""
-                model = ""
                 apiKey = ""
                 testResult = nil
             }
@@ -124,12 +138,17 @@ struct LLMSettingsView: View {
     private func persist() {
         LLMConfig.enabled = enabled
         LLMConfig.baseURL = baseURL.trimmingCharacters(in: .whitespacesAndNewlines)
-        LLMConfig.model = model.trimmingCharacters(in: .whitespacesAndNewlines)
+        LLMConfig.textModel = textModel.trimmingCharacters(in: .whitespacesAndNewlines)
+        LLMConfig.visionModel = visionModel.trimmingCharacters(in: .whitespacesAndNewlines)
         LLMConfig.apiKey = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    private func isCurrentPresetModel() -> Bool {
-        LLMConfig.presets.contains(where: { $0.suggestedModel == model })
+    private func isPresetTextModel() -> Bool {
+        LLMConfig.presets.contains(where: { $0.suggestedTextModel == textModel })
+    }
+
+    private func isPresetVisionModel() -> Bool {
+        LLMConfig.presets.contains(where: { !$0.suggestedVisionModel.isEmpty && $0.suggestedVisionModel == visionModel })
     }
 
     private func testConnection() async {
@@ -141,7 +160,7 @@ struct LLMSettingsView: View {
         // Don't persist before testing — use whatever's in the form fields now.
         let client = LLMClient(
             baseURL: baseURL.trimmingCharacters(in: .whitespacesAndNewlines),
-            model: model.trimmingCharacters(in: .whitespacesAndNewlines),
+            model: textModel.trimmingCharacters(in: .whitespacesAndNewlines),
             apiKey: apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
         )
         do {

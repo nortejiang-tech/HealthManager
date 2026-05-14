@@ -21,15 +21,30 @@ final class LLMTests: XCTestCase {
 
     func test_config_isConfigured_falseWithoutKey() {
         LLMConfig.baseURL = "https://api.example.com/v1"
-        LLMConfig.model = "test-model"
+        LLMConfig.textModel = "test-model"
         XCTAssertFalse(LLMConfig.isConfigured, "missing key → not configured")
     }
 
     func test_config_isConfigured_trueWithFullTriple() {
         LLMConfig.baseURL = "https://api.example.com/v1"
-        LLMConfig.model = "test-model"
+        LLMConfig.textModel = "test-model"
         LLMConfig.apiKey = "sk-test-12345"
         XCTAssertTrue(LLMConfig.isConfigured)
+    }
+
+    func test_config_visionConfigured_separate() {
+        LLMConfig.baseURL = "https://api.example.com/v1"
+        LLMConfig.textModel = "text-x"
+        LLMConfig.apiKey = "k"
+        XCTAssertTrue(LLMConfig.isConfigured)
+        XCTAssertFalse(LLMConfig.isVisionConfigured, "text alone is not enough for vision")
+        LLMConfig.visionModel = "vision-x"
+        XCTAssertTrue(LLMConfig.isVisionConfigured)
+    }
+
+    func test_config_modelLegacyAliasMapsToTextModel() {
+        LLMConfig.model = "old-call-site"
+        XCTAssertEqual(LLMConfig.textModel, "old-call-site")
     }
 
     func test_config_apiKey_roundTrip_viaKeychain() {
@@ -47,12 +62,14 @@ final class LLMTests: XCTestCase {
     func test_config_reset_clearsEverything() {
         LLMConfig.enabled = false
         LLMConfig.baseURL = "x"
-        LLMConfig.model = "y"
+        LLMConfig.textModel = "y"
+        LLMConfig.visionModel = "vy"
         LLMConfig.apiKey = "z"
         LLMConfig.reset()
         XCTAssertTrue(LLMConfig.enabled, "reset should restore default-on")
         XCTAssertEqual(LLMConfig.baseURL, "")
-        XCTAssertEqual(LLMConfig.model, "")
+        XCTAssertEqual(LLMConfig.textModel, "")
+        XCTAssertEqual(LLMConfig.visionModel, "")
         XCTAssertNil(LLMConfig.apiKey)
     }
 
@@ -89,9 +106,26 @@ final class LLMTests: XCTestCase {
 
     func test_client_fromConfig_returnsClientWhenConfigured() {
         LLMConfig.baseURL = "https://api.example.com/v1"
-        LLMConfig.model = "abc"
+        LLMConfig.textModel = "abc"
         LLMConfig.apiKey = "sk-x"
         XCTAssertNotNil(LLMClient(fromConfig: true))
+    }
+
+    func test_visionClient_nilWithoutVisionModel() {
+        LLMConfig.baseURL = "https://api.example.com/v1"
+        LLMConfig.textModel = "abc"
+        LLMConfig.apiKey = "sk-x"
+        XCTAssertNil(LLMClient.visionClient())
+    }
+
+    func test_visionClient_returnsClientWhenAllConfigured() {
+        LLMConfig.baseURL = "https://api.example.com/v1"
+        LLMConfig.textModel = "abc"
+        LLMConfig.visionModel = "vision"
+        LLMConfig.apiKey = "sk-x"
+        let v = LLMClient.visionClient()
+        XCTAssertNotNil(v)
+        XCTAssertEqual(v?.model, "vision")
     }
 
     func test_summarySystemPrompt_nonEmpty() {

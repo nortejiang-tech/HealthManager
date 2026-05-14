@@ -737,3 +737,100 @@ xcodebuild -scheme HealthManager test
   UI/Settings/SettingsView.swift               (+ 智能分析 section)
   UI/Summary/SummaryView.swift                 (重写：AI 评注 block + 自动 augment + 错误显示)
 ```
+
+---
+
+## V5 自主交付 — 2026-05-15
+
+V4 之上：用户指定 GLM-4.7-Flash（文本）+ GLM-4V-Flash（视觉，免费），实现拍照估营养。
+
+**完成**
+
+### 1. LLMConfig 拆分 text/vision 模型
+- `textModel`（日报评注）+ `visionModel`（饮食拍照分析），独立字段、独立 isConfigured / isVisionConfigured。
+- `model` 字段保留为 textModel 的 alias，向后兼容。
+- 6 个 preset 改为同时携带 text + vision 推荐：
+  - 智谱 GLM（**免费**）glm-4.7-flash / glm-4v-flash —— 用户当前选择
+  - 硅基流动 Qwen 7B 系列（部分免费）
+  - 通义千问 / 豆包 / Moonshot（按量）
+  - DeepSeek（仅 text）
+
+### 2. LLMClient vision 支持
+- `analyzeImage(image:prompt:systemPrompt:maxSide:jpegQuality:temperature:)`
+- 编码：OpenAI vision 兼容格式 `content: [{type:"text", text:...}, {type:"image_url", image_url:{url:"data:image/jpeg;base64,..."}}]`
+- 静态 `downscale(_:maxSide:)`：长边 ≤768（默认）控制 token 成本
+- `LLMClient.visionClient()` 工厂：用 visionModel 而非 textModel
+
+### 3. MealNutritionAnalyzer
+- 调 `LLMClient.visionClient()`；image → JPEG 0.7 → base64 → POST
+- system prompt 强约束 JSON schema `{name, calories_kcal, protein_g, fat_g, carbs_g, confidence, note}`
+- `parse(_:)` 三步解析：
+  1. 去 `\`\`\`json` / `\`\`\`` fence
+  2. 截 first `{`…last `}` 块
+  3. JSONDecoder
+- 失败 typed error（notConfigured / llm / parseFailure）
+
+### 4. MealEditView 自动估营养
+- 拍照或选图后**并行**触发：
+  - 本地 Vision classify（chip 提示）
+  - 云端营养估算（视觉模型，若已配置）
+- 「AI 估算营养」section：进度 ProgressView → 结果卡片（热/P/F/C chips + confidence + note）→ 「一键填入营养字段」按钮。
+- 未配置时友好提示「前往设置 → AI 摘要 填 Vision Model」。
+
+### 5. LLMSettingsView 双模型字段
+- 「快速选择」preset row 同时展示 text + vision model（monospaced）。
+- 接口字段：Base URL / 文本模型 / 视觉模型 / API Key（四行）。
+- 测试连接按钮走 text model（vision 模型成本更高，按需用）。
+
+### 6. 端到端真实 API 验证
+临时一次性 LiveAPISmokeTests（**未 commit**，跑完已删）：
+- `test_live_textCompletion`: `LIVE text reply: 中` ← GLM-4.7-Flash 调用 LLMClient.complete 成功
+- `test_live_visionFoodEstimate`: `LIVE estimate: name=汉堡, kcal=500.0, confidence=high` ← 自制 burger 图（colored bands）→ MealNutritionAnalyzer → 正确识别 + JSON 解析
+
+观察：
+- 模拟器 Keychain 报 OSStatus=-34018（缺 entitlement），UserDefaults fallback 自动接管，不影响功能
+- GLM-4V-Flash 默认包 `\`\`\`json … \`\`\`` fences；parser 正确剥离
+- ~2 秒返回，单次 prompt_tokens ≈ 900（含 base64 图）
+
+### 7. 单元测试（61 → 74）
+- `MealNutritionAnalyzerTests` × 9：plain JSON / json fences / no-lang fences / 周围 chatter / malformed throw / 缺字段允许 / downscale 小图不变 / downscale 长边 ≤768 / VisionRequest JSONSerialization round-trip
+- `LLMTests` 扩展 +4：visionConfigured 分离 / model alias → textModel / visionClient nil 边界 / visionClient.model == visionModel
+
+**已知 / 留 v6**
+- 流式输出（SSE）：饮食估算 ~2s 一次性，不需要；日报评注若改长可加
+- 多张照片 batch 估算：每张一次调用即可，无需特别支持
+- LLM 给的菜名（如「汉堡」）能否反查公开营养数据库交叉验证：留 v6
+
+**安全 & 隐私验证**
+- API key 未进 repo（grep 全树无残留）
+- 临时 LiveAPISmokeTests 文件已删
+- 模拟器 plist 已 PlistBuddy 清掉 `llm.apiKey.fallback` 等字段
+- 隐私 footer 在 LLMSettingsView 明示：发送给 LLM 的只有「已聚合摘要文本 + 用户主动拍摄的餐食图」，无原始 HK 样本 / source / device
+
+**编译 & 测试**
+```
+xcodebuild -target HealthManager  → BUILD SUCCEEDED
+xcodebuild -scheme HealthManager test
+  Unit: Executed 74 tests, 0 failures (0.33s)
+  UI:   Executed  1 test,  0 failures (24.5s)
+```
+
+**新增 / 修改文件**
+```
+新文件
+  Core/LLM/MealNutritionAnalyzer.swift
+  Tests/MealNutritionAnalyzerTests.swift
+
+修改
+  Core/LLM/LLMConfig.swift           (拆 textModel/visionModel + preset)
+  Core/LLM/LLMClient.swift           (+ analyzeImage + downscale + Vision schemas)
+  UI/Diet/DietView.swift             (+ nutritionSection + 自动并行触发)
+  UI/Settings/LLMSettingsView.swift   (双模型字段)
+  Tests/LLMTests.swift               (+4 vision tests)
+```
+
+**真机 / 实测使用步骤**
+1. 设置 → AI 摘要 → 选「智谱 GLM（免费）」preset → 填 API Key → 保存
+2. 饮食 tab → 添加餐次 → 拍照 / 从相册选图
+3. 等 ~2s → 「AI 估算营养」卡片出现 → 点「一键填入」→ 营养字段自动 prefill
+4. 总结页 → 重新生成日报 → AI 评注自动跑（text model）

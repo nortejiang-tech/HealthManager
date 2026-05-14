@@ -15,25 +15,47 @@ enum LLMConfig {
 
     private static let defaults = UserDefaults.standard
     private static let baseURLKey = "llm.baseURL"
-    private static let modelKey = "llm.model"
+    private static let textModelKey = "llm.textModel"
+    private static let visionModelKey = "llm.visionModel"
     private static let enabledKey = "llm.enabled"
     private static let keychainService = "com.norte.HealthManager.llm"
     private static let keychainAccount = "llm.apiKey"
 
-    /// Preset known-good endpoints. The user can still type any URL.
+    /// Preset endpoints with both a text model and a vision model. Either can be empty
+    /// if the provider doesn't ship one in their free tier; user can still type any model.
     struct Preset: Identifiable, Hashable {
         let name: String
         let baseURL: String
-        let suggestedModel: String
+        let suggestedTextModel: String
+        let suggestedVisionModel: String   // empty string if N/A
         var id: String { name }
     }
 
     static let presets: [Preset] = [
-        Preset(name: "DeepSeek",   baseURL: "https://api.deepseek.com/v1",        suggestedModel: "deepseek-chat"),
-        Preset(name: "豆包 / Doubao", baseURL: "https://ark.cn-beijing.volces.com/api/v3", suggestedModel: "doubao-1.5-pro-32k"),
-        Preset(name: "通义千问 / Qwen", baseURL: "https://dashscope.aliyuncs.com/compatible-mode/v1", suggestedModel: "qwen-plus"),
-        Preset(name: "智谱 / GLM",   baseURL: "https://open.bigmodel.cn/api/paas/v4", suggestedModel: "glm-4-flash"),
-        Preset(name: "Moonshot",   baseURL: "https://api.moonshot.cn/v1",          suggestedModel: "moonshot-v1-8k")
+        Preset(name: "智谱 GLM（免费）",
+               baseURL: "https://open.bigmodel.cn/api/paas/v4",
+               suggestedTextModel: "glm-4.7-flash",
+               suggestedVisionModel: "glm-4v-flash"),
+        Preset(name: "硅基流动 SiliconFlow",
+               baseURL: "https://api.siliconflow.cn/v1",
+               suggestedTextModel: "Qwen/Qwen2.5-7B-Instruct",
+               suggestedVisionModel: "Qwen/Qwen2-VL-7B-Instruct"),
+        Preset(name: "通义千问 / Qwen",
+               baseURL: "https://dashscope.aliyuncs.com/compatible-mode/v1",
+               suggestedTextModel: "qwen-plus",
+               suggestedVisionModel: "qwen-vl-max-latest"),
+        Preset(name: "豆包 / Doubao",
+               baseURL: "https://ark.cn-beijing.volces.com/api/v3",
+               suggestedTextModel: "doubao-1.5-pro-32k",
+               suggestedVisionModel: "doubao-1.5-vision-pro-32k"),
+        Preset(name: "Moonshot",
+               baseURL: "https://api.moonshot.cn/v1",
+               suggestedTextModel: "moonshot-v1-8k",
+               suggestedVisionModel: "moonshot-v1-8k-vision-preview"),
+        Preset(name: "DeepSeek",
+               baseURL: "https://api.deepseek.com/v1",
+               suggestedTextModel: "deepseek-chat",
+               suggestedVisionModel: "")
     ]
 
     static var baseURL: String {
@@ -41,9 +63,23 @@ enum LLMConfig {
         set { defaults.set(newValue, forKey: baseURLKey) }
     }
 
+    /// Text-only model for daily / weekly summary commentary.
+    static var textModel: String {
+        get { defaults.string(forKey: textModelKey) ?? "" }
+        set { defaults.set(newValue, forKey: textModelKey) }
+    }
+
+    /// Vision-capable model for meal photo nutrition estimation.
+    /// Optional — feature is disabled when empty.
+    static var visionModel: String {
+        get { defaults.string(forKey: visionModelKey) ?? "" }
+        set { defaults.set(newValue, forKey: visionModelKey) }
+    }
+
+    /// DEPRECATED — kept so old call sites don't break. Maps to textModel.
     static var model: String {
-        get { defaults.string(forKey: modelKey) ?? "" }
-        set { defaults.set(newValue, forKey: modelKey) }
+        get { textModel }
+        set { textModel = newValue }
     }
 
     /// Defaults to **true** (opt-out) per user preference. When true but key/url missing,
@@ -56,9 +92,14 @@ enum LLMConfig {
         set { defaults.set(newValue, forKey: enabledKey) }
     }
 
-    /// Whether config is sufficient to actually call the API.
+    /// Whether the basic text-model triple is filled (key + baseURL + textModel).
     static var isConfigured: Bool {
-        !baseURL.isEmpty && !model.isEmpty && !(apiKey ?? "").isEmpty
+        !baseURL.isEmpty && !textModel.isEmpty && !(apiKey ?? "").isEmpty
+    }
+
+    /// Whether vision-model usage is configured (key + baseURL + visionModel).
+    static var isVisionConfigured: Bool {
+        !baseURL.isEmpty && !visionModel.isEmpty && !(apiKey ?? "").isEmpty
     }
 
     // MARK: - Keychain-backed apiKey
@@ -132,7 +173,8 @@ enum LLMConfig {
     /// Wipe baseURL / model / enabled / key. Used by Settings 「重置」.
     static func reset() {
         defaults.removeObject(forKey: baseURLKey)
-        defaults.removeObject(forKey: modelKey)
+        defaults.removeObject(forKey: textModelKey)
+        defaults.removeObject(forKey: visionModelKey)
         defaults.removeObject(forKey: enabledKey)
         deleteKey()
     }
