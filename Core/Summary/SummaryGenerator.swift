@@ -22,6 +22,64 @@ actor SummaryGenerator {
         let qualityScore: Double?
     }
 
+    /// Cumulative quantity types where the same minute can be written by multiple sources
+    /// (iPhone CoreMotion + Apple Watch + Garmin + 米家 …). SUM(value) across sources
+    /// double-counts. For these we pick a *dominant source per day* and use only its samples.
+    private static let cumulativeTypes: Set<String> = [
+        "HKQuantityTypeIdentifierStepCount",
+        "HKQuantityTypeIdentifierDistanceWalkingRunning",
+        "HKQuantityTypeIdentifierActiveEnergyBurned",
+        "HKQuantityTypeIdentifierBasalEnergyBurned",
+        "HKQuantityTypeIdentifierFlightsClimbed",
+        "HKQuantityTypeIdentifierAppleExerciseTime",
+        "HKQuantityTypeIdentifierAppleStandTime",
+    ]
+
+    /// Source preference for cumulative dedup. Higher wins. Tie-break on larger sum.
+    /// Garmin first per user preference (chest strap / fenix typically the most accurate
+    /// step source on this device set).
+    private func sourcePriority(_ origin: SourceAttribution.Origin) -> Int {
+        switch origin {
+        case .garmin: return 100
+        case .apple: return 50
+        case .xiaomiSports, .xiaomiMijia: return 30
+        case .hutool: return 20
+        case .manual: return 10
+        case .unknown: return 0
+        }
+    }
+
+    /// Dominant-source sum for one cumulative type in [start, end]. Group raw samples by
+    /// source_bundle_id, pick the source with highest `sourcePriority` (tie-break: larger sum),
+    /// return only that source's total. Returns 0 when no samples exist.
+    private func cumulativeSum(db: Database, hkType: String, start: Int64, end: Int64) throws -> Double {
+        let rows = try Row.fetchAll(db, sql: """
+            SELECT
+                COALESCE(source_bundle_id, 'unknown') AS bid,
+                COALESCE(source_name, '') AS sname,
+                SUM(value) AS s
+            FROM health_samples_raw
+            WHERE hk_type = ?
+              AND is_deleted = 0
+              AND start_at BETWEEN ? AND ?
+            GROUP BY bid
+            """, arguments: [hkType, start, end])
+        var bestSum: Double = 0
+        var bestPriority: Int = -1
+        for r in rows {
+            let bid: String = r["bid"] ?? ""
+            let sname: String = r["sname"] ?? ""
+            let s: Double = r["s"] ?? 0
+            let origin = SourceAttribution.classify(bundleId: bid, sourceName: sname)
+            let p = sourcePriority(origin)
+            if p > bestPriority || (p == bestPriority && s > bestSum) {
+                bestPriority = p
+                bestSum = s
+            }
+        }
+        return bestSum
+    }
+
     // MARK: - Daily
 
     @discardableResult
@@ -45,7 +103,9 @@ actor SummaryGenerator {
         let (dayStart, dayEnd) = epochRange(for: date)
 
         let stats: DailyStats = try database.read { db in
-            // Per-type sample counts
+            // Per-type sample counts. SUM is still computed here for non-cumulative types
+            // (kept for findings completeness), but cumulative types are recomputed below
+            // via cumulativeSum to avoid cross-source double counting.
             let countsRows = try Row.fetchAll(db, sql: """
                 SELECT hk_type, COUNT(*) AS c, AVG(value) AS avg_v, SUM(value) AS sum_v
                 FROM health_samples_raw
@@ -57,6 +117,15 @@ actor SummaryGenerator {
                 let t: String = r["hk_type"] ?? ""
                 perType[t] = (r["c"] ?? 0, r["avg_v"] ?? 0, r["sum_v"] ?? 0)
             }
+
+            // Dominant-source dedup for the cumulative metrics shown in the report.
+            // nil = no samples at all that day → render layer skips the line.
+            let stepsDedup = perType["HKQuantityTypeIdentifierStepCount"] == nil
+                ? nil
+                : try cumulativeSum(db: db, hkType: "HKQuantityTypeIdentifierStepCount", start: dayStart, end: dayEnd)
+            let activeEnergyDedup = perType["HKQuantityTypeIdentifierActiveEnergyBurned"] == nil
+                ? nil
+                : try cumulativeSum(db: db, hkType: "HKQuantityTypeIdentifierActiveEnergyBurned", start: dayStart, end: dayEnd)
 
             let mealRow = try Row.fetchOne(db, sql: """
                 SELECT
@@ -79,6 +148,8 @@ actor SummaryGenerator {
 
             return DailyStats(
                 perType: perType,
+                stepsDedup: stepsDedup,
+                activeEnergyDedup: activeEnergyDedup,
                 mealCount: mealCount,
                 caloriesIn: caloriesIn,
                 proteinIn: proteinIn,
@@ -92,6 +163,8 @@ actor SummaryGenerator {
 
     private struct DailyStats {
         let perType: [String: (count: Int, avg: Double, sum: Double)]
+        let stepsDedup: Double?
+        let activeEnergyDedup: Double?
         let mealCount: Int
         let caloriesIn: Double
         let proteinIn: Double
@@ -105,11 +178,11 @@ actor SummaryGenerator {
 
         lines.append("【\(date) 日报】")
 
-        if let steps = stats.perType["HKQuantityTypeIdentifierStepCount"]?.sum {
+        if let steps = stats.stepsDedup {
             lines.append("• 步数：\(Int(steps)) 步")
             findings["steps"] = Int(steps)
         }
-        if let energy = stats.perType["HKQuantityTypeIdentifierActiveEnergyBurned"]?.sum {
+        if let energy = stats.activeEnergyDedup {
             lines.append(String(format: "• 活动能量：%.0f kcal", energy))
             findings["activeEnergyKcal"] = Int(energy)
         }
@@ -196,20 +269,47 @@ actor SummaryGenerator {
             var completenessDays: Int = 0
         }
 
+        // Each day picks its own dominant source independently — Garmin may have synced
+        // day 1 but not day 2, and we want the best available source per day.
+        let weekDayKeys: [String] = (0..<7).compactMap { offset in
+            let cal = Calendar.current
+            let f = DateFormatter()
+            f.dateFormat = "yyyy-MM-dd"
+            f.timeZone = .current
+            f.locale = Locale(identifier: "en_US_POSIX")
+            guard let weekStartDate = f.date(from: weekStart),
+                  let d = cal.date(byAdding: .day, value: offset, to: weekStartDate)
+            else { return nil }
+            return f.string(from: d)
+        }
+
         let agg: Agg = try database.read { db in
             var a = Agg()
+
+            // Cumulative metrics: per-day dominant-source dedup, then sum across the week.
+            for dayKey in weekDayKeys {
+                let (dayStart, dayEnd) = epochRange(for: dayKey)
+                a.stepsTotal += try cumulativeSum(
+                    db: db, hkType: "HKQuantityTypeIdentifierStepCount",
+                    start: dayStart, end: dayEnd
+                )
+                a.energyTotal += try cumulativeSum(
+                    db: db, hkType: "HKQuantityTypeIdentifierActiveEnergyBurned",
+                    start: dayStart, end: dayEnd
+                )
+            }
+
+            // Non-cumulative (HR / weight) are unaffected by multi-source duplication —
+            // keep the simple window scan.
             let rows = try Row.fetchAll(db, sql: """
                 SELECT hk_type, value FROM health_samples_raw
                 WHERE is_deleted = 0 AND start_at BETWEEN ? AND ?
+                  AND hk_type IN ('HKQuantityTypeIdentifierHeartRate', 'HKQuantityTypeIdentifierBodyMass')
                 """, arguments: [s, e])
             for r in rows {
                 let t: String = r["hk_type"] ?? ""
                 let v: Double = r["value"] ?? 0
                 switch t {
-                case "HKQuantityTypeIdentifierStepCount":
-                    a.stepsTotal += v
-                case "HKQuantityTypeIdentifierActiveEnergyBurned":
-                    a.energyTotal += v
                 case "HKQuantityTypeIdentifierHeartRate":
                     a.avgHR += v
                     a.hrSamples += 1
