@@ -48,6 +48,7 @@ final class SyncEngine: ObservableObject {
         database: database
     )
     private(set) lazy var dailyReconciler = DailyReconciler(database: database)
+    private(set) lazy var dailyAggregator = DailyAggregator(database: database)
 
     private var stateMachine = SyncStateMachine()
     private var externalSyncContinuation: CheckedContinuation<Void, Never>?
@@ -83,6 +84,8 @@ final class SyncEngine: ObservableObject {
             try stateMachine.handle(.reconcileFinished)
             phase = stateMachine.phase
             lastResult = result
+            progressDescription = "回补完成：共 \(result.totalSamples) 条样本。正在聚合…"
+            await runAggregation(windowDays: max(days, 30))
             progressDescription = "回补完成：共 \(result.totalSamples) 条样本。"
         } catch {
             try? stateMachine.handle(.fail)
@@ -124,6 +127,9 @@ final class SyncEngine: ObservableObject {
             phase = stateMachine.phase
 
             lastResult = result
+            if result.succeeded {
+                await runAggregation(windowDays: 7)
+            }
             progressDescription = result.succeeded
                 ? "增量同步完成：本轮新增 \(result.totalSamples) 条。"
                 : "增量同步失败：\(result.errorMessage ?? "未知错误")"
@@ -179,6 +185,9 @@ final class SyncEngine: ObservableObject {
             phase = stateMachine.phase
 
             lastResult = result
+            if result.succeeded {
+                await runAggregation(windowDays: 30)
+            }
             progressDescription = result.succeeded
                 ? "手动同步完成：共新增 \(result.totalSamples) 条。"
                 : "手动同步失败：\(result.errorMessage ?? "未知错误")"
@@ -247,6 +256,18 @@ final class SyncEngine: ObservableObject {
         } catch {
             AppLogger.shared.sync.error("runReconcile failed: \(error.localizedDescription, privacy: .public)")
             progressDescription = "对账失败：\(error.localizedDescription)"
+        }
+    }
+
+    // MARK: - Aggregation
+
+    /// Roll up raw samples into the per-day projection tables consumed by the dashboard.
+    /// Best-effort: failures are logged but never surface to the user as a sync failure.
+    private func runAggregation(windowDays: Int) async {
+        do {
+            _ = try await dailyAggregator.run(windowDays: windowDays)
+        } catch {
+            AppLogger.shared.sync.error("DailyAggregator failed: \(error.localizedDescription, privacy: .public)")
         }
     }
 

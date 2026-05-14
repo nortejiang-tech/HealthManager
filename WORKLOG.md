@@ -472,3 +472,55 @@ V1 在 Xcode 实测发现三类问题：①回补/手动同步报错信息模糊
 **未实施**
 - Round 9（仪表盘对标 Apple Health + 饮食卡片 + 热量缺口卡片）作为下一轮单独交付。
 
+
+---
+
+## Round 9 · 仪表盘对标 Apple Health（2026-05-14）
+
+**目标**：把原本 List 风格的仪表盘换成苹果健康摘要页的视觉与信息密度：hero 大字 + 2 列卡片网格 + 每张卡片可下钻到周/月/年大图。
+
+**改动**
+
+| Commit | 主题 | 影响 |
+|---|---|---|
+| 1 | 新增 `Core/Aggregate/DailyAggregator.swift`（actor）：把 `health_samples_raw` 按天 UPSERT 到 `activity_metrics_daily` / `body_metrics_daily`；体重/体脂取最新，步数/活动 kcal/距离/锻炼/站立/楼层取和，心率/HRV 取均值，睡眠按 categoryValue 1/3/4/5 计 asleep 秒数 | 数据投影层 |
+| 2 | `SyncEngine` 在 backfill / incremental / manual 三条路径 success 分支挂载 `runAggregation(windowDays:)`，windowDays 与同步窗口对齐（backfill 30+、manual 30、incremental 7） | 同步即聚合 |
+| 3 | 新增 `UI/Dashboard/DashboardData.swift`：`DashboardSnapshot` / `DashboardLoader` / `MetricPeriod`（周/月/年）/ `MetricPoint` / `DatedDouble` / `SeriesAggregation`；所有查询走 `DatabaseManager.asyncRead` | 数据层骨架 |
+| 4 | 新增 `UI/Dashboard/Cards/*`：`CardTheme`（活动红/心率粉/睡眠紫/体重青/饮食橙/缺口蓝渐变）/ `DashboardCard`（统一容器）/ `CardMetric` / `CardEmptyState` / `HeroHeader`（问候 + 日期 + 4 大数字 + 完整度药丸 + 告警铃铛 badge）/ 6 张卡片（Activity / Heart / Sleep / Body / Diet / Deficit）每张都含 Swift Charts sparkline | 卡片视觉层 |
+| 5 | 新增 `UI/Dashboard/Detail/MetricDetailView.swift`：周/月/年 segmented picker + 大字 summary + Swift Chart 大图 + 平均/最高/最低/最新 stat 网格 + 定义脚注；`MetricDetailConfig` 收 9 个静态配置（体重、体脂、步数、活动能量、静息心率、HRV、睡眠、锻炼时长、距离）；年视图自动按 7 天桶聚合 | 详情大图 + 周/月/年切换 |
+| 6 | 新增 `UI/Dashboard/Detail/DataQualityDetailView.swift`：把原 Dashboard 的「今日数据质量 / 数据采集 / 最近同步 / 分析入口」搬过来；点 hero header 的完整度药丸进入 | 老 List 内容搬家 |
+| 7 | 改写 `UI/Dashboard/DashboardView.swift`：ScrollView + HeroHeader + LazyVGrid 2 列 6 卡片 + 「数据质量明细」入口；`MetricRoute` 把卡片点击映射到 `MetricDetailView`；铃铛 / 药丸通过 `navigationDestination(isPresented:)` 实现 push | 仪表盘重做 |
+
+**新增/修改文件**
+- 新文件：
+  - `Core/Aggregate/DailyAggregator.swift`
+  - `UI/Dashboard/DashboardData.swift`
+  - `UI/Dashboard/Cards/CardTheme.swift`
+  - `UI/Dashboard/Cards/DashboardCard.swift`
+  - `UI/Dashboard/Cards/HeroHeader.swift`
+  - `UI/Dashboard/Cards/ActivityCard.swift`
+  - `UI/Dashboard/Cards/HeartCard.swift`
+  - `UI/Dashboard/Cards/SleepCard.swift`
+  - `UI/Dashboard/Cards/BodyCard.swift`
+  - `UI/Dashboard/Cards/DietCard.swift`
+  - `UI/Dashboard/Cards/DeficitCard.swift`
+  - `UI/Dashboard/Detail/MetricDetailView.swift`
+  - `UI/Dashboard/Detail/DataQualityDetailView.swift`
+- 改动：
+  - `Core/Sync/SyncEngine.swift`：`lazy var dailyAggregator` + `runAggregation` 私有挂载
+  - `UI/Dashboard/DashboardView.swift`：整文件重写
+- 数据层：零 schema 变化（已存在的 `body_metrics_daily` / `activity_metrics_daily` 才被真正写入）
+
+**编译验证**
+```
+xcodegen generate
+xcodebuild -target HealthManager -project HealthManager.xcodeproj -configuration Debug -sdk iphonesimulator ... → ** BUILD SUCCEEDED **
+```
+0 errors / 0 warnings（除 AppIntents 系统提示）。
+
+**功能验证（待用户在 Xcode 实测）**
+1. 首次同步完成后回仪表盘：hero 显示步数/活动 kcal/缺口/体重 4 数字；6 张卡片 sparkline 都有内容；快速切 tab 不卡。
+2. 点任意卡片：跳转 `MetricDetailView`，顶部周/月/年 segmented 可切；切换时大图与 stat 网格同步刷新；空时段显示「该时段暂无数据」。
+3. 点 hero 的完整度药丸：进入「数据质量」详情页，含老的对账/采集/最近同步 section + 日报周报入口。
+4. 点铃铛：进入告警列表。
+5. 损坏体重 / 体脂数据：体重卡片显示「—」，最近 30 日 sparkline 显示 empty state。
