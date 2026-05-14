@@ -172,6 +172,8 @@ struct MealEditView: View {
     @State private var pickedPhoto: PhotosPickerItem?
     @State private var previewImage: UIImage?
     @State private var savedPhotoPath: String?
+    @State private var suggestions: [MealImageClassifier.Suggestion] = []
+    @State private var isClassifying: Bool = false
 
     var body: some View {
         NavigationStack {
@@ -203,12 +205,39 @@ struct MealEditView: View {
                         Button(role: .destructive) {
                             previewImage = nil
                             pickedPhoto = nil
+                            suggestions = []
                             if let path = savedPhotoPath {
                                 MealPhotoStore.shared.removeIfManaged(path: path)
                                 savedPhotoPath = nil
                             }
                         } label: {
                             Label("移除照片", systemImage: "trash")
+                        }
+                    }
+                    if isClassifying {
+                        HStack(spacing: 8) {
+                            ProgressView().controlSize(.small)
+                            Text("识别中…").font(.footnote).foregroundStyle(.secondary)
+                        }
+                    }
+                    if !suggestions.isEmpty {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("AI 建议（点击加入备注）")
+                                .font(.caption).foregroundStyle(.secondary)
+                            FlowLayout(spacing: 6) {
+                                ForEach(suggestions, id: \.label) { s in
+                                    Button {
+                                        appendToNotes(s.label)
+                                    } label: {
+                                        Text(s.label + String(format: " %.0f%%", s.confidence * 100))
+                                            .font(.footnote)
+                                            .padding(.horizontal, 10).padding(.vertical, 5)
+                                            .background(Color.accentColor.opacity(0.15))
+                                            .clipShape(Capsule())
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                            }
                         }
                     }
                 }
@@ -252,6 +281,21 @@ struct MealEditView: View {
         await MainActor.run {
             previewImage = img
             savedPhotoPath = saved
+            isClassifying = true
+            suggestions = []
+        }
+        let s = await MealImageClassifier.classify(image: img)
+        await MainActor.run {
+            suggestions = s
+            isClassifying = false
+        }
+    }
+
+    private func appendToNotes(_ label: String) {
+        if notes.isEmpty {
+            notes = label
+        } else if !notes.contains(label) {
+            notes += "、" + label
         }
     }
 
@@ -275,6 +319,50 @@ struct MealEditView: View {
             }
         } catch {
             AppLogger.shared.error("Meal save failed: \(error.localizedDescription)")
+        }
+    }
+}
+
+/// Simple wrapping flow layout. Lays out children left-to-right; wraps when the next
+/// child would overflow the proposed width. Used for the AI suggestion chips.
+struct FlowLayout: Layout {
+    var spacing: CGFloat = 6
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let maxWidth = proposal.width ?? .infinity
+        var x: CGFloat = 0
+        var y: CGFloat = 0
+        var rowHeight: CGFloat = 0
+        var maxX: CGFloat = 0
+        for v in subviews {
+            let s = v.sizeThatFits(.unspecified)
+            if x + s.width > maxWidth, x > 0 {
+                x = 0
+                y += rowHeight + spacing
+                rowHeight = 0
+            }
+            x += s.width + spacing
+            rowHeight = max(rowHeight, s.height)
+            maxX = max(maxX, x)
+        }
+        return CGSize(width: min(maxX, maxWidth), height: y + rowHeight)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        let maxWidth = bounds.width
+        var x: CGFloat = bounds.minX
+        var y: CGFloat = bounds.minY
+        var rowHeight: CGFloat = 0
+        for v in subviews {
+            let s = v.sizeThatFits(.unspecified)
+            if x - bounds.minX + s.width > maxWidth, x > bounds.minX {
+                x = bounds.minX
+                y += rowHeight + spacing
+                rowHeight = 0
+            }
+            v.place(at: CGPoint(x: x, y: y), proposal: ProposedViewSize(s))
+            x += s.width + spacing
+            rowHeight = max(rowHeight, s.height)
         }
     }
 }

@@ -73,23 +73,36 @@ struct DashboardView: View {
                         .padding(.horizontal, 12)
                         .padding(.top, 8)
 
-                    NavigationLink {
-                        DataQualityDetailView()
-                    } label: {
-                        HStack {
-                            Image(systemName: "list.bullet.rectangle")
-                            Text("数据质量 / 同步明细 / 报告")
-                            Spacer()
-                            Image(systemName: "chevron.right")
-                                .foregroundStyle(.tertiary)
+                    VStack(spacing: 0) {
+                        NavigationLink {
+                            DataQualityDetailView()
+                        } label: {
+                            HStack {
+                                Image(systemName: "list.bullet.rectangle")
+                                Text("数据质量 / 同步明细 / 报告")
+                                Spacer()
+                                Image(systemName: "chevron.right").foregroundStyle(.tertiary)
+                            }
+                            .font(.subheadline)
+                            .padding(.horizontal, 14).padding(.vertical, 12)
                         }
-                        .font(.subheadline)
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 12)
-                        .frame(maxWidth: .infinity)
-                        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        .buttonStyle(.plain)
+                        Divider().padding(.leading, 14)
+                        NavigationLink {
+                            WorkoutsView()
+                        } label: {
+                            HStack {
+                                Image(systemName: "figure.run")
+                                Text("运动记录")
+                                Spacer()
+                                Image(systemName: "chevron.right").foregroundStyle(.tertiary)
+                            }
+                            .font(.subheadline)
+                            .padding(.horizontal, 14).padding(.vertical, 12)
+                        }
+                        .buttonStyle(.plain)
                     }
-                    .buttonStyle(.plain)
+                    .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                     .padding(.horizontal, 12)
                     .padding(.top, 4)
 
