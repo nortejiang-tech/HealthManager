@@ -198,9 +198,14 @@ struct MetricDetailView: View {
             }
         }
         .chartYAxis {
-            AxisMarks(values: .automatic(desiredCount: 4)) { _ in
+            AxisMarks(values: .automatic(desiredCount: 4)) { value in
                 AxisGridLine().foregroundStyle(.quaternary)
-                AxisValueLabel().font(.system(size: 10))
+                if let v = value.as(Double.self) {
+                    AxisValueLabel { Text(config.format(v)) }
+                        .font(.system(size: 10))
+                } else {
+                    AxisValueLabel().font(.system(size: 10))
+                }
             }
         }
         .chartOverlay { proxy in
@@ -305,8 +310,10 @@ struct MetricDetailView: View {
     private var yDomain: ClosedRange<Double> {
         let values = points.compactMap { $0.value }
         guard let mn = values.min(), let mx = values.max() else { return 0...1 }
+        // Single value: pad ±5% (or 1 unit absolute if data is huge) so the dot lands mid-chart.
         if mn == mx {
-            return (mn - 1)...(mx + 1)
+            let pad = max(abs(mn) * 0.05, 0.5)
+            return (mn - pad)...(mx + pad)
         }
         let span = mx - mn
         let pad = span * 0.15
