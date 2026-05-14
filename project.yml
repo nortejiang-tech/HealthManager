@@ -93,3 +93,19 @@ targets:
       - target: HealthManager
       - package: GRDB
         product: GRDB
+
+  HealthManagerUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      - path: UITests
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.norte.HealthManagerUITests
+        GENERATE_INFOPLIST_FILE: YES
+        TARGETED_DEVICE_FAMILY: "1"
+        SWIFT_VERSION: "5.10"
+        TEST_TARGET_NAME: HealthManager
+    dependencies:
+      - target: HealthManager

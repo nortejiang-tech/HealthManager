@@ -472,3 +472,87 @@ V1 在 Xcode 实测发现三类问题：①回补/手动同步报错信息模糊
 **未实施**
 - Round 9（仪表盘对标 Apple Health + 饮食卡片 + 热量缺口卡片）作为下一轮单独交付。
 
+
+---
+
+## V2 自主交付 — 2026-05-15
+
+V1 + Round 8/9 之后的一轮自主迭代，目标是把 `NEXT_TASK.md` 里 v2 候选的高/中价值项一次性 ship 掉，并补上 V1 漏掉的单元测试 + UI 烟测。整轮没有用户交互（出门前一次性授权）。
+
+**完成（按 commit 顺序）**
+
+### 1. 可编辑对账阈值 + 健康深链 + 本地 DB 导出 + source_origin 落表
+- `Core/Reconcile/ReconcilerSettings.swift`：UserDefaults-backed 阈值（completenessThreshold / conflictMinSources / consecutiveMissingForCritical / defaultWindowDays），含 clamp 与 `resetToDefaults`。
+- `DailyReconciler.Config.fromUserDefaults()`：每次 `run()` 都重读，无需重启即生效；保留 `init(config:)` 测试注入口。
+- `UI/Settings/SettingsView`：4 个 Stepper section + 「打开 Apple 健康 App」（`x-apple-health://`）+「导出本地数据库快照」（拷贝 `health.sqlite` 到 tmp + ShareSheet）。
+- `Core/Database/Migrations.swift +v2_add_source_origin`：ALTER TABLE + 索引 + CASE 批量回填存量行，与 `SourceAttribution.classify` 语义保持一致（migration 测试有断言）。
+- `HealthSampleRaw +sourceOrigin: String?`；`SampleMapper` 在三个 map* 里写入。
+
+### 2. 用药本地提醒 + 饮食拍照
+- `Core/Notifications/NotificationScheduler`：actor，按 weekday × time 注册重复 trigger，identifier 含 plan_id 便于替换/清理；权限请求 + 当前状态查询；`Schedule { weekdays, hour, minute }` + isValid + JSON 编解码。
+- `MedicationView`：tap row 进入编辑（新增编辑模式）、用药计划行展示 🔔 调度时间；删除计划时一并 `removeAll(forPlanId:)`；通知未授权时顶部 banner 提示。
+- `MedicationPlanEditView`：WeekdayPicker（圆形 chip + 每天/工作日/周末快捷）+ 时间 picker；启用提醒时 inline `requestAuthorization`。
+- `UI/Diet/MealPhotoStore`：单例，`Application Support/MealPhotos/`，jpg quality 0.85，NSCache 缓存 thumbnail；`save/loadThumbnail/removeIfManaged/absoluteURL`。
+- `MealEditView`：PhotosPicker 接通；预览 + 移除 + 切换；`savedPhotoPath` 落 `meal_records.photo_path`。
+- `MealRow`：左侧 56×56 缩略图。
+- 删除 `MealRecord` 时同步删除 managed photo 文件。
+
+### 3. 单元测试 + UI 烟测 target
+- 新 target `HealthManagerTests`（bundle.unit-test）+ `HealthManagerUITests`（bundle.ui-testing）。
+- `DatabaseManager.makeInMemoryForTesting()`：临时 DatabasePool，schema 同 prod，每个测试独立。
+- 40 个 unit test，全部通过（0.23s）：
+  - `SyncStateMachineTests` × 8 — 所有 transition / fail / reset / invalid throw
+  - `SourceAttributionTests` × 9 — 每个 Origin 分类 + `cumulativePriority` 排序
+  - `ReconcilerSettingsTests` × 5 — 默认值 / 读写 / clamp / `Config.fromUserDefaults`
+  - `NotificationScheduleTests` × 6 — Schedule isValid / JSON round-trip / malformed → nil
+  - `DailyReconcilerTests` × 8 — completeness 三档（1.0/0.5/0.0）、freshness、conflict 单/多源、missing core alert、空日 __stale__ alert
+  - `SourceOriginMigrationTests` × 1 — back-fill SQL 与 Swift classifier 完全一致
+  - `SummaryGeneratorTests` × 2 — dominant-source dedup（Garmin 10000 vs Apple 8000 → 报 10000，不 cross-sum 18000）+ 空日 summary 非空
+- `HealthManagerUITests/SmokeTests`：XCUIApplication 全流程（27s）：
+  - 启动 → 仪表盘（标题「摘要」）
+  - 饮食 → 添加餐次（验证「照片」section 存在）
+  - 用药 → 添加用药计划（验证 inline 通知权限弹窗）
+  - 来源（验证「数据来源」title）
+  - 同步中心（验证 title 存在）
+  - 设置（验证 title 存在，含新加的深链/导出/阈值）
+- 每屏 `XCTAttachment(screenshot:)`，xcresult 导出 8 张 PNG 已人工肉眼验收，无异常。
+
+### 4. Debug 烟测桥
+- `HealthKitManager.refreshAuthorizationGate` 加 `#if DEBUG` 分支，识别 `-HM_DEBUG_BYPASS_ONBOARDING` 启动参数：直接置 `.partiallyGranted` 用于无数据 simulator 环境的 UI 验证。Release 构建不含此分支。
+
+**风险与遗留**
+- LLM 接日/周报（v2 候选 3）未做：PRD 明确「不联网 / 不上传健康数据」，需要本地推理或用户提供 API key + 明确同意。下一轮单独决策。
+- 来源归因虽然写到 raw 行，`SourcesView` 仍按 `source_coverage_daily` 聚合 + 查询侧 `classify()`。新列让分析查询 / 测试更准，UI 层迁移留 v3 顺手再做。
+- 通知 trigger 是 calendar repeating，DST 切换 / 时区改变时 iOS 自动按设备时区计算，不需要 App 处理。
+- BG observer 在 simulator 不触发——`HKObserverQuery` 需要真机 + 真实样本写入。本地通过 UITest 验证的是 UI 渲染层，回归测试覆盖逻辑层走单元测试。
+- `Resources/Logo-source.png` 未被 build 引用（自 Round 9 起 AppIcon 是 xcassets）。本轮没动它。
+
+**编译 & 测试验证**
+```
+xcodebuild -target HealthManager  → BUILD SUCCEEDED
+xcodebuild -scheme HealthManager test
+  Unit:  Executed 40 tests, with 0 failures (0.237s)
+  UI:    Executed  1 test,  with 0 failures (27.781s)  — 8 screenshots attached
+```
+
+**新增 / 修改文件清单**
+```
+新文件
+  Core/Reconcile/ReconcilerSettings.swift
+  Core/Notifications/NotificationScheduler.swift
+  UI/Diet/MealPhotoStore.swift
+  Tests/{SyncStateMachine,SourceAttribution,ReconcilerSettings,NotificationSchedule,DailyReconciler,SourceOriginMigration,SummaryGenerator}Tests.swift
+  UITests/SmokeTests.swift
+
+修改
+  project.yml                         (+ tests + ui-tests target)
+  Core/Reconcile/DailyReconciler.swift   (Config: 必传 → 默认+fromUserDefaults)
+  Core/Database/Migrations.swift          (+ v2_add_source_origin)
+  Core/Database/Models/HealthSampleRaw.swift  (+ sourceOrigin)
+  Core/HealthKit/SampleMapper.swift          (write source_origin; #if DEBUG bypass)
+  Core/HealthKit/HealthKitManager.swift      (#if DEBUG bypass-onboarding 启动参数)
+  Core/Database/DatabaseManager.swift        (makeInMemoryForTesting)
+  UI/Settings/SettingsView.swift             (阈值 / 深链 / 导出 / ShareSheet)
+  UI/Medication/MedicationView.swift         (Edit 模式 + WeekdayPicker + 调度)
+  UI/Diet/DietView.swift                     (PhotosPicker + thumbnail)
+```

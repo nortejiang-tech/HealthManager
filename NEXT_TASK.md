@@ -1,6 +1,10 @@
 # NEXT_TASK
 
-> V1 已交付（7 个 Round 全部完成）。本文档保留作 v2 蓝图。
+> V1 已交付（7 个 Round 全部完成）；V2 自主迭代（2026-05-15）完成大部分 v2 候选，见 WORKLOG 末尾「V2 自主交付」节。剩余 v3 候选：
+> 1. 饮食照片 AI 识别（拍照已接通，识别留 v3，需要本地 Vision 或离线模型）
+> 2. 日周报接 LLM（PRD 要求不联网；等用户决策走 Apple Intelligence / 本地 GGUF / 用户提供 key）
+> 3. SourcesView 改读 `health_samples_raw.source_origin`（v2 已落列，UI 层迁移留作清理任务）
+> 4. iPad / Mac Catalyst 适配（当前 `TARGETED_DEVICE_FAMILY=1`）
 
 ## V1 状态
 

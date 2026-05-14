@@ -60,6 +60,14 @@ final class HealthKitManager: ObservableObject {
 
     /// Recomputes the gate from system state. Safe to call on app launch and on resume.
     func refreshAuthorizationGate() async {
+        #if DEBUG
+        // Smoke-test bypass: lets the simulator preview render past onboarding when
+        // HealthKit data isn't really available. Wired via launch arg from tooling.
+        if ProcessInfo.processInfo.arguments.contains("-HM_DEBUG_BYPASS_ONBOARDING") {
+            authorizationGate = .partiallyGranted
+            return
+        }
+        #endif
         guard isAvailable else {
             authorizationGate = .denied
             return
