@@ -1,4 +1,5 @@
 import SwiftUI
+import PhotosUI
 import GRDB
 
 struct DietView: View {
@@ -104,6 +105,10 @@ struct DietView: View {
             try await environment.database.asyncWrite { db in
                 _ = try MealRecord.deleteOne(db, key: id)
             }
+            // Drop the on-disk photo if it lives in our sandbox.
+            if let path = meal.photoPath {
+                MealPhotoStore.shared.removeIfManaged(path: path)
+            }
             await refresh()
         } catch {
             AppLogger.shared.error("Meal delete failed: \(error.localizedDescription)")
@@ -115,22 +120,31 @@ private struct MealRow: View {
     let meal: MealRecord
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            HStack {
-                Text(meal.mealType.label).font(.body.bold())
-                Spacer()
-                Text(dateLabel).font(.footnote).foregroundStyle(.secondary)
+        HStack(alignment: .top, spacing: 12) {
+            if let path = meal.photoPath, let img = MealPhotoStore.shared.loadThumbnail(path: path) {
+                Image(uiImage: img)
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+                    .frame(width: 56, height: 56)
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
             }
-            HStack(spacing: 12) {
-                if let c = meal.caloriesKcal { Text("\(Int(c)) kcal") }
-                if let p = meal.proteinG { Text("P \(Int(p))g") }
-                if let f = meal.fatG { Text("F \(Int(f))g") }
-                if let c = meal.carbsG { Text("C \(Int(c))g") }
-            }
-            .font(.footnote)
-            .foregroundStyle(.secondary)
-            if let notes = meal.notes, !notes.isEmpty {
-                Text(notes).font(.footnote).foregroundStyle(.secondary).lineLimit(2)
+            VStack(alignment: .leading, spacing: 2) {
+                HStack {
+                    Text(meal.mealType.label).font(.body.bold())
+                    Spacer()
+                    Text(dateLabel).font(.footnote).foregroundStyle(.secondary)
+                }
+                HStack(spacing: 12) {
+                    if let c = meal.caloriesKcal { Text("\(Int(c)) kcal") }
+                    if let p = meal.proteinG { Text("P \(Int(p))g") }
+                    if let f = meal.fatG { Text("F \(Int(f))g") }
+                    if let c = meal.carbsG { Text("C \(Int(c))g") }
+                }
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                if let notes = meal.notes, !notes.isEmpty {
+                    Text(notes).font(.footnote).foregroundStyle(.secondary).lineLimit(2)
+                }
             }
         }
         .padding(.vertical, 2)
@@ -155,6 +169,9 @@ struct MealEditView: View {
     @State private var fat: String = ""
     @State private var carbs: String = ""
     @State private var notes: String = ""
+    @State private var pickedPhoto: PhotosPickerItem?
+    @State private var previewImage: UIImage?
+    @State private var savedPhotoPath: String?
 
     var body: some View {
         NavigationStack {
@@ -166,6 +183,34 @@ struct MealEditView: View {
                         }
                     }
                     DatePicker("时间", selection: $eatenAt)
+                }
+                Section("照片") {
+                    if let img = previewImage {
+                        Image(uiImage: img)
+                            .resizable()
+                            .aspectRatio(contentMode: .fit)
+                            .frame(maxHeight: 200)
+                            .clipShape(RoundedRectangle(cornerRadius: 10))
+                    }
+                    PhotosPicker(
+                        selection: $pickedPhoto,
+                        matching: .images,
+                        photoLibrary: .shared()
+                    ) {
+                        Label(previewImage == nil ? "添加照片" : "更换照片", systemImage: "camera")
+                    }
+                    if previewImage != nil {
+                        Button(role: .destructive) {
+                            previewImage = nil
+                            pickedPhoto = nil
+                            if let path = savedPhotoPath {
+                                MealPhotoStore.shared.removeIfManaged(path: path)
+                                savedPhotoPath = nil
+                            }
+                        } label: {
+                            Label("移除照片", systemImage: "trash")
+                        }
+                    }
                 }
                 Section("营养（可选）") {
                     LabeledTextField(label: "热量 kcal", text: $calories, keyboard: .decimalPad)
@@ -193,6 +238,20 @@ struct MealEditView: View {
                     }
                 }
             }
+            .onChange(of: pickedPhoto) { _, newItem in
+                guard let newItem else { return }
+                Task { await loadPicked(newItem) }
+            }
+        }
+    }
+
+    private func loadPicked(_ item: PhotosPickerItem) async {
+        guard let data = try? await item.loadTransferable(type: Data.self),
+              let img = UIImage(data: data) else { return }
+        let saved = MealPhotoStore.shared.save(image: img)
+        await MainActor.run {
+            previewImage = img
+            savedPhotoPath = saved
         }
     }
 
@@ -205,7 +264,7 @@ struct MealEditView: View {
             proteinG: Double(protein),
             fatG: Double(fat),
             carbsG: Double(carbs),
-            photoPath: nil,
+            photoPath: savedPhotoPath,
             notes: notes.isEmpty ? nil : notes,
             createdAt: Int64(Date().timeIntervalSince1970)
         )
