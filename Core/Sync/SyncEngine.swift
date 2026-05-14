@@ -48,6 +48,7 @@ final class SyncEngine: ObservableObject {
         database: database
     )
     private(set) lazy var dailyReconciler = DailyReconciler(database: database)
+    private(set) lazy var dailyAggregator = DailyAggregator(database: database)
 
     private var stateMachine = SyncStateMachine()
     private var externalSyncContinuation: CheckedContinuation<Void, Never>?
@@ -86,6 +87,9 @@ final class SyncEngine: ObservableObject {
             try stateMachine.handle(.reconcileFinished)
             phase = stateMachine.phase
             lastResult = result
+            // Refresh per-day rollups so Dashboard cards have data immediately.
+            // Failures here don't roll back the sync — log and continue.
+            try? await dailyAggregator.rebuild(daysBack: max(days, 30))
             progressDescription = "回补完成：共 \(result.totalSamples) 条样本。"
         } catch {
             try? stateMachine.handle(.fail)
@@ -123,11 +127,11 @@ final class SyncEngine: ObservableObject {
 
             try stateMachine.handle(.incrementalFinished)
             phase = stateMachine.phase
-            // Round 4 will fill in real reconcile work; for now we transition through.
             try stateMachine.handle(.reconcileFinished)
             phase = stateMachine.phase
 
             lastResult = result
+            try? await dailyAggregator.rebuild(daysBack: 7)
             progressDescription = result.succeeded
                 ? "增量同步完成：本轮新增 \(result.totalSamples) 条。"
                 : "增量同步失败：\(result.errorMessage ?? "未知错误")"
@@ -180,10 +184,11 @@ final class SyncEngine: ObservableObject {
 
             try stateMachine.handle(.incrementalFinished)
             phase = stateMachine.phase
-            try stateMachine.handle(.reconcileFinished)  // Round 4 makes this do real work.
+            try stateMachine.handle(.reconcileFinished)
             phase = stateMachine.phase
 
             lastResult = result
+            try? await dailyAggregator.rebuild(daysBack: 7)
             progressDescription = result.succeeded
                 ? "手动同步完成：共新增 \(result.totalSamples) 条。"
                 : "手动同步失败：\(result.errorMessage ?? "未知错误")"

@@ -26,6 +26,21 @@ enum SourceAttribution {
             case .unknown: return "未识别来源"
             }
         }
+
+        /// Priority for cumulative-quantity dedup (step count / distance / active energy / …).
+        /// Higher wins when multiple sources write the same metric for the same day; tie-break
+        /// on larger sum. Garmin first per user preference (chest strap / fenix is the most
+        /// reliable step source on this device set).
+        var cumulativePriority: Int {
+            switch self {
+            case .garmin: return 100
+            case .apple: return 50
+            case .xiaomiSports, .xiaomiMijia: return 30
+            case .hutool: return 20
+            case .manual: return 10
+            case .unknown: return 0
+            }
+        }
     }
 
     /// Best-effort mapping based on bundle id + source name. Add new mappings here as new

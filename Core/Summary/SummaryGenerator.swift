@@ -35,20 +35,6 @@ actor SummaryGenerator {
         "HKQuantityTypeIdentifierAppleStandTime",
     ]
 
-    /// Source preference for cumulative dedup. Higher wins. Tie-break on larger sum.
-    /// Garmin first per user preference (chest strap / fenix typically the most accurate
-    /// step source on this device set).
-    private func sourcePriority(_ origin: SourceAttribution.Origin) -> Int {
-        switch origin {
-        case .garmin: return 100
-        case .apple: return 50
-        case .xiaomiSports, .xiaomiMijia: return 30
-        case .hutool: return 20
-        case .manual: return 10
-        case .unknown: return 0
-        }
-    }
-
     /// Dominant-source sum for one cumulative type in [start, end]. Group raw samples by
     /// source_bundle_id, pick the source with highest `sourcePriority` (tie-break: larger sum),
     /// return only that source's total. Returns 0 when no samples exist.
@@ -71,7 +57,7 @@ actor SummaryGenerator {
             let sname: String = r["sname"] ?? ""
             let s: Double = r["s"] ?? 0
             let origin = SourceAttribution.classify(bundleId: bid, sourceName: sname)
-            let p = sourcePriority(origin)
+            let p = origin.cumulativePriority
             if p > bestPriority || (p == bestPriority && s > bestSum) {
                 bestPriority = p
                 bestSum = s
