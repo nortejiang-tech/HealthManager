@@ -524,3 +524,41 @@ xcodebuild -target HealthManager -project HealthManager.xcodeproj -configuration
 3. 点 hero 的完整度药丸：进入「数据质量」详情页，含老的对账/采集/最近同步 section + 日报周报入口。
 4. 点铃铛：进入告警列表。
 5. 损坏体重 / 体脂数据：体重卡片显示「—」，最近 30 日 sparkline 显示 empty state。
+
+---
+
+## Round 10 · 仪表盘细节打磨（2026-05-14）
+
+**目标**：补 Round 9 留的 stub，再把 Apple Health 体验最关键的两个交互补齐——图表拖动点选 + 卡片环比趋势 chip。
+
+**改动**
+
+| Commit | 主题 | 影响 |
+|---|---|---|
+| 1 | `MetricDetailConfig.source` 由 `(table, column, aggregation)` 改为 enum `Source { tableColumn / diet / deficit }`；`MetricDetailView.load` switch 派发 | 详情页可接异构数据源 |
+| 2 | `DashboardLoader` 加 `loadDietSeries(period:)` / `loadDeficitSeries(period:)`：前者从 `meal_records` 按 localtime 分组求和，后者从 `activity_metrics_daily` 拿 burned + meal SUM 拿 intake；都用通用 `fillAndBucket` 补齐空缺天并支持年视图按 7 天桶 | 饮食 / 缺口可下钻 |
+| 3 | 新增 `MetricDetailConfig.diet` / `.deficit` 静态配置；`MetricRoute` 干掉 stub，直接映射到真配置 | 饮食/缺口卡片点击=真详情 |
+| 4 | `MetricDetailView` 加图表点选：`@State inspectedDate`；`chartOverlay { proxy in GeometryReader { ... DragGesture → proxy.value(atX:) → inspectedDate }}`；选中后顶部摘要切换为「选中 X 月 Y 日 · 数值」+ chart 上叠 `RuleMark` 虚线 + 大 `PointMark`；双击空白清除；切 period 自动清除 | Apple Health 拖动竖线体验 |
+| 5 | 新增 `UI/Dashboard/Cards/TrendChip.swift`：把任意 `[DatedDouble]` 拦腰分两半算均值环比，输出 ↑/↓ + 百分比胶囊；体重/静息心率开 `lowerIsBetter` 翻转配色（下降=绿、上升=红）；`DashboardCard` 重构 `titleAccessory: String?` → `accessory: () -> some View` 通用槽位 | 卡片右上角 vs 前期对比 |
+| 6 | 6 张卡片全部插入对应 `TrendChip`；`DietCardData` 新增 `last7Days` 字段（来自 `meal_records` 7 日按日合计） | 卡片视觉信息密度+1 |
+
+**新增/修改文件**
+- 新文件：`UI/Dashboard/Cards/TrendChip.swift`
+- 改动：
+  - `UI/Dashboard/Cards/DashboardCard.swift`（accessory 泛型槽位）
+  - `UI/Dashboard/Cards/ActivityCard.swift` / `HeartCard.swift` / `SleepCard.swift` / `BodyCard.swift` / `DietCard.swift` / `DeficitCard.swift`（accessory 插入 TrendChip）
+  - `UI/Dashboard/DashboardData.swift`（`DietCardData.last7Days` + meal 7 日聚合 + `loadDietSeries` + `loadDeficitSeries` + `fillAndBucket`/`bucketStatic`）
+  - `UI/Dashboard/Detail/MetricDetailView.swift`（Source enum + inspectedDate + chartOverlay drag + 选中态摘要）
+  - `UI/Dashboard/DashboardView.swift`（MetricRoute.diet / .deficit 真映射）
+
+**编译验证**
+```
+xcodegen generate
+xcodebuild ... → ** BUILD SUCCEEDED **
+```
+0 errors / 0 warnings（除 AppIntents 系统提示）。
+
+**功能验证（待用户实测）**
+1. 摘要页：每张卡右上角看到 ↑/↓ 百分比胶囊（体重/心率绿=好、橙=差；其他色按指标主题）。数据少于 4 天的卡片不显示胶囊。
+2. 点饮食卡片：详情页显示「饮食热量」周/月/年柱图；点缺口卡片显示「热量缺口」详情，正负值通过 `%+.0f` 标注。
+3. 任意详情页：用手指在图表上拖动 → 选中天的虚线 + 高亮点 + 顶部「选中 · M月D日 · 数值」；双击图表空白处清除选中；切周/月/年自动清除。

@@ -11,6 +11,7 @@ struct MetricDetailView: View {
     @State private var period: MetricPeriod = .week
     @State private var points: [MetricPoint] = []
     @State private var loadError: String?
+    @State private var inspectedDate: Date?
 
     var body: some View {
         ScrollView {
@@ -32,7 +33,10 @@ struct MetricDetailView: View {
         }
         .navigationTitle(config.title)
         .navigationBarTitleDisplayMode(.large)
-        .task(id: period) { await load() }
+        .task(id: period) {
+            inspectedDate = nil
+            await load()
+        }
     }
 
     // MARK: - Sections
@@ -48,24 +52,48 @@ struct MetricDetailView: View {
 
     private var summaryHeader: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(headerLabel)
+            Text(inspectedLabel ?? headerLabel)
                 .font(.caption)
                 .foregroundStyle(.secondary)
             HStack(alignment: .firstTextBaseline, spacing: 4) {
-                Text(headerValue)
+                Text(displayValue)
                     .font(.system(size: 34, weight: .bold, design: .rounded))
                     .foregroundStyle(config.theme.primary)
                     .monospacedDigit()
-                if !headerValue.contains("—"), let unit = config.unit {
+                if !displayValue.contains("—"), let unit = config.unit {
                     Text(unit)
                         .font(.callout.weight(.semibold))
                         .foregroundStyle(.secondary)
                 }
             }
-            Text(periodRangeLabel)
+            Text(inspectedDateLabel ?? periodRangeLabel)
                 .font(.caption2)
                 .foregroundStyle(.secondary)
         }
+    }
+
+    private var inspectedLabel: String? {
+        inspectedDate == nil ? nil : "选中"
+    }
+
+    private var inspectedDateLabel: String? {
+        guard let d = inspectedDate else { return nil }
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "zh_CN")
+        f.dateFormat = period == .year ? "yyyy年 第w周" : "M月d日 EEEE"
+        return f.string(from: d)
+    }
+
+    private var displayValue: String {
+        if let d = inspectedDate, let p = nearestPoint(to: d), let v = p.value {
+            return config.format(v)
+        }
+        return headerValue
+    }
+
+    private func nearestPoint(to date: Date) -> MetricPoint? {
+        guard !points.isEmpty else { return nil }
+        return points.min(by: { abs($0.date.timeIntervalSince(date)) < abs($1.date.timeIntervalSince(date)) })
     }
 
     @ViewBuilder
@@ -90,6 +118,8 @@ struct MetricDetailView: View {
             guard let v = p.value else { return nil }
             return (p.date, v)
         }
+        let inspected = inspectedDate.flatMap { nearestPoint(to: $0) }
+
         Chart {
             ForEach(plotPoints, id: \.0) { item in
                 switch config.chartStyle {
@@ -128,10 +158,24 @@ struct MetricDetailView: View {
                     .interpolationMethod(.catmullRom)
                 }
             }
+
+            // Inspector marks: drawn on top so they're always visible.
+            if let inspected, let v = inspected.value {
+                RuleMark(x: .value("日期", inspected.date, unit: .day))
+                    .foregroundStyle(.secondary.opacity(0.5))
+                    .lineStyle(StrokeStyle(lineWidth: 1, dash: [3, 3]))
+                PointMark(
+                    x: .value("日期", inspected.date, unit: .day),
+                    y: .value(config.title, v)
+                )
+                .foregroundStyle(config.theme.primary)
+                .symbolSize(120)
+                .symbol(.circle)
+            }
         }
         .chartYScale(domain: yDomain)
         .chartXAxis {
-            AxisMarks(values: .automatic(desiredCount: period == .year ? 6 : 5)) { value in
+            AxisMarks(values: .automatic(desiredCount: period == .year ? 6 : 5)) { _ in
                 AxisGridLine()
                 AxisValueLabel(format: xAxisFormat, centered: false)
                     .font(.system(size: 10))
@@ -141,6 +185,33 @@ struct MetricDetailView: View {
             AxisMarks(values: .automatic(desiredCount: 4)) { _ in
                 AxisGridLine().foregroundStyle(.quaternary)
                 AxisValueLabel().font(.system(size: 10))
+            }
+        }
+        .chartOverlay { proxy in
+            GeometryReader { geo in
+                Rectangle()
+                    .fill(.clear)
+                    .contentShape(Rectangle())
+                    .gesture(
+                        DragGesture(minimumDistance: 0)
+                            .onChanged { drag in
+                                let plotFrame: CGRect = {
+                                    if let anchor = proxy.plotFrame {
+                                        return geo[anchor]
+                                    }
+                                    return geo.frame(in: .local)
+                                }()
+                                let relativeX = drag.location.x - plotFrame.origin.x
+                                if let d: Date = proxy.value(atX: relativeX) {
+                                    inspectedDate = d
+                                }
+                            }
+                            .onEnded { _ in
+                                // Keep the inspection sticky so users can read the value;
+                                // tapping elsewhere or switching period clears it via .task(id:).
+                            }
+                    )
+                    .onTapGesture(count: 2) { inspectedDate = nil }
             }
         }
     }
@@ -231,12 +302,20 @@ struct MetricDetailView: View {
     private func load() async {
         do {
             let loader = DashboardLoader(database: environment.database)
-            let pts = try await loader.loadSeries(
-                table: config.table,
-                column: config.column,
-                period: period,
-                aggregation: config.aggregation
-            )
+            let pts: [MetricPoint]
+            switch config.source {
+            case .tableColumn(let table, let column, let aggregation):
+                pts = try await loader.loadSeries(
+                    table: table,
+                    column: column,
+                    period: period,
+                    aggregation: aggregation
+                )
+            case .diet:
+                pts = try await loader.loadDietSeries(period: period)
+            case .deficit:
+                pts = try await loader.loadDeficitSeries(period: period)
+            }
             await MainActor.run {
                 self.points = pts
                 self.loadError = nil
@@ -254,15 +333,21 @@ struct MetricDetailView: View {
 struct MetricDetailConfig {
     enum Summary { case latest, average, total }
     enum ChartStyle { case bar, line, area }
+    /// Where this detail page reads its series from. `tableColumn` covers everything
+    /// that's already projected into `activity_metrics_daily` / `body_metrics_daily`;
+    /// `diet` / `deficit` are derived from `meal_records` and need bespoke SQL.
+    enum Source {
+        case tableColumn(String, String, SeriesAggregation)
+        case diet
+        case deficit
+    }
 
     let title: String
     let unit: String?
-    let table: String
-    let column: String
+    let source: Source
     let theme: CardTheme
     let chartStyle: ChartStyle
     let summary: Summary
-    let aggregation: SeriesAggregation
     /// Free-text caption shown under the chart (definition, source notes).
     let footnote: String
     /// Closure that turns a double value into its display string.
@@ -271,12 +356,10 @@ struct MetricDetailConfig {
     static let weight = MetricDetailConfig(
         title: "体重",
         unit: "kg",
-        table: "body_metrics_daily",
-        column: "weight_kg",
+        source: .tableColumn("body_metrics_daily", "weight_kg", .latest),
         theme: .body,
         chartStyle: .area,
         summary: .latest,
-        aggregation: .latest,
         footnote: "数据来自 Apple 健康 · 每日记录最后一次称重；年视图为周均值。",
         format: { String(format: "%.1f", $0) }
     )
@@ -284,12 +367,10 @@ struct MetricDetailConfig {
     static let bodyFat = MetricDetailConfig(
         title: "体脂率",
         unit: "%",
-        table: "body_metrics_daily",
-        column: "body_fat_pct",
+        source: .tableColumn("body_metrics_daily", "body_fat_pct", .latest),
         theme: .body,
         chartStyle: .area,
         summary: .latest,
-        aggregation: .latest,
         footnote: "数据来自 Apple 健康 · 体脂率换算为百分比展示。",
         format: { String(format: "%.1f", $0 * 100) }
     )
@@ -297,12 +378,10 @@ struct MetricDetailConfig {
     static let steps = MetricDetailConfig(
         title: "步数",
         unit: "步",
-        table: "activity_metrics_daily",
-        column: "step_count",
+        source: .tableColumn("activity_metrics_daily", "step_count", .sum),
         theme: .activity,
         chartStyle: .bar,
         summary: .total,
-        aggregation: .sum,
         footnote: "Apple 健康每日步数汇总；月/年视图按桶累计或按周均值。",
         format: { String(format: "%.0f", $0) }
     )
@@ -310,12 +389,10 @@ struct MetricDetailConfig {
     static let activeKcal = MetricDetailConfig(
         title: "活动能量",
         unit: "kcal",
-        table: "activity_metrics_daily",
-        column: "active_energy_kcal",
+        source: .tableColumn("activity_metrics_daily", "active_energy_kcal", .sum),
         theme: .activity,
         chartStyle: .bar,
         summary: .total,
-        aggregation: .sum,
         footnote: "Apple 健康每日活动能量（不含基础代谢）。",
         format: { String(format: "%.0f", $0) }
     )
@@ -323,12 +400,10 @@ struct MetricDetailConfig {
     static let restingHR = MetricDetailConfig(
         title: "静息心率",
         unit: "bpm",
-        table: "activity_metrics_daily",
-        column: "resting_hr_bpm",
+        source: .tableColumn("activity_metrics_daily", "resting_hr_bpm", .average),
         theme: .heart,
         chartStyle: .line,
         summary: .latest,
-        aggregation: .average,
         footnote: "Apple 健康静息心率（多源时取均值）。",
         format: { String(format: "%.0f", $0) }
     )
@@ -336,12 +411,10 @@ struct MetricDetailConfig {
     static let hrv = MetricDetailConfig(
         title: "心率变异性",
         unit: "ms",
-        table: "activity_metrics_daily",
-        column: "hrv_ms",
+        source: .tableColumn("activity_metrics_daily", "hrv_ms", .average),
         theme: .heart,
         chartStyle: .line,
         summary: .average,
-        aggregation: .average,
         footnote: "HKHeartRateVariabilitySDNN · 越高一般代表恢复越好。",
         format: { String(format: "%.0f", $0) }
     )
@@ -349,12 +422,10 @@ struct MetricDetailConfig {
     static let sleep = MetricDetailConfig(
         title: "睡眠",
         unit: "小时",
-        table: "activity_metrics_daily",
-        column: "sleep_seconds",
+        source: .tableColumn("activity_metrics_daily", "sleep_seconds", .average),
         theme: .sleep,
         chartStyle: .bar,
         summary: .average,
-        aggregation: .average,
         footnote: "汇总每晚 Asleep 状态时长（不含 inBed）。",
         format: { (v: Double) in String(format: "%.1f", v / 3600.0) }
     )
@@ -362,12 +433,10 @@ struct MetricDetailConfig {
     static let exercise = MetricDetailConfig(
         title: "锻炼时长",
         unit: "分钟",
-        table: "activity_metrics_daily",
-        column: "exercise_minutes",
+        source: .tableColumn("activity_metrics_daily", "exercise_minutes", .sum),
         theme: .activity,
         chartStyle: .bar,
         summary: .total,
-        aggregation: .sum,
         footnote: "Apple 健康 Apple Exercise Time。",
         format: { String(format: "%.0f", $0) }
     )
@@ -375,13 +444,33 @@ struct MetricDetailConfig {
     static let distance = MetricDetailConfig(
         title: "距离",
         unit: "公里",
-        table: "activity_metrics_daily",
-        column: "distance_m",
+        source: .tableColumn("activity_metrics_daily", "distance_m", .sum),
         theme: .activity,
         chartStyle: .bar,
         summary: .total,
-        aggregation: .sum,
         footnote: "步行 + 跑步距离合计。",
         format: { String(format: "%.2f", $0 / 1000) }
+    )
+
+    static let diet = MetricDetailConfig(
+        title: "饮食热量",
+        unit: "kcal",
+        source: .diet,
+        theme: .diet,
+        chartStyle: .bar,
+        summary: .average,
+        footnote: "按日合计的 meal_records.calories_kcal · 年视图为周均。",
+        format: { String(format: "%.0f", $0) }
+    )
+
+    static let deficit = MetricDetailConfig(
+        title: "热量缺口",
+        unit: "kcal",
+        source: .deficit,
+        theme: .deficit,
+        chartStyle: .bar,
+        summary: .average,
+        footnote: "缺口 = 活动能量 + 基础代谢 − 摄入 · 正值代表赤字。",
+        format: { String(format: "%+.0f", $0) }
     )
 }

@@ -2,22 +2,22 @@ import SwiftUI
 
 /// Container for a dashboard tile. Matches the visual rhythm of Apple Health's摘要 cards:
 /// rounded rectangle, colored icon, bold title, content area with metric + sparkline.
-struct DashboardCard<Content: View>: View {
+struct DashboardCard<Accessory: View, Content: View>: View {
     let theme: CardTheme
     let icon: String
     let title: String
-    let titleAccessory: String?
+    @ViewBuilder var accessory: () -> Accessory
     @ViewBuilder var content: () -> Content
 
     init(theme: CardTheme,
          icon: String,
          title: String,
-         titleAccessory: String? = nil,
+         @ViewBuilder accessory: @escaping () -> Accessory = { EmptyView() },
          @ViewBuilder content: @escaping () -> Content) {
         self.theme = theme
         self.icon = icon
         self.title = title
-        self.titleAccessory = titleAccessory
+        self.accessory = accessory
         self.content = content
     }
 
@@ -31,11 +31,7 @@ struct DashboardCard<Content: View>: View {
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(theme.primary)
                 Spacer(minLength: 4)
-                if let acc = titleAccessory {
-                    Text(acc)
-                        .font(.system(size: 10))
-                        .foregroundStyle(.secondary)
-                }
+                accessory()
             }
 
             content()

@@ -5,7 +5,10 @@ struct DietCard: View {
     let data: DietCardData
 
     var body: some View {
-        DashboardCard(theme: .diet, icon: "fork.knife", title: "今日饮食") {
+        DashboardCard(
+            theme: .diet, icon: "fork.knife", title: "今日饮食",
+            accessory: { TrendChip(series: data.last7Days, theme: .diet) }
+        ) {
             CardMetric(
                 value: data.todayCalories > 0 ? String(format: "%.0f", data.todayCalories) : "—",
                 unit: data.todayCalories > 0 ? "kcal" : nil,

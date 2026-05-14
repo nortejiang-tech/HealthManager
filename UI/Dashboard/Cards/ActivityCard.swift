@@ -5,7 +5,10 @@ struct ActivityCard: View {
     let data: ActivityCardData
 
     var body: some View {
-        DashboardCard(theme: .activity, icon: "figure.walk", title: "活动") {
+        DashboardCard(
+            theme: .activity, icon: "figure.walk", title: "活动",
+            accessory: { TrendChip(series: data.last7Days, theme: .activity) }
+        ) {
             CardMetric(
                 value: data.todaySteps.map { "\($0)" } ?? "—",
                 unit: "步",

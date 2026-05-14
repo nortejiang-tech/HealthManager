@@ -5,7 +5,10 @@ struct SleepCard: View {
     let data: SleepCardData
 
     var body: some View {
-        DashboardCard(theme: .sleep, icon: "bed.double.fill", title: "睡眠") {
+        DashboardCard(
+            theme: .sleep, icon: "bed.double.fill", title: "睡眠",
+            accessory: { TrendChip(series: data.last7Days, theme: .sleep) }
+        ) {
             if let hours = data.lastNightHours, hours > 0 {
                 CardMetric(value: formatHours(hours), unit: nil, theme: .sleep)
             } else {

@@ -136,15 +136,8 @@ enum MetricRoute: Hashable {
         case .bodyFat: return .bodyFat
         case .exercise: return .exercise
         case .distance: return .distance
-        case .diet:
-            // Diet lives in meal_records, not the daily projection tables.
-            // We still surface the calories series via the per-day activity table fallback;
-            // until a meal_daily table is introduced, show the active kcal view as a proxy.
-            return .activeKcal
-        case .deficit:
-            // Deficit is derived (active+basal − intake). For the detail page we surface the
-            // active-kcal trend as the closest readily-available proxy.
-            return .activeKcal
+        case .diet: return .diet
+        case .deficit: return .deficit
         }
     }
 }

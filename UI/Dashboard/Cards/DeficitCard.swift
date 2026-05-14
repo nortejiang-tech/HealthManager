@@ -5,7 +5,10 @@ struct DeficitCard: View {
     let data: DeficitCardData
 
     var body: some View {
-        DashboardCard(theme: .deficit, icon: "flame.fill", title: "热量缺口") {
+        DashboardCard(
+            theme: .deficit, icon: "flame.fill", title: "热量缺口",
+            accessory: { TrendChip(series: data.last7Days, theme: .deficit) }
+        ) {
             if let d = data.todayDeficit {
                 CardMetric(
                     value: String(format: "%+.0f", d),

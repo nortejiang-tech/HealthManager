@@ -5,7 +5,10 @@ struct HeartCard: View {
     let data: HeartCardData
 
     var body: some View {
-        DashboardCard(theme: .heart, icon: "heart.fill", title: "心率") {
+        DashboardCard(
+            theme: .heart, icon: "heart.fill", title: "心率",
+            accessory: { TrendChip(series: data.last7Days, lowerIsBetter: true, theme: .heart) }
+        ) {
             if let hr = data.todayRestingHR {
                 CardMetric(value: String(format: "%.0f", hr), unit: "bpm", theme: .heart)
                 Text("静息")

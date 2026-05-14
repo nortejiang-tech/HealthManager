@@ -5,7 +5,10 @@ struct BodyCard: View {
     let data: BodyCardData
 
     var body: some View {
-        DashboardCard(theme: .body, icon: "figure.arms.open", title: "体重 / 体成分") {
+        DashboardCard(
+            theme: .body, icon: "figure.arms.open", title: "体重 / 体成分",
+            accessory: { TrendChip(series: data.last30Days, lowerIsBetter: true, theme: .body) }
+        ) {
             if let w = data.latestWeight {
                 CardMetric(value: String(format: "%.1f", w), unit: "kg", theme: .body)
             } else {

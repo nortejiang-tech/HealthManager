@@ -97,6 +97,7 @@ struct DietCardData: Sendable, Equatable {
     var todayFat: Double = 0
     var todayCarbs: Double = 0
     var meals: [MealRow] = []
+    var last7Days: [DatedDouble] = []
 
     struct MealRow: Sendable, Equatable, Identifiable {
         let id: Int64
@@ -239,6 +240,22 @@ struct DashboardLoader {
                 ))
             }
 
+            // -- diet 7d series (per-day total kcal) --
+            let dietStart = Int64(last7Cutoff.timeIntervalSince1970)
+            let dietEnd = todayDayEnd
+            let dietRows = try Row.fetchAll(db, sql: """
+                SELECT strftime('%Y-%m-%d', datetime(eaten_at, 'unixepoch', 'localtime')) AS d,
+                       SUM(COALESCE(calories_kcal, 0)) AS kcal
+                FROM meal_records
+                WHERE eaten_at >= ? AND eaten_at < ?
+                GROUP BY d
+                ORDER BY d ASC
+                """, arguments: [dietStart, dietEnd])
+            snap.diet.last7Days = dietRows.compactMap { r in
+                guard let s: String = r["d"], let d = Self.dateKey.date(from: s) else { return nil }
+                return DatedDouble(date: d, value: r["kcal"] ?? 0)
+            }
+
             // -- deficit (active + basal − intake) for today + last 7 --
             if let actRow = try Row.fetchOne(db, sql: """
                 SELECT active_energy_kcal, basal_energy_kcal
@@ -299,6 +316,97 @@ struct DashboardLoader {
             points = bucket(points: points, bucketDays: period.bucketDays, aggregation: aggregation)
         }
         return points
+    }
+
+    /// Per-day diet calories, padded to the full window with `nil` values on missing days.
+    func loadDietSeries(period: MetricPeriod) async throws -> [MetricPoint] {
+        let cal = Calendar.current
+        let todayStart = cal.startOfDay(for: Date())
+        guard let cutoff = cal.date(byAdding: .day, value: -(period.days - 1), to: todayStart) else {
+            return []
+        }
+        let from = Int64(cutoff.timeIntervalSince1970)
+        let toExclusive = Int64(todayStart.timeIntervalSince1970) + 86_400
+
+        let raw: [DatedDouble] = try await database.asyncRead { db in
+            let rows = try Row.fetchAll(db, sql: """
+                SELECT strftime('%Y-%m-%d', datetime(eaten_at, 'unixepoch', 'localtime')) AS d,
+                       SUM(COALESCE(calories_kcal, 0)) AS kcal
+                FROM meal_records
+                WHERE eaten_at >= ? AND eaten_at < ?
+                GROUP BY d
+                ORDER BY d ASC
+                """, arguments: [from, toExclusive])
+            return rows.compactMap { row in
+                guard let s: String = row["d"], let d = Self.dateKey.date(from: s) else { return nil }
+                return DatedDouble(date: d, value: row["kcal"] ?? 0)
+            }
+        }
+        return Self.fillAndBucket(raw, period: period, aggregation: .sum)
+    }
+
+    /// Per-day deficit (active + basal − intake), padded to the full window.
+    /// Returns `nil` on a day when there's neither activity nor intake (to keep the chart sparse).
+    func loadDeficitSeries(period: MetricPeriod) async throws -> [MetricPoint] {
+        let cal = Calendar.current
+        let todayStart = cal.startOfDay(for: Date())
+        guard let cutoff = cal.date(byAdding: .day, value: -(period.days - 1), to: todayStart) else {
+            return []
+        }
+        let fromKey = Self.dateKey.string(from: cutoff)
+        let toKey = Self.dateKey.string(from: todayStart)
+
+        let raw: [DatedDouble] = try await database.asyncRead { db in
+            try Self.deficitSeries(db, fromKey: fromKey, toKey: toKey)
+        }
+        return Self.fillAndBucket(raw, period: period, aggregation: .average)
+    }
+
+    // MARK: - Window fill helpers
+
+    static func fillAndBucket(_ raw: [DatedDouble], period: MetricPeriod,
+                              aggregation: SeriesAggregation) -> [MetricPoint] {
+        let cal = Calendar.current
+        let todayStart = cal.startOfDay(for: Date())
+        var byDate: [Date: Double] = [:]
+        for r in raw { byDate[cal.startOfDay(for: r.date)] = r.value }
+        var points: [MetricPoint] = []
+        for offset in 0..<period.days {
+            guard let d = cal.date(byAdding: .day, value: -(period.days - 1 - offset), to: todayStart) else { continue }
+            points.append(MetricPoint(date: d, value: byDate[cal.startOfDay(for: d)]))
+        }
+        if period.bucketDays > 1 {
+            points = bucketStatic(points: points, bucketDays: period.bucketDays, aggregation: aggregation)
+        }
+        return points
+    }
+
+    static func bucketStatic(points: [MetricPoint], bucketDays: Int,
+                             aggregation: SeriesAggregation) -> [MetricPoint] {
+        var buckets: [[MetricPoint]] = []
+        var current: [MetricPoint] = []
+        for (i, p) in points.enumerated() {
+            current.append(p)
+            if current.count == bucketDays || i == points.count - 1 {
+                buckets.append(current)
+                current = []
+            }
+        }
+        return buckets.map { group in
+            let values = group.compactMap { $0.value }
+            let value: Double?
+            if values.isEmpty {
+                value = nil
+            } else {
+                switch aggregation {
+                case .sum: value = values.reduce(0, +)
+                case .average: value = values.reduce(0, +) / Double(values.count)
+                case .latest: value = values.last
+                }
+            }
+            let midpoint = group[group.count / 2].date
+            return MetricPoint(date: midpoint, value: value)
+        }
     }
 
     // MARK: - SQL helpers
