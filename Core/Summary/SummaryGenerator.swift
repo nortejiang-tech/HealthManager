@@ -373,6 +373,64 @@ actor SummaryGenerator {
         return Generated(text: lines.joined(separator: "\n"), findings: findings, qualityScore: qScore)
     }
 
+    // MARK: - LLM augmentation
+
+    /// Calls the configured LLM with the deterministic summary text as user content,
+    /// writes the response back into `daily_summaries.llm_text` (and model/timestamp).
+    /// Returns the LLM commentary or throws.
+    /// No-op (returns nil) if LLM not configured or disabled.
+    @discardableResult
+    func augmentDailyWithLLM(for date: String) async throws -> String? {
+        guard LLMConfig.enabled, let client = LLMClient(fromConfig: true) else { return nil }
+
+        // Read the existing summary text — that's what gets sent to the LLM (privacy-bounded).
+        let baseText: String? = try database.read { db in
+            try DailySummary.fetchOne(db, key: date)?.summaryText
+        }
+        guard let baseText, !baseText.isEmpty else { return nil }
+
+        let commentary = try await client.complete(
+            systemPrompt: LLMClient.summarySystemPrompt,
+            user: baseText
+        )
+        let now = Int64(Date().timeIntervalSince1970)
+        let model = client.model
+        try database.write { db in
+            try db.execute(sql: """
+                UPDATE daily_summaries
+                SET llm_text = ?, llm_model = ?, llm_generated_at = ?
+                WHERE date = ?
+                """, arguments: [commentary, model, now, date])
+        }
+        return commentary
+    }
+
+    /// Same as `augmentDailyWithLLM` but for the weekly summary.
+    @discardableResult
+    func augmentWeeklyWithLLM(weekStart: String) async throws -> String? {
+        guard LLMConfig.enabled, let client = LLMClient(fromConfig: true) else { return nil }
+
+        let baseText: String? = try database.read { db in
+            try WeeklySummary.fetchOne(db, key: weekStart)?.summaryText
+        }
+        guard let baseText, !baseText.isEmpty else { return nil }
+
+        let commentary = try await client.complete(
+            systemPrompt: LLMClient.summarySystemPrompt,
+            user: baseText
+        )
+        let now = Int64(Date().timeIntervalSince1970)
+        let model = client.model
+        try database.write { db in
+            try db.execute(sql: """
+                UPDATE weekly_summaries
+                SET llm_text = ?, llm_model = ?, llm_generated_at = ?
+                WHERE week_start_date = ?
+                """, arguments: [commentary, model, now, weekStart])
+        }
+        return commentary
+    }
+
     // MARK: - Helpers
 
     private func jsonString(_ dict: [String: AnyHashable]) throws -> String? {

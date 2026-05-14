@@ -174,6 +174,7 @@ struct MealEditView: View {
     @State private var savedPhotoPath: String?
     @State private var suggestions: [MealImageClassifier.Suggestion] = []
     @State private var isClassifying: Bool = false
+    @State private var showingCamera: Bool = false
 
     var body: some View {
         NavigationStack {
@@ -194,11 +195,22 @@ struct MealEditView: View {
                             .frame(maxHeight: 200)
                             .clipShape(RoundedRectangle(cornerRadius: 10))
                     }
-                    PhotosPicker(
-                        selection: $pickedPhoto,
-                        matching: .images,
-                        photoLibrary: .shared()
-                    ) {
+                    Menu {
+                        if CameraPicker.isCameraAvailable {
+                            Button {
+                                showingCamera = true
+                            } label: {
+                                Label("拍照", systemImage: "camera.fill")
+                            }
+                        }
+                        PhotosPicker(
+                            selection: $pickedPhoto,
+                            matching: .images,
+                            photoLibrary: .shared()
+                        ) {
+                            Label("从相册选择", systemImage: "photo.on.rectangle")
+                        }
+                    } label: {
                         Label(previewImage == nil ? "添加照片" : "更换照片", systemImage: "camera")
                     }
                     if previewImage != nil {
@@ -271,12 +283,38 @@ struct MealEditView: View {
                 guard let newItem else { return }
                 Task { await loadPicked(newItem) }
             }
+            .fullScreenCover(isPresented: $showingCamera) {
+                CameraPicker(
+                    onImage: { img in
+                        showingCamera = false
+                        Task { await ingestCapturedImage(img) }
+                    },
+                    onCancel: { showingCamera = false }
+                )
+                .ignoresSafeArea()
+            }
         }
     }
 
     private func loadPicked(_ item: PhotosPickerItem) async {
         guard let data = try? await item.loadTransferable(type: Data.self),
               let img = UIImage(data: data) else { return }
+        let saved = MealPhotoStore.shared.save(image: img)
+        await MainActor.run {
+            previewImage = img
+            savedPhotoPath = saved
+            isClassifying = true
+            suggestions = []
+        }
+        let s = await MealImageClassifier.classify(image: img)
+        await MainActor.run {
+            suggestions = s
+            isClassifying = false
+        }
+    }
+
+    /// Shared post-capture pipeline used by both PhotosPicker and CameraPicker.
+    private func ingestCapturedImage(_ img: UIImage) async {
         let saved = MealPhotoStore.shared.save(image: img)
         await MainActor.run {
             previewImage = img

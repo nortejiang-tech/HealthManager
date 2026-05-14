@@ -9,6 +9,9 @@ struct DailySummary: Codable, FetchableRecord, PersistableRecord, Identifiable, 
     var keyFindingsJson: String?
     var qualityScore: Double?
     var generatedAt: Int64
+    var llmText: String?
+    var llmModel: String?
+    var llmGeneratedAt: Int64?
 
     var id: String { date }
 
@@ -18,6 +21,9 @@ struct DailySummary: Codable, FetchableRecord, PersistableRecord, Identifiable, 
         case keyFindingsJson = "key_findings_json"
         case qualityScore = "quality_score"
         case generatedAt = "generated_at"
+        case llmText = "llm_text"
+        case llmModel = "llm_model"
+        case llmGeneratedAt = "llm_generated_at"
     }
 }
 
@@ -29,6 +35,9 @@ struct WeeklySummary: Codable, FetchableRecord, PersistableRecord, Identifiable,
     var findingsJson: String?
     var qualityScore: Double?
     var generatedAt: Int64
+    var llmText: String?
+    var llmModel: String?
+    var llmGeneratedAt: Int64?
 
     var id: String { weekStartDate }
 
@@ -38,5 +47,8 @@ struct WeeklySummary: Codable, FetchableRecord, PersistableRecord, Identifiable,
         case findingsJson = "findings_json"
         case qualityScore = "quality_score"
         case generatedAt = "generated_at"
+        case llmText = "llm_text"
+        case llmModel = "llm_model"
+        case llmGeneratedAt = "llm_generated_at"
     }
 }

@@ -633,3 +633,107 @@ xcodebuild -scheme HealthManager test
 删除
   Resources/Logo-source.png
 ```
+
+---
+
+## V4 自主交付 — 2026-05-15
+
+V3 之后第三轮。用户指示：(1) 接 LLM API（国内 OpenAI 兼容接口）；(2) 加相机直接拍摄；(3) 不开发 iPad 版，专注 iPhone。
+
+**完成**
+
+### 1. 撤回 iPad 支持
+- `project.yml`: `TARGETED_DEVICE_FAMILY` 1,2 → 1；移除 `UISupportedInterfaceOrientations~ipad`。
+- iPhone 行为完全不变。
+
+### 2. 相机直接拍摄
+- `UI/Diet/CameraPicker`: `UIViewControllerRepresentable` 包 `UIImagePickerController(.camera)`；`onImage` / `onCancel` 回调；`isCameraAvailable` 静态方法兜底无相机设备（如 Simulator）。
+- `MealEditView`: 「添加照片」改成 `Menu`，菜单 = 拍照（仅设备支持时）+ 从相册选择；`.fullScreenCover` 承载 CameraPicker。
+- 两个入口共用 `ingestCapturedImage(_)` 后处理：MealPhotoStore.save → Vision classify → suggestion chip。
+- `NSCameraUsageDescription` Round 1 就在 Info.plist 里，无需新增。
+
+### 3. LLM 三件套：Config + Client + UI 表单
+
+#### Core/LLM/LLMConfig
+- 分层存储：
+  - **UserDefaults**：`baseURL` / `model` / `enabled`（默认 true）
+  - **Keychain**（`kSecClassGenericPassword` + `kSecAttrAccessibleAfterFirstUnlock`）：`apiKey`
+  - 测试环境 Keychain 写失败时**自动 fallback 到 UserDefaults**（`llm.apiKey.fallback`）。日志会写 OSStatus；生产环境签名后走 Keychain。
+- `isConfigured`: 三件齐了才算配置完成。
+- 5 个预设（DeepSeek / 豆包 / Qwen / GLM / Moonshot），各自 baseURL + 建议模型。
+- `reset()` 一键清空。
+
+#### Core/LLM/LLMClient
+- `URLSession.shared`，POST `{baseURL}/chat/completions`，Bearer auth，`Content-Type: application/json`。
+- 非流式：daily summary 200 字以内，1-shot 足够；如需流式后续 swap 成 SSE。
+- 共用 `summarySystemPrompt`：要求 80-120 字中文分析 + 1 条建议 + 「不做诊断」。
+- `LLMError`: invalidURL / httpStatus(code, body) / decode / noContent。
+- `init?(fromConfig:)` 便利构造。
+
+#### v3 migration: daily_summaries + weekly_summaries +llm_text/llm_model/llm_generated_at
+- 三列 nullable，老行迁移无损。
+
+#### SummaryGenerator
+- `augmentDailyWithLLM(for:)` / `augmentWeeklyWithLLM(weekStart:)`：
+  - 读现有 `summary_text` 作为 user content → LLM → UPDATE llm_text/model/generated_at。
+  - **隐私边界**：上传给 LLM 的只有「已经聚合过的本地摘要文本」，原始样本 / source / device 一律不出本地。
+  - 配置缺失返回 nil，不抛错。
+
+#### UI/Settings/LLMSettingsView
+- 总开关 Toggle、5 个 preset 一键填、3 个字段（Base URL / model / API Key 都是 monospaced）、测试连接按钮（ping → 显示 LLM 回复或错误）、清除全部按钮（含 Keychain）。
+- Footer 明确告知数据上传范围 + Keychain 不随 DB 导出。
+
+#### UI/Summary/SummaryView
+- 日报 / 周报每段下方有 `AI 评注` 卡片：紫色背景 + sparkles 图标 + ↻ 重新生成按钮。
+- 未配置时显示「尚未配置」+ 上方独立 section 显示「配置 AI 摘要接口」NavigationLink。
+- 「重新生成日报 + 周报」按钮：本地生成成功后，若已配置 LLM，自动 trigger 日报+周报 augment（默认开启）。
+- 错误显示在最下 section（红色，textSelection 可复制）。
+
+#### SettingsView 入口
+- 新「智能分析」section → NavigationLink 「AI 摘要」+ 三态 label（已配置 / 未配置 / 已关闭）。
+
+### 4. 单元测试（50 → 61）
+新增 `Tests/LLMTests` × 11：
+- enabled 默认 true
+- isConfigured false/true 边界
+- apiKey Keychain round-trip（fallback path 也走通）
+- apiKey nil 清空
+- reset 全清
+- presets 含 DeepSeek/Doubao/Qwen
+- ChatRequest JSON 包含 model/role/temperature/stream
+- LLMClient.init?(fromConfig:) nil/non-nil
+- summarySystemPrompt 非空 + 含「健康」关键词
+
+test target 加 `TEST_HOST` + `BUNDLE_LOADER`，让 unit test 跑在 host app context 里——Keychain 操作的前置条件。
+
+**未做（留 v5）**
+- LLM 流式输出（SSE）：当前 1-shot 摘要场景延迟可接受
+- LLM 给的建议自动转 reminder / 健康目标
+- 多轮对话「问健康助手」聊天页
+
+**编译 & 测试验证**
+```
+xcodebuild -target HealthManager  → BUILD SUCCEEDED
+xcodebuild -scheme HealthManager test
+  Unit: Executed 61 tests, 0 failures (0.17s)
+  UI:   Executed  1 test,  0 failures (24.6s)
+```
+
+**新增 / 修改文件**
+```
+新文件
+  UI/Diet/CameraPicker.swift
+  Core/LLM/LLMConfig.swift
+  Core/LLM/LLMClient.swift
+  UI/Settings/LLMSettingsView.swift
+  Tests/LLMTests.swift
+
+修改
+  project.yml                                (-iPad; +TEST_HOST/BUNDLE_LOADER)
+  Core/Database/Migrations.swift              (+ v3_add_llm_text)
+  Core/Database/Models/DailySummary.swift     (+ llmText/llmModel/llmGeneratedAt × 日周)
+  Core/Summary/SummaryGenerator.swift          (+ augmentDailyWithLLM / augmentWeeklyWithLLM)
+  UI/Diet/DietView.swift                       (Menu 拍照/相册 + fullScreenCover)
+  UI/Settings/SettingsView.swift               (+ 智能分析 section)
+  UI/Summary/SummaryView.swift                 (重写：AI 评注 block + 自动 augment + 错误显示)
+```

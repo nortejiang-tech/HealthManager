@@ -117,6 +117,24 @@ struct SettingsView: View {
                 Text("修改后立即生效，下次「立即对账」按新阈值执行。核心指标固定为 体重/步数/心率/睡眠。")
             }
 
+            Section {
+                NavigationLink {
+                    LLMSettingsView()
+                } label: {
+                    HStack {
+                        Label("AI 摘要", systemImage: "sparkles")
+                        Spacer()
+                        Text(llmStatusLabel)
+                            .foregroundStyle(.secondary)
+                            .font(.footnote)
+                    }
+                }
+            } header: {
+                Text("智能分析")
+            } footer: {
+                Text("配置 OpenAI 兼容接口（DeepSeek / 豆包 / Qwen / GLM / Moonshot 等），由 LLM 基于本地聚合摘要生成中文评注。")
+            }
+
             Section("通知") {
                 LabeledContent("用药提醒授权", value: notifStatusLabel)
                 if notifStatus == .denied {
@@ -193,6 +211,12 @@ struct SettingsView: View {
             }
             Button("取消", role: .cancel) {}
         }
+    }
+
+    private var llmStatusLabel: String {
+        if !LLMConfig.enabled { return "已关闭" }
+        if LLMConfig.isConfigured { return "已配置" }
+        return "未配置"
     }
 
     private var notifStatusLabel: String {
