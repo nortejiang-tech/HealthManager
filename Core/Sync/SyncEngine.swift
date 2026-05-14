@@ -68,6 +68,9 @@ final class SyncEngine: ObservableObject {
         defer { isBusy = false }
 
         do {
+            // After a previous run the machine sits at .completed / .failed (terminal). Reset
+            // so the next .startBackfill is a legal transition from .idle.
+            try? stateMachine.handle(.reset)
             try stateMachine.handle(.startBackfill)
             phase = stateMachine.phase
 
@@ -106,6 +109,7 @@ final class SyncEngine: ObservableObject {
         defer { isBusy = false }
 
         do {
+            try? stateMachine.handle(.reset)
             try stateMachine.handle(.startIncremental)
             phase = stateMachine.phase
             progressDescription = "增量同步中…"
@@ -159,6 +163,7 @@ final class SyncEngine: ObservableObject {
         }
 
         do {
+            try? stateMachine.handle(.reset)
             try stateMachine.handle(.startManual)
             phase = stateMachine.phase
             progressDescription = "手动同步：第 1 次拉取…"
