@@ -55,6 +55,9 @@ final class SyncEngine: ObservableObject {
 
     @Published private(set) var isReconciling: Bool = false
     @Published private(set) var lastReconcileOutcome: DailyReconciler.Outcome?
+    /// Bumps every time DailyAggregator finishes (sync-triggered or bootstrap catch-up).
+    /// Dashboard observes this to re-fetch the projection tables.
+    @Published private(set) var aggregationTick: Int = 0
 
     init(database: DatabaseManager, healthKitManager: HealthKitManager) {
         self.database = database
@@ -90,6 +93,7 @@ final class SyncEngine: ObservableObject {
             // Refresh per-day rollups so Dashboard cards have data immediately.
             // Failures here don't roll back the sync — log and continue.
             try? await dailyAggregator.rebuild(daysBack: max(days, 30))
+            aggregationTick &+= 1
             progressDescription = "回补完成：共 \(result.totalSamples) 条样本。"
         } catch {
             try? stateMachine.handle(.fail)
@@ -132,6 +136,7 @@ final class SyncEngine: ObservableObject {
 
             lastResult = result
             try? await dailyAggregator.rebuild(daysBack: 7)
+            aggregationTick &+= 1
             progressDescription = result.succeeded
                 ? "增量同步完成：本轮新增 \(result.totalSamples) 条。"
                 : "增量同步失败：\(result.errorMessage ?? "未知错误")"
@@ -189,6 +194,7 @@ final class SyncEngine: ObservableObject {
 
             lastResult = result
             try? await dailyAggregator.rebuild(daysBack: 7)
+            aggregationTick &+= 1
             progressDescription = result.succeeded
                 ? "手动同步完成：共新增 \(result.totalSamples) 条。"
                 : "手动同步失败：\(result.errorMessage ?? "未知错误")"
@@ -258,6 +264,17 @@ final class SyncEngine: ObservableObject {
             AppLogger.shared.sync.error("runReconcile failed: \(error.localizedDescription, privacy: .public)")
             progressDescription = "对账失败：\(error.localizedDescription)"
         }
+    }
+
+    // MARK: - Aggregation catch-up
+
+    /// One-shot aggregator pass for the dashboard's projection tables. Called from
+    /// `AppEnvironment.bootstrap` when raw data exists but the daily tables are empty
+    /// (e.g. user upgraded from a build that didn't run `DailyAggregator`). Bumps
+    /// `aggregationTick` so observers re-fetch.
+    func runCatchUpAggregation(windowDays: Int) async {
+        try? await dailyAggregator.rebuild(daysBack: windowDays)
+        aggregationTick &+= 1
     }
 
     // MARK: - Reset

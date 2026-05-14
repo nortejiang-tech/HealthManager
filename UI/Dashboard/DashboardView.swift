@@ -1,175 +1,201 @@
 import SwiftUI
-import GRDB
 
+/// Apple Health 风格摘要页：hero header + 2 列 6 卡片 + 详情页（周/月/年）。
+/// 所有 DB 查询通过 `DatabaseManager.asyncRead` 走后台执行器，不阻塞主线程。
 struct DashboardView: View {
     @EnvironmentObject private var environment: AppEnvironment
     @EnvironmentObject private var sync: SyncEngine
 
-    @State private var rawSampleCount: Int = 0
-    @State private var lastIngest: Date?
-    @State private var todayQuality: DataQualityDaily?
-    @State private var unackAlertCount: Int = 0
-    @State private var criticalAlertCount: Int = 0
+    @State private var snapshot: DashboardSnapshot = DashboardSnapshot()
+    @State private var loadError: String?
+    @State private var isLoading: Bool = true
+    @State private var showAlerts: Bool = false
+    @State private var showQuality: Bool = false
+    @State private var metricPath: [MetricRoute] = []
+
+    private let cardGrid: [GridItem] = [
+        GridItem(.flexible(), spacing: 12),
+        GridItem(.flexible(), spacing: 12)
+    ]
 
     var body: some View {
-        NavigationStack {
-            List {
-                Section("今日数据质量") {
-                    if let q = todayQuality {
-                        QualityScoreRow(label: "完整度", value: q.completenessScore)
-                        QualityScoreRow(label: "新鲜度", value: q.freshnessScore)
-                        QualityScoreRow(label: "冲突度（越高越好）", value: q.conflictScore)
-                        if let missingJson = q.missingMetricsJson,
-                           let missing = Self.decodeStringArray(missingJson),
-                           !missing.isEmpty {
-                            Text("缺失：\(missing.map(DailyReconciler.humanLabel(for:)).joined(separator: "、"))")
-                                .font(.footnote)
-                                .foregroundStyle(.orange)
+        NavigationStack(path: $metricPath) {
+            ScrollView {
+                VStack(spacing: 14) {
+                    HeroHeader(
+                        snapshot: snapshot,
+                        onAlertsTap: { showAlerts = true },
+                        onQualityTap: { showQuality = true },
+                        onMetricTap: { metricPath.append($0) }
+                    )
+
+                    LazyVGrid(columns: cardGrid, spacing: 12) {
+                        NavigationLink(value: MetricRoute.steps) {
+                            ActivityCard(data: snapshot.activity)
                         }
-                    } else {
-                        Text("尚未生成对账数据。先跑一次同步与对账。")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
+                        .buttonStyle(.plain)
+
+                        NavigationLink(value: MetricRoute.restingHR) {
+                            HeartCard(data: snapshot.heart)
+                        }
+                        .buttonStyle(.plain)
+
+                        NavigationLink(value: MetricRoute.sleep) {
+                            SleepCard(data: snapshot.sleep)
+                        }
+                        .buttonStyle(.plain)
+
+                        NavigationLink(value: MetricRoute.weight) {
+                            BodyCard(data: snapshot.body_)
+                        }
+                        .buttonStyle(.plain)
+
+                        NavigationLink(value: MetricRoute.diet) {
+                            DietCard(data: snapshot.diet)
+                        }
+                        .buttonStyle(.plain)
+
+                        NavigationLink(value: MetricRoute.deficit) {
+                            DeficitCard(data: snapshot.deficit)
+                        }
+                        .buttonStyle(.plain)
                     }
-                }
+                    .padding(.horizontal, 12)
 
-                Section("数据采集") {
-                    LabeledContent("原始样本累计", value: "\(rawSampleCount)")
-                    LabeledContent("最近写入时间", value: lastIngest.map { Self.formatter.string(from: $0) } ?? "—")
-                }
+                    if let err = loadError {
+                        Text(err)
+                            .font(.footnote)
+                            .foregroundStyle(.red)
+                            .padding(.horizontal, 16)
+                    }
 
-                Section("告警") {
+                    moreMetricsSection
+                        .padding(.horizontal, 12)
+                        .padding(.top, 8)
+
                     NavigationLink {
-                        AlertsView()
+                        DataQualityDetailView()
                     } label: {
                         HStack {
-                            Image(systemName: criticalAlertCount > 0
-                                  ? "exclamationmark.triangle.fill"
-                                  : (unackAlertCount > 0 ? "exclamationmark.circle" : "checkmark.circle"))
-                                .foregroundStyle(criticalAlertCount > 0 ? .red : (unackAlertCount > 0 ? .orange : .green))
-                            Text("待处理告警")
+                            Image(systemName: "list.bullet.rectangle")
+                            Text("数据质量 / 同步明细 / 报告")
                             Spacer()
-                            if unackAlertCount > 0 {
-                                Text("\(unackAlertCount)")
-                                    .font(.footnote.bold())
-                                    .foregroundStyle(.white)
-                                    .padding(.horizontal, 8).padding(.vertical, 2)
-                                    .background(criticalAlertCount > 0 ? Color.red : Color.orange, in: Capsule())
-                            } else {
-                                Text("无").foregroundStyle(.secondary).font(.footnote)
-                            }
+                            Image(systemName: "chevron.right")
+                                .foregroundStyle(.tertiary)
                         }
+                        .font(.subheadline)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 12)
+                        .frame(maxWidth: .infinity)
+                        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                     }
-                }
+                    .buttonStyle(.plain)
+                    .padding(.horizontal, 12)
+                    .padding(.top, 4)
 
-                Section("分析") {
-                    NavigationLink {
-                        SummaryView()
-                    } label: {
-                        Label("日报 / 周报", systemImage: "doc.text")
-                    }
+                    Spacer(minLength: 24)
                 }
-
-                Section("最近同步") {
-                    if let result = sync.lastResult {
-                        LabeledContent("作业类型", value: result.jobType.rawValue)
-                        LabeledContent("结果", value: result.succeeded ? "成功" : "失败")
-                        LabeledContent("样本数", value: "\(result.totalSamples)")
-                        LabeledContent("耗时", value: String(format: "%.1fs", result.endedAt.timeIntervalSince(result.startedAt)))
-                        if let err = result.errorMessage {
-                            Text(err).foregroundStyle(.red)
-                        }
-                    } else {
-                        Text("尚无同步记录").foregroundStyle(.secondary)
-                    }
-                }
+                .padding(.bottom, 16)
             }
-            .navigationTitle("仪表盘")
+            .navigationTitle("摘要")
+            .navigationDestination(for: MetricRoute.self) { route in
+                MetricDetailView(config: route.config)
+            }
+            .navigationDestination(isPresented: $showAlerts) { AlertsView() }
+            .navigationDestination(isPresented: $showQuality) { DataQualityDetailView() }
             .refreshable { await refresh() }
             .task { await refresh() }
+            .onChange(of: sync.aggregationTick) { _, _ in
+                Task { await refresh() }
+            }
+            .onChange(of: sync.lastResult) { _, _ in
+                Task { await refresh() }
+            }
         }
     }
 
-    private static let formatter: DateFormatter = {
-        let f = DateFormatter()
-        f.dateStyle = .short
-        f.timeStyle = .short
-        return f
-    }()
+    @ViewBuilder
+    private var moreMetricsSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("更多指标")
+                .font(.system(.subheadline, design: .rounded).weight(.semibold))
+                .foregroundStyle(.secondary)
+                .padding(.leading, 4)
 
-    private static let dateKeyFormatter: DateFormatter = {
-        let f = DateFormatter()
-        f.dateFormat = "yyyy-MM-dd"
-        f.timeZone = .current
-        f.locale = Locale(identifier: "en_US_POSIX")
-        return f
-    }()
+            VStack(spacing: 0) {
+                moreMetricRow(route: .activeKcal, icon: "flame.fill", tint: CardTheme.activity.primary, title: "活动能量")
+                Divider().padding(.leading, 44)
+                moreMetricRow(route: .exercise, icon: "stopwatch.fill", tint: CardTheme.activity.primary, title: "锻炼时长")
+                Divider().padding(.leading, 44)
+                moreMetricRow(route: .distance, icon: "figure.walk.motion", tint: CardTheme.activity.primary, title: "距离")
+                Divider().padding(.leading, 44)
+                moreMetricRow(route: .hrv, icon: "waveform.path.ecg", tint: CardTheme.heart.primary, title: "心率变异性")
+                Divider().padding(.leading, 44)
+                moreMetricRow(route: .bodyFat, icon: "figure", tint: CardTheme.body.primary, title: "体脂率")
+            }
+            .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        }
+    }
 
-    private static func decodeStringArray(_ json: String) -> [String]? {
-        guard let data = json.data(using: .utf8) else { return nil }
-        return try? JSONSerialization.jsonObject(with: data) as? [String]
+    @ViewBuilder
+    private func moreMetricRow(route: MetricRoute, icon: String, tint: Color, title: String) -> some View {
+        NavigationLink(value: route) {
+            HStack(spacing: 12) {
+                Image(systemName: icon)
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(tint)
+                    .frame(width: 24, height: 24)
+                    .background(tint.opacity(0.12), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+                Text(title)
+                    .font(.subheadline)
+                    .foregroundStyle(.primary)
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.caption.bold())
+                    .foregroundStyle(.tertiary)
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 11)
+        }
+        .buttonStyle(.plain)
     }
 
     private func refresh() async {
+        isLoading = true
+        defer { isLoading = false }
         do {
-            let today = Self.dateKeyFormatter.string(from: Date())
-            let snapshot = try await environment.database.asyncRead { db -> DashboardSnapshot in
-                let total = try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM health_samples_raw WHERE is_deleted = 0") ?? 0
-                let maxIngested = try Int64.fetchOne(db, sql: "SELECT MAX(ingested_at) FROM health_samples_raw")
-                let date = maxIngested.map { Date(timeIntervalSince1970: TimeInterval($0)) }
-                let quality = try DataQualityDaily.fetchOne(db, key: today)
-                let unackCount = try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM missing_data_alerts WHERE acknowledged = 0") ?? 0
-                let critCount = try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM missing_data_alerts WHERE acknowledged = 0 AND severity = 'critical'") ?? 0
-                return DashboardSnapshot(
-                    rawSampleCount: total,
-                    lastIngest: date,
-                    todayQuality: quality,
-                    unackAlertCount: unackCount,
-                    criticalAlertCount: critCount
-                )
-            }
+            let loader = DashboardLoader(database: environment.database)
+            let snap = try await loader.loadSnapshot()
             await MainActor.run {
-                rawSampleCount = snapshot.rawSampleCount
-                lastIngest = snapshot.lastIngest
-                todayQuality = snapshot.todayQuality
-                unackAlertCount = snapshot.unackAlertCount
-                criticalAlertCount = snapshot.criticalAlertCount
+                self.snapshot = snap
+                self.loadError = nil
             }
         } catch {
+            await MainActor.run {
+                self.loadError = "加载失败：\(error.localizedDescription)"
+            }
             AppLogger.shared.error("Dashboard refresh failed: \(error.localizedDescription)")
         }
     }
 }
 
-private struct DashboardSnapshot: Sendable {
-    let rawSampleCount: Int
-    let lastIngest: Date?
-    let todayQuality: DataQualityDaily?
-    let unackAlertCount: Int
-    let criticalAlertCount: Int
-}
+/// Routes for each card → detail screen.
+enum MetricRoute: Hashable {
+    case steps, activeKcal, restingHR, hrv, sleep, weight, bodyFat, diet, deficit, exercise, distance
 
-private struct QualityScoreRow: View {
-    let label: String
-    let value: Double?
-
-    var body: some View {
-        HStack {
-            Text(label)
-            Spacer()
-            if let v = value {
-                Text(String(format: "%.0f%%", v * 100))
-                    .foregroundStyle(color(for: v))
-                    .font(.body.monospacedDigit())
-            } else {
-                Text("—").foregroundStyle(.secondary)
-            }
+    var config: MetricDetailConfig {
+        switch self {
+        case .steps: return .steps
+        case .activeKcal: return .activeKcal
+        case .restingHR: return .restingHR
+        case .hrv: return .hrv
+        case .sleep: return .sleep
+        case .weight: return .weight
+        case .bodyFat: return .bodyFat
+        case .exercise: return .exercise
+        case .distance: return .distance
+        case .diet: return .diet
+        case .deficit: return .deficit
         }
-    }
-
-    private func color(for v: Double) -> Color {
-        if v >= 0.8 { return .green }
-        if v >= 0.5 { return .orange }
-        return .red
     }
 }
