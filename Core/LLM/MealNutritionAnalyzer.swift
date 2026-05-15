@@ -13,15 +13,28 @@ import UIKit
 /// The parser is permissive: strip fences, find the first `{`...`}` block, then decode.
 enum MealNutritionAnalyzer {
 
-    struct Estimate: Codable, Equatable {
-        let name: String
-        let calories_kcal: Double?
-        let protein_g: Double?
-        let fat_g: Double?
-        let carbs_g: Double?
-        let confidence: String?
+    /// A single identified food item in a meal photo.
+    struct Item: Codable, Equatable {
+        var name: String
+        var grams: Double?
+        var calories_kcal: Double?
+        var protein_g: Double?
+        var fat_g: Double?
+        var carbs_g: Double?
+    }
+
+    /// Multi-item estimate. The model is asked to break a photo into one item per
+    /// dish/food so the user can edit grams per item and re-scale macros locally.
+    struct Estimate: Equatable {
+        var items: [Item]
+        var confidence: String?
         /// Free-form note from the model (e.g. "图片模糊，估算偏保守"). Optional.
-        let note: String?
+        var note: String?
+
+        var totalCalories: Double { items.compactMap(\.calories_kcal).reduce(0, +) }
+        var totalProtein: Double { items.compactMap(\.protein_g).reduce(0, +) }
+        var totalFat: Double { items.compactMap(\.fat_g).reduce(0, +) }
+        var totalCarbs: Double { items.compactMap(\.carbs_g).reduce(0, +) }
     }
 
     enum AnalyzeError: LocalizedError {
@@ -43,25 +56,50 @@ enum MealNutritionAnalyzer {
 
     static let systemPrompt: String = """
     你是营养估算助手。用户会提供一张餐食照片。请：
-    1. 识别主要食物
-    2. 估算整餐的总热量（kcal）、蛋白质（g）、脂肪（g）、碳水（g）
+    1. 把图片中的每一种食物或菜品识别出来，每种作为 items 数组的一项
+    2. 对每一项估算：name（中文菜名）、grams（份量，克）、calories_kcal、protein_g、fat_g、carbs_g
     3. 输出严格的 JSON，不要包裹在 markdown code block 里，也不要任何额外文字
-    4. JSON schema：{"name": "中文菜名", "calories_kcal": 数字, "protein_g": 数字, "fat_g": 数字, "carbs_g": 数字, "confidence": "low/medium/high", "note": "可选备注"}
-    5. 如果图片不像食物，name 写「无法识别」、所有数字置 0、confidence 写 "low"、note 写明原因
-    6. 估算保守一些，宁可偏低不要夸大
+    4. JSON schema：
+       {
+         "items": [
+           {"name": "米饭", "grams": 200, "calories_kcal": 260, "protein_g": 5, "fat_g": 0.6, "carbs_g": 58},
+           {"name": "炒青菜", "grams": 150, "calories_kcal": 60, "protein_g": 3, "fat_g": 4, "carbs_g": 4}
+         ],
+         "confidence": "low/medium/high",
+         "note": "可选备注"
+       }
+    5. 每个 item 都必须给出 name 和 grams；macros 也尽量给出
+    6. 如果图片不像食物，items 写空数组 []、confidence 写 "low"、note 写明原因
+    7. 估算保守一些，宁可偏低不要夸大
+    8. 严格要求：禁止输出 Python / JavaScript 代码、函数定义、print 语句、注释或 import；禁止使用单引号 / None / True / False。字符串必须双引号，布尔小写 true/false，空值写 null。只输出一个 JSON 对象字面量，从 { 开始到 } 结束。
     """
 
     /// Analyze a meal image and return a structured estimate.
     /// `LLMConfig.isVisionConfigured` must be true.
-    static func analyze(image: UIImage) async throws -> Estimate {
+    ///
+    /// - Parameter userHint: Optional correction from the user (e.g. "其实是豆浆和鸡蛋").
+    ///   When present, this is fed back to the model so it can recompute macros that
+    ///   match what the user said the food actually is, not what it visually guessed.
+    static func analyze(image: UIImage, userHint: String? = nil) async throws -> Estimate {
         guard let client = LLMClient.visionClient() else {
             throw AnalyzeError.notConfigured
         }
+        let prompt: String = {
+            let hint = userHint?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            if hint.isEmpty {
+                return "请估算这餐的营养，按 items 数组列出每种食物。仅返回 JSON。"
+            }
+            return """
+            用户已经修正了识别结果：图片中实际上是「\(hint)」。
+            请以用户的描述为准（你之前的视觉识别可能有误），把这些食物分别作为 items 数组的项目，
+            按用户给出的份量（如有）估算每一项的 grams 和 macros。仅返回 JSON。
+            """
+        }()
         let raw: String
         do {
             raw = try await client.analyzeImage(
                 image,
-                prompt: "请估算这餐的营养。仅返回 JSON。",
+                prompt: prompt,
                 systemPrompt: systemPrompt,
                 temperature: 0.1
             )
@@ -74,11 +112,11 @@ enum MealNutritionAnalyzer {
     /// Best-effort JSON extractor:
     /// 1. Strip ```json / ``` fences if present
     /// 2. Trim to the first `{`…last `}` substring
-    /// 3. Decode
+    /// 3. Try strict JSON; on failure, retry after a Python-dict→JSON relaxation pass.
     static func parse(_ raw: String) throws -> Estimate {
         var s = raw.trimmingCharacters(in: .whitespacesAndNewlines)
 
-        // Strip ``` fences (with or without "json" lang tag).
+        // Strip ``` fences (with or without "json" / "python" / etc. lang tag).
         if s.hasPrefix("```") {
             // remove opening fence line
             if let nl = s.firstIndex(of: "\n") {
@@ -90,21 +128,179 @@ enum MealNutritionAnalyzer {
             s = s.trimmingCharacters(in: .whitespacesAndNewlines)
         }
 
-        // Fall back to first-`{`…last-`}` if there's surrounding chatter.
+        // Fall back to first-`{`…last-`}` if there's surrounding chatter or code.
         if let openIdx = s.firstIndex(of: "{"),
            let closeIdx = s.lastIndex(of: "}"),
            openIdx <= closeIdx {
             s = String(s[openIdx...closeIdx])
         }
 
-        guard let data = s.data(using: .utf8) else {
-            throw AnalyzeError.parseFailure(rawSnippet: String(raw.prefix(200)))
+        let decoder = JSONDecoder()
+
+        // 1. Strict pass.
+        if let data = s.data(using: .utf8),
+           let est = try? decoder.decode(Estimate.self, from: data) {
+            return est
         }
-        do {
-            let decoder = JSONDecoder()
-            return try decoder.decode(Estimate.self, from: data)
-        } catch {
-            throw AnalyzeError.parseFailure(rawSnippet: String(raw.prefix(200)))
+
+        // 2. Relaxed pass — accommodate GLM-4V-Flash returning Python dict literals:
+        //    single quotes, None/True/False, trailing commas, leading `result = ` etc.
+        let relaxed = relaxPythonDict(s)
+        if let data = relaxed.data(using: .utf8),
+           let est = try? decoder.decode(Estimate.self, from: data) {
+            return est
         }
+
+        throw AnalyzeError.parseFailure(rawSnippet: String(raw.prefix(200)))
+    }
+
+    /// Convert a Python-flavored dict literal into something JSONDecoder accepts.
+    /// Best-effort only — used as a fallback when the strict parser fails. We deliberately
+    /// keep this conservative: only transform tokens *outside* of double-quoted strings,
+    /// so we don't mangle Chinese characters that contain ASCII punctuation in them.
+    static func relaxPythonDict(_ input: String) -> String {
+        var out = ""
+        out.reserveCapacity(input.count)
+
+        var inDoubleQuote = false
+        var inSingleQuote = false
+        var prev: Character = " "
+
+        var i = input.startIndex
+        while i < input.endIndex {
+            let c = input[i]
+
+            if inDoubleQuote {
+                out.append(c)
+                if c == "\"" && prev != "\\" { inDoubleQuote = false }
+                prev = c
+                i = input.index(after: i)
+                continue
+            }
+
+            if inSingleQuote {
+                // Translate inside-single-quote contents into a double-quoted string.
+                if c == "'" && prev != "\\" {
+                    out.append("\"")
+                    inSingleQuote = false
+                } else if c == "\"" {
+                    // Escape any embedded literal double quotes.
+                    out.append("\\\"")
+                } else {
+                    out.append(c)
+                }
+                prev = c
+                i = input.index(after: i)
+                continue
+            }
+
+            // Not in any string. Look for opening single quote → convert to double quote.
+            if c == "'" {
+                out.append("\"")
+                inSingleQuote = true
+                prev = c
+                i = input.index(after: i)
+                continue
+            }
+
+            // Translate Python None / True / False as standalone tokens (basic word boundary).
+            if c == "N" || c == "T" || c == "F" {
+                let tail = input[i...]
+                if let replaced = matchPythonLiteral(tail) {
+                    out.append(replaced.replacement)
+                    i = input.index(i, offsetBy: replaced.length)
+                    prev = " "
+                    continue
+                }
+            }
+
+            // Drop trailing commas before } or ] which strict JSON forbids.
+            if c == "," {
+                var j = input.index(after: i)
+                while j < input.endIndex, input[j].isWhitespace { j = input.index(after: j) }
+                if j < input.endIndex, input[j] == "}" || input[j] == "]" {
+                    // Skip this comma.
+                    prev = c
+                    i = input.index(after: i)
+                    continue
+                }
+            }
+
+            out.append(c)
+            if c == "\"" { inDoubleQuote = true }
+            prev = c
+            i = input.index(after: i)
+        }
+        return out
+    }
+
+    /// Detect `None`, `True`, or `False` at the start of `slice` followed by a
+    /// non-identifier character (so we don't mangle `Noodle` or `Truffle`).
+    private static func matchPythonLiteral(_ slice: Substring) -> (replacement: String, length: Int)? {
+        let candidates: [(String, String)] = [
+            ("None", "null"),
+            ("True", "true"),
+            ("False", "false")
+        ]
+        for (token, replacement) in candidates {
+            if slice.hasPrefix(token) {
+                let afterIdx = slice.index(slice.startIndex, offsetBy: token.count)
+                let nextIsBoundary: Bool
+                if afterIdx >= slice.endIndex {
+                    nextIsBoundary = true
+                } else {
+                    let next = slice[afterIdx]
+                    nextIsBoundary = !(next.isLetter || next.isNumber || next == "_")
+                }
+                if nextIsBoundary {
+                    return (replacement, token.count)
+                }
+            }
+        }
+        return nil
+    }
+}
+
+// MARK: - Estimate Codable (with v5 single-dish backward compatibility)
+//
+// The v6 schema is `{"items": [...], "confidence": ..., "note": ...}` but v5 returned
+// `{"name": ..., "calories_kcal": ..., ...}` (a single aggregate object). Tests and any
+// older cached responses still produce the v5 shape, so we accept both: if `items` is
+// missing we wrap the top-level fields as a single Item.
+
+extension MealNutritionAnalyzer.Estimate: Codable {
+    enum CodingKeys: String, CodingKey {
+        case items, confidence, note
+        // Legacy v5 keys at top level
+        case name, grams, calories_kcal, protein_g, fat_g, carbs_g
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.confidence = try c.decodeIfPresent(String.self, forKey: .confidence)
+        self.note = try c.decodeIfPresent(String.self, forKey: .note)
+
+        if let arr = try c.decodeIfPresent([MealNutritionAnalyzer.Item].self, forKey: .items) {
+            self.items = arr
+        } else if let legacyName = try c.decodeIfPresent(String.self, forKey: .name) {
+            // Wrap v5 single-dish payload as a one-item array.
+            self.items = [MealNutritionAnalyzer.Item(
+                name: legacyName,
+                grams: try c.decodeIfPresent(Double.self, forKey: .grams),
+                calories_kcal: try c.decodeIfPresent(Double.self, forKey: .calories_kcal),
+                protein_g: try c.decodeIfPresent(Double.self, forKey: .protein_g),
+                fat_g: try c.decodeIfPresent(Double.self, forKey: .fat_g),
+                carbs_g: try c.decodeIfPresent(Double.self, forKey: .carbs_g)
+            )]
+        } else {
+            self.items = []
+        }
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(items, forKey: .items)
+        try c.encodeIfPresent(confidence, forKey: .confidence)
+        try c.encodeIfPresent(note, forKey: .note)
     }
 }

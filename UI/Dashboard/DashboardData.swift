@@ -88,6 +88,7 @@ struct BodyCardData: Sendable, Equatable {
     var latestWeight: Double?
     var latestBodyFatPct: Double?
     var latestLeanMass: Double?
+    var latestBmi: Double?
     var last30Days: [DatedDouble] = []  // weight kg
 }
 
@@ -200,14 +201,25 @@ struct DashboardLoader {
 
             // -- body (latest + 30d) --
             if let row = try Row.fetchOne(db, sql: """
-                SELECT weight_kg, body_fat_pct, lean_mass_kg
+                SELECT weight_kg, body_fat_pct, lean_mass_kg, bmi
                 FROM body_metrics_daily
-                WHERE weight_kg IS NOT NULL OR body_fat_pct IS NOT NULL
+                WHERE weight_kg IS NOT NULL OR body_fat_pct IS NOT NULL OR bmi IS NOT NULL
                 ORDER BY date DESC LIMIT 1
                 """) {
                 snap.body_.latestWeight = row["weight_kg"]
                 snap.body_.latestBodyFatPct = row["body_fat_pct"]
                 snap.body_.latestLeanMass = row["lean_mass_kg"]
+                snap.body_.latestBmi = row["bmi"]
+            }
+            // BMI may live on a different day than weight, so back-fill from the
+            // most recent BMI row if the latest weight-row had no BMI.
+            if snap.body_.latestBmi == nil,
+               let bmiRow = try Row.fetchOne(db, sql: """
+                   SELECT bmi FROM body_metrics_daily
+                   WHERE bmi IS NOT NULL
+                   ORDER BY date DESC LIMIT 1
+                   """) {
+                snap.body_.latestBmi = bmiRow["bmi"]
             }
             snap.body_.last30Days = try Self.dailyValues(
                 db, column: "weight_kg", table: "body_metrics_daily",
@@ -343,6 +355,53 @@ struct DashboardLoader {
             }
         }
         return Self.fillAndBucket(raw, period: period, aggregation: .sum)
+    }
+
+    /// Per-day breakdown of the deficit calculation. Used by the detail view when a
+    /// single day is selected: shows the user how 缺口 = 基础代谢 + 活动消耗 − 摄入.
+    /// All four values are kcal; `deficit` is the same number rendered on the chart.
+    struct DeficitBreakdown: Equatable {
+        let date: Date
+        let basal: Double?     // basal_energy_kcal (基础代谢)
+        let active: Double?    // active_energy_kcal (活动消耗)
+        let intake: Double?    // SUM(meal_records.calories_kcal) over the local day
+        var deficit: Double {
+            (active ?? 0) + (basal ?? 0) - (intake ?? 0)
+        }
+    }
+
+    /// Look up the breakdown for a single local day. Returns nil if neither activity
+    /// nor intake exists (matches the chart-side sparsity rule).
+    func loadDeficitBreakdown(for date: Date) async throws -> DeficitBreakdown? {
+        let cal = Calendar.current
+        let day = cal.startOfDay(for: date)
+        let key = Self.dateKey.string(from: day)
+
+        return try await database.asyncRead { db in
+            let actRow = try Row.fetchOne(db, sql: """
+                SELECT active_energy_kcal, basal_energy_kcal
+                FROM activity_metrics_daily
+                WHERE date = ?
+                """, arguments: [key])
+            let intakeRow = try Row.fetchOne(db, sql: """
+                SELECT SUM(COALESCE(calories_kcal, 0)) AS intake
+                FROM meal_records
+                WHERE strftime('%Y-%m-%d', datetime(eaten_at, 'unixepoch', 'localtime')) = ?
+                """, arguments: [key])
+
+            let basal: Double? = actRow?["basal_energy_kcal"]
+            let active: Double? = actRow?["active_energy_kcal"]
+            let intake: Double? = {
+                let v: Double? = intakeRow?["intake"]
+                // SUM with no rows returns NULL → nil; SUM with rows but all-NULL → 0.
+                return (v ?? 0) > 0 ? v : nil
+            }()
+
+            if basal == nil && active == nil && intake == nil {
+                return nil
+            }
+            return DeficitBreakdown(date: day, basal: basal, active: active, intake: intake)
+        }
     }
 
     /// Per-day deficit (active + basal − intake), padded to the full window.

@@ -15,6 +15,17 @@ struct MealRecord: Codable, FetchableRecord, MutablePersistableRecord, Identifia
             case .snack: return "加餐"
             }
         }
+
+        /// Pick a sensible default meal kind based on wall-clock hour.
+        static func suggested(for date: Date = Date(),
+                              calendar: Calendar = .current) -> MealType {
+            switch calendar.component(.hour, from: date) {
+            case 4..<10: return .breakfast
+            case 10..<14: return .lunch
+            case 17..<22: return .dinner
+            default: return .snack
+            }
+        }
     }
 
     var id: Int64?

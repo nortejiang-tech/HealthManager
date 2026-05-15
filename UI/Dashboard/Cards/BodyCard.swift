@@ -15,11 +15,16 @@ struct BodyCard: View {
                 CardMetric(value: "—", unit: nil)
             }
 
-            if let fat = data.latestBodyFatPct {
-                Text(String(format: "体脂 %.1f%%", fat * 100))
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 1) {
+                if let fat = data.latestBodyFatPct {
+                    Text(String(format: "体脂 %.1f%%", fat * 100))
+                }
+                if let bmi = data.latestBmi {
+                    Text(String(format: "BMI %.1f", bmi))
+                }
             }
+            .font(.caption2)
+            .foregroundStyle(.secondary)
 
             if data.last30Days.count >= 2 {
                 Chart(data.last30Days) { d in

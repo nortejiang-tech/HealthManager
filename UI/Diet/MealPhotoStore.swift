@@ -43,6 +43,13 @@ final class MealPhotoStore {
         }
     }
 
+    /// Loads the full-resolution image for an editor preview.
+    func loadImage(path: String) -> UIImage? {
+        let url = absoluteURL(for: path)
+        guard let data = try? Data(contentsOf: url) else { return nil }
+        return UIImage(data: data)
+    }
+
     /// Loads a 56×56-ish thumbnail for list rows. Cached in-memory.
     func loadThumbnail(path: String) -> UIImage? {
         if let cached = thumbnailCache.object(forKey: path as NSString) { return cached }

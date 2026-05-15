@@ -12,6 +12,7 @@ struct MetricDetailView: View {
     @State private var points: [MetricPoint] = []
     @State private var loadError: String?
     @State private var inspectedDate: Date?
+    @State private var deficitBreakdown: DashboardLoader.DeficitBreakdown?
 
     var body: some View {
         ScrollView {
@@ -24,6 +25,10 @@ struct MetricDetailView: View {
 
                 statsGrid
 
+                if case .deficit = config.source {
+                    deficitBreakdownCard
+                }
+
                 Text(config.footnote)
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
@@ -35,7 +40,11 @@ struct MetricDetailView: View {
         .navigationBarTitleDisplayMode(.large)
         .task(id: period) {
             inspectedDate = nil
+            deficitBreakdown = nil
             await load()
+        }
+        .task(id: inspectedDate) {
+            await loadInspectedBreakdown()
         }
     }
 
@@ -251,6 +260,112 @@ struct MetricDetailView: View {
         }
     }
 
+    /// Breakdown card for the deficit detail view: shows the three numbers that make
+    /// up the selected day's deficit so the user can see how it was computed.
+    ///
+    /// Only meaningful for week / month (per-day granularity). Year view buckets days
+    /// into weekly averages so we hide the breakdown there.
+    @ViewBuilder
+    private var deficitBreakdownCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .firstTextBaseline) {
+                Text("当日明细").font(.subheadline.weight(.semibold))
+                Spacer()
+                if inspectedDate == nil {
+                    Text("点击图表选中某天").font(.caption2).foregroundStyle(.secondary)
+                } else if period == .year {
+                    Text("年视图按周均值，请切换至 周/月").font(.caption2).foregroundStyle(.secondary)
+                } else if let b = deficitBreakdown {
+                    Text(dayLabel(b.date)).font(.caption2).foregroundStyle(.secondary)
+                }
+            }
+
+            if let b = deficitBreakdown, inspectedDate != nil, period != .year {
+                VStack(spacing: 8) {
+                    breakdownRow(
+                        icon: "bed.double.fill",
+                        label: "基础代谢",
+                        value: b.basal,
+                        sign: "+",
+                        tint: .indigo
+                    )
+                    breakdownRow(
+                        icon: "figure.walk",
+                        label: "活动消耗",
+                        value: b.active,
+                        sign: "+",
+                        tint: .orange
+                    )
+                    breakdownRow(
+                        icon: "fork.knife",
+                        label: "饮食摄入",
+                        value: b.intake,
+                        sign: "−",
+                        tint: .green
+                    )
+                    Divider()
+                    HStack {
+                        Text("热量缺口")
+                            .font(.callout.weight(.semibold))
+                        Spacer()
+                        Text(String(format: "%+.0f kcal", b.deficit))
+                            .font(.callout.weight(.semibold).monospacedDigit())
+                            .foregroundStyle(b.deficit >= 0 ? config.theme.primary : .red)
+                    }
+                }
+            } else if inspectedDate != nil, period != .year, deficitBreakdown == nil {
+                Text("当日无明细数据").font(.caption).foregroundStyle(.secondary)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(14)
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+
+    private func breakdownRow(icon: String, label: String, value: Double?,
+                              sign: String, tint: Color) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: icon)
+                .font(.callout)
+                .foregroundStyle(tint)
+                .frame(width: 22)
+            Text(label).font(.callout)
+            Spacer()
+            if let v = value {
+                Text("\(sign)\(Int(v.rounded())) kcal")
+                    .font(.callout.monospacedDigit())
+                    .foregroundStyle(.primary)
+            } else {
+                Text("—")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private func dayLabel(_ d: Date) -> String {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "zh_CN")
+        f.dateFormat = "M月d日 EEEE"
+        return f.string(from: d)
+    }
+
+    private func loadInspectedBreakdown() async {
+        guard case .deficit = config.source else { return }
+        guard let d = inspectedDate, period != .year else {
+            await MainActor.run { deficitBreakdown = nil }
+            return
+        }
+        let target = nearestPoint(to: d)?.date ?? d
+        do {
+            let loader = DashboardLoader(database: environment.database)
+            let b = try await loader.loadDeficitBreakdown(for: target)
+            await MainActor.run { deficitBreakdown = b }
+        } catch {
+            await MainActor.run { deficitBreakdown = nil }
+        }
+    }
+
     private func statCell(label: String, value: Double?) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(label)
@@ -396,6 +511,17 @@ struct MetricDetailConfig {
         summary: .latest,
         footnote: "数据来自 Apple 健康 · 体脂率换算为百分比展示。",
         format: { String(format: "%.1f", $0 * 100) }
+    )
+
+    static let bmi = MetricDetailConfig(
+        title: "BMI",
+        unit: nil,
+        source: .tableColumn("body_metrics_daily", "bmi", .latest),
+        theme: .body,
+        chartStyle: .area,
+        summary: .latest,
+        footnote: "BMI = 体重(kg) / 身高²(m²)。来自 Apple 健康。",
+        format: { String(format: "%.1f", $0) }
     )
 
     static let steps = MetricDetailConfig(
