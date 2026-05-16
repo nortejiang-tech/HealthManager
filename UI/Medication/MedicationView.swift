@@ -120,6 +120,7 @@ struct MedicationView: View {
                 var l = log
                 try l.insert(db)
             }
+            environment.notifyLocalDataChanged()
             await refresh()
         } catch {
             AppLogger.shared.error("Med log failed: \(error.localizedDescription)")
@@ -133,6 +134,7 @@ struct MedicationView: View {
                 _ = try MedicationPlan.deleteOne(db, key: id)
             }
             await NotificationScheduler.shared.removeAll(forPlanId: id)
+            environment.notifyLocalDataChanged()
             await refresh()
         } catch {
             AppLogger.shared.error("Plan delete failed: \(error.localizedDescription)")
@@ -380,7 +382,7 @@ struct MedicationPlanEditView: View {
 
         let scheduleJson: String? = reminderEnabled ? schedule.toJson() : nil
 
-        var plan = MedicationPlan(
+        let plan = MedicationPlan(
             id: planToEdit?.id,
             name: trimmedName,
             dosageMg: Double(dosageMg),
@@ -394,27 +396,30 @@ struct MedicationPlanEditView: View {
         )
 
         do {
-            try await environment.database.asyncWrite { db in
-                if plan.id == nil {
-                    try plan.insert(db)
+            let saved = try await environment.database.asyncWrite { db -> (id: Int64?, dosageMg: Double?) in
+                var stored = plan
+                if stored.id == nil {
+                    try stored.insert(db)
                 } else {
-                    try plan.update(db)
+                    try stored.update(db)
                 }
+                return (stored.id, stored.dosageMg)
             }
 
             // Schedule (or clear) reminders. ID is now known.
-            if let id = plan.id {
+            if let id = saved.id {
                 if reminderEnabled, schedule.isValid {
                     await NotificationScheduler.shared.schedule(
                         planId: id,
                         name: trimmedName,
-                        dosageMg: plan.dosageMg,
+                        dosageMg: saved.dosageMg,
                         schedule: schedule
                     )
                 } else {
                     await NotificationScheduler.shared.removeAll(forPlanId: id)
                 }
             }
+            environment.notifyLocalDataChanged()
         } catch {
             AppLogger.shared.error("Plan save failed: \(error.localizedDescription)")
         }

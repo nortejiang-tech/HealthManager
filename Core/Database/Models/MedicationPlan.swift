@@ -1,10 +1,10 @@
 import Foundation
 import GRDB
 
-struct MedicationPlan: Codable, FetchableRecord, MutablePersistableRecord, Identifiable, Equatable {
+struct MedicationPlan: Codable, FetchableRecord, MutablePersistableRecord, Identifiable, Equatable, Sendable {
     static let databaseTableName = "medication_plans"
 
-    enum Frequency: String, Codable, CaseIterable {
+    enum Frequency: String, Codable, CaseIterable, Sendable {
         case weekly, biweekly, custom
 
         var label: String {

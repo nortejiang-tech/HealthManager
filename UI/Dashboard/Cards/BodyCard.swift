@@ -33,13 +33,13 @@ struct BodyCard: View {
                         y: .value("体重", d.value)
                     )
                     .foregroundStyle(CardTheme.body.gradient)
-                    .interpolationMethod(.catmullRom)
+                    .interpolationMethod(.linear)
                     AreaMark(
                         x: .value("日期", d.date, unit: .day),
                         y: .value("体重", d.value)
                     )
                     .foregroundStyle(CardTheme.body.primary.opacity(0.18))
-                    .interpolationMethod(.catmullRom)
+                    .interpolationMethod(.linear)
                 }
                 .frame(height: 52)
                 .chartXAxis(.hidden)

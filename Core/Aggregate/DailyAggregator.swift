@@ -59,7 +59,7 @@ actor DailyAggregator {
         let snap: DaySnapshot = try database.read { db in
             var d = DaySnapshot()
             d.steps           = try cumulativeSum(db: db, hkType: "HKQuantityTypeIdentifierStepCount", start: s, end: e)
-            d.activeEnergy    = try cumulativeSum(db: db, hkType: "HKQuantityTypeIdentifierActiveEnergyBurned", start: s, end: e)
+            d.activeEnergy    = try ActivityEnergyCalculator.dailyActiveEnergyKcal(db: db, start: s, end: e)
             d.basalEnergy     = try cumulativeSum(db: db, hkType: "HKQuantityTypeIdentifierBasalEnergyBurned", start: s, end: e)
             d.distance        = try cumulativeSum(db: db, hkType: "HKQuantityTypeIdentifierDistanceWalkingRunning", start: s, end: e)
             d.exerciseMinutes = try cumulativeSum(db: db, hkType: "HKQuantityTypeIdentifierAppleExerciseTime", start: s, end: e)
@@ -143,31 +143,7 @@ actor DailyAggregator {
     /// Pick the dominant source for a cumulative type and return only that source's SUM.
     /// Returns 0 when no samples exist.
     private func cumulativeSum(db: Database, hkType: String, start: Int64, end: Int64) throws -> Double {
-        let rows = try Row.fetchAll(db, sql: """
-            SELECT
-                COALESCE(source_bundle_id, 'unknown') AS bid,
-                COALESCE(source_name, '') AS sname,
-                SUM(value) AS s
-            FROM health_samples_raw
-            WHERE hk_type = ?
-              AND is_deleted = 0
-              AND start_at BETWEEN ? AND ?
-            GROUP BY bid
-            """, arguments: [hkType, start, end])
-        var bestSum: Double = 0
-        var bestPriority: Int = -1
-        for r in rows {
-            let bid: String = r["bid"] ?? ""
-            let sname: String = r["sname"] ?? ""
-            let s: Double = r["s"] ?? 0
-            let origin = SourceAttribution.classify(bundleId: bid, sourceName: sname)
-            let p = origin.cumulativePriority
-            if p > bestPriority || (p == bestPriority && s > bestSum) {
-                bestPriority = p
-                bestSum = s
-            }
-        }
-        return bestSum
+        try ActivityEnergyCalculator.cumulativeSum(db: db, hkType: hkType, start: start, end: end)
     }
 
     /// Average across all sources — heart rate / HRV / VO2 are instantaneous, no double-counting.

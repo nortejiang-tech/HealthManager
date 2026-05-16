@@ -1,65 +1,29 @@
 # NEXT_TASK
 
-> V1 已交付（7 个 Round 全部完成）；V2 自主迭代（2026-05-15）完成大部分 v2 候选，见 WORKLOG 末尾「V2 自主交付」节。剩余 v3 候选：
-> 1. 饮食照片 AI 识别（拍照已接通，识别留 v3，需要本地 Vision 或离线模型）
-> 2. 日周报接 LLM（PRD 要求不联网；等用户决策走 Apple Intelligence / 本地 GGUF / 用户提供 key）
-> 3. SourcesView 改读 `health_samples_raw.source_origin`（v2 已落列，UI 层迁移留作清理任务）
-> 4. iPad / Mac Catalyst 适配（当前 `TARGETED_DEVICE_FAMILY=1`）
+> 当前状态：V6 / beta-1 之后，Codex 已完成「活动能量口径 + 活动详情 + 手动活动补录」以及「活动卡片能量化 + 步数 HKStatistics 对齐」修正。`SourcesView` 已读 `health_samples_raw.source_origin`，AI 饮食识别 / LLM 摘要 / 用药通知 / 对账阈值 UI 都已落地，不再列为待办。
 
-## V1 状态
+## 近期优先级
 
-详见 `WORKLOG.md` 末尾「V1 交付摘要」节。简要：
+1. **导航入口整理**
+   - 当前主 tab 仍是 仪表盘 / 饮食 / 用药 / 来源 / 同步中心。
+   - `SummaryView` 入口在「仪表盘 → 数据质量 / 同步明细 / 报告」里，设置入口在同步中心右上角，后续建议重新设计成更自然的一级或二级入口。
 
-- 38 个 Swift 文件，`swiftc -typecheck` 0 errors / 0 warnings
-- PRD F-001 / F-001A / F-002 / F-003 / F-004 / F-005 / F-006 / R-001 全部完成
-- 14 张表（PRD 12 + 2 辅助）全部写入路径打通
-- 5 主 tab + 5 二级页面
+2. **饮食 items 持久化**
+   - 当前 `meal_records` 只存合计 calories/protein/fat/carbs。
+   - AI 估算出来的多菜品 items 仍是编辑期结构；若要编辑已有餐次时保留分项，需要新增迁移（例如 `items_json`）。
 
-## v2 候选（按价值排序）
+3. **睡眠效率**
+   - `sleep_efficiency` 目前仍可能为空。
+   - 要么基于 inBed/asleep 阶段计算效率，要么在 UI 中弱化/隐藏该字段，避免被误读为异常。
 
-### 高价值
-1. **饮食照片 AI 识别**
-   - 用 Vision + 后续接 LLM
-   - `MealRecord.photoPath` 已留位
-   - 暂未实现的 UX：拍照 → 自动识别 calories / macros 草稿 → 用户修正 → 保存
-
-2. **用药系统通知**
-   - `MedicationPlan.reminderEnabled` 已留位
-   - 需要 `UNUserNotificationCenter` 调度 + 推送授权流
-   - `medication_plans.schedule_json` 用来存周几/时间
-
-3. **日周报接 LLM**
-   - 当前 `SummaryGenerator.Generated` 接口与 LLM 输出兼容
-   - 替换 `renderDaily` / `buildWeeklyReport` 内部即可；UI 无需改
-   - 走 Apple Intelligence 或本地 GGUF / Ollama 桥；不要发到云
-
-### 中价值
-4. **对账阈值可编辑**
-   - `DailyReconciler.Config` 改为从 UserDefaults 读
-   - SettingsView 新增「对账」section 让用户调阈值
-
-5. **来源归因落到 raw 行**
-   - 当前 `SourceAttribution.classify` 是查询侧
-   - 写入时同时存归一化 `source_origin` 列到 `health_samples_raw`（v2 migration）
-   - 让 SourcesView 不再依赖动态分类
-
-6. **单元测试**
-   - HKQueryAnchor NSKeyedArchiver 编解码 round-trip
-   - DailyReconciler 三个分数的边界（满分 / 零分 / 中段）
-   - SyncStateMachine 全部 transition
-
-### 低价值
-7. **应用图标 / 启动屏视觉**
-   - 当前 AppIcon/AccentColor 是 xcassets 占位
-
-8. **Mac Catalyst / iPad 适配**
-   - 当前 `TARGETED_DEVICE_FAMILY=1`（仅 iPhone）
-
-9. **设置页打开 Apple Health 深链**
-   - 通过 `URL(string: "x-apple-health://")` 跳到健康 App 让用户改授权
+4. **应用图标 / 视觉收尾**
+   - 当前 AppIcon 已有占位图。
+   - 用户提到过绿蓝渐变圆 + 体脂秤 + 光圈原图，后续可替换正式图标。
 
 ## 工程提醒
-- 任何修改 `Migrations.swift` 已应用迁移都是 ❌；要加新表/列时新增 `v2_*` 迁移
-- 引入新依赖前评估：当前只有 GRDB，包大小可控
-- `xcodegen generate` 在改 `project.yml` / 新增源目录后必跑
-- `swiftc -typecheck` 标准验证命令见 `WORKLOG.md` 末尾
+
+- 任何修改 `Migrations.swift` 已应用迁移都是禁止项；要加表/列时新增 `v?_...` migration。
+- 新增源文件或改 `project.yml` 后必须跑 `xcodegen generate`。
+- 当前依赖只有 GRDB；引入新依赖前先评估包大小和维护成本。
+- API key 绝不进 repo；LLM 配置走 Keychain，模拟器 Keychain 失败时会 fallback 到 UserDefaults。
+- 用户偏好中文沟通、简洁交付、每轮跑 build/test 验证。

@@ -153,6 +153,11 @@ final class HealthKitManager: ObservableObject {
         let newAnchor: HKQueryAnchor?
     }
 
+    struct DailyCumulativeStatistic: Sendable {
+        let startDate: Date
+        let value: Double?
+    }
+
     nonisolated func anchoredFetch(
         for sampleType: HKSampleType,
         anchor: HKQueryAnchor?,
@@ -174,6 +179,56 @@ final class HealthKitManager: ObservableObject {
                         newAnchor: newAnchor
                     ))
                 }
+            }
+            store.execute(query)
+        }
+    }
+
+    /// HealthKit's own daily cumulative projection. Use this for metrics where matching
+    /// Apple Health's day total matters more than source-level attribution, especially steps.
+    nonisolated func fetchDailyCumulativeStatistics(
+        for identifier: HKQuantityTypeIdentifier,
+        unit: HKUnit,
+        from startDate: Date,
+        to endDate: Date
+    ) async throws -> [DailyCumulativeStatistic] {
+        guard let quantityType = HKQuantityType.quantityType(forIdentifier: identifier) else {
+            throw HKError.typeUnavailable(identifier.rawValue)
+        }
+
+        let calendar = Calendar.current
+        let anchorDate = calendar.startOfDay(for: startDate)
+        var interval = DateComponents()
+        interval.day = 1
+        let predicate = HKQuery.predicateForSamples(withStart: anchorDate, end: endDate)
+
+        return try await withCheckedThrowingContinuation { (cont: CheckedContinuation<[DailyCumulativeStatistic], Error>) in
+            let query = HKStatisticsCollectionQuery(
+                quantityType: quantityType,
+                quantitySamplePredicate: predicate,
+                options: [.cumulativeSum],
+                anchorDate: anchorDate,
+                intervalComponents: interval
+            )
+
+            query.initialResultsHandler = { _, collection, error in
+                if let error {
+                    cont.resume(throwing: HKError.queryFailed(underlying: error))
+                    return
+                }
+                guard let collection else {
+                    cont.resume(returning: [])
+                    return
+                }
+
+                var output: [DailyCumulativeStatistic] = []
+                collection.enumerateStatistics(from: anchorDate, to: endDate) { stats, _ in
+                    output.append(DailyCumulativeStatistic(
+                        startDate: stats.startDate,
+                        value: stats.sumQuantity()?.doubleValue(for: unit)
+                    ))
+                }
+                cont.resume(returning: output)
             }
             store.execute(query)
         }

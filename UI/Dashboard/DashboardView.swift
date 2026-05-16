@@ -68,6 +68,8 @@ struct DashboardView: View {
                             }
                             .font(.subheadline)
                             .padding(.horizontal, 14).padding(.vertical, 12)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
                         Divider().padding(.leading, 14)
@@ -82,6 +84,8 @@ struct DashboardView: View {
                             }
                             .font(.subheadline)
                             .padding(.horizontal, 14).padding(.vertical, 12)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
                     }
@@ -108,7 +112,11 @@ struct DashboardView: View {
                 DashboardCardEditor(store: layout)
             }
             .navigationDestination(for: MetricRoute.self) { route in
-                MetricDetailView(config: route.config)
+                if let config = route.config {
+                    MetricDetailView(config: config)
+                } else {
+                    ActivityDetailView()
+                }
             }
             .navigationDestination(isPresented: $showAlerts) { AlertsView() }
             .navigationDestination(isPresented: $showQuality) { DataQualityDetailView() }
@@ -118,6 +126,9 @@ struct DashboardView: View {
                 Task { await refresh() }
             }
             .onChange(of: sync.lastResult) { _, _ in
+                Task { await refresh() }
+            }
+            .onChange(of: environment.localDataTick) { _, _ in
                 Task { await refresh() }
             }
         }
@@ -237,6 +248,8 @@ struct DashboardView: View {
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 11)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
     }
@@ -262,10 +275,11 @@ struct DashboardView: View {
 
 /// Routes for each card → detail screen.
 enum MetricRoute: Hashable {
-    case steps, activeKcal, restingHR, hrv, sleep, weight, bodyFat, bmi, diet, deficit, exercise, distance
+    case activity, steps, activeKcal, restingHR, hrv, sleep, weight, bodyFat, bmi, diet, deficit, exercise, distance
 
-    var config: MetricDetailConfig {
+    var config: MetricDetailConfig? {
         switch self {
+        case .activity: return nil
         case .steps: return .steps
         case .activeKcal: return .activeKcal
         case .restingHR: return .restingHR

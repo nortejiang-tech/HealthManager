@@ -23,18 +23,13 @@ enum MetricPeriod: String, CaseIterable, Identifiable {
         }
     }
 
-    /// Bucket size used when rolling year-view points into weekly averages so the chart
-    /// stays readable. `week` / `month` keep day-level granularity.
-    var bucketDays: Int {
-        switch self {
-        case .week, .month: return 1
-        case .year: return 7
-        }
-    }
+    /// Bucket size used when rolling points into wider buckets. All periods keep
+    /// day-level granularity (year view plots every day, not weekly averages).
+    var bucketDays: Int { 1 }
 }
 
 /// One date-value pair fed to a SwiftUI Chart. `value == nil` means "no data that day".
-struct MetricPoint: Identifiable, Hashable {
+struct MetricPoint: Identifiable, Hashable, Sendable {
     let date: Date
     let value: Double?
     var id: Date { date }
@@ -42,7 +37,7 @@ struct MetricPoint: Identifiable, Hashable {
 
 /// Aggregation rule used when collapsing day-level rows into a wider bucket
 /// (e.g. year view → 1 point per week).
-enum SeriesAggregation { case sum, average, latest }
+enum SeriesAggregation: Sendable { case sum, average, latest }
 
 /// Today / hero snapshot used at the top of the dashboard.
 struct DashboardSnapshot: Sendable, Equatable {
@@ -166,7 +161,7 @@ struct DashboardLoader {
                 snap.activity.todayExerciseMin = row["exercise_minutes"]
             }
             snap.activity.last7Days = try Self.dailyValues(
-                db, column: "step_count", table: "activity_metrics_daily",
+                db, column: "active_energy_kcal", table: "activity_metrics_daily",
                 fromKey: last7Key, toKey: today)
 
             // -- heart (today + 7d) --

@@ -1,6 +1,6 @@
 # HealthManager
 
-iOS 健康数据管理 App。聚合 Apple Health 中各来源（Garmin / 米家 / Apple Watch / 华为 / 手动）的体重、活动、心血管、睡眠、饮食等数据，做自动同步、数据质量对账、日报/周报。
+iOS 健康数据管理 App。聚合 Apple Health 中各来源（Garmin / 米家 / Apple Watch / 华为 / 手动）的体重、活动、心血管、睡眠、饮食等数据，做自动同步、数据质量对账、日报/周报；可选接入 OpenAI-compatible LLM 做摘要评注和餐食图片营养估算。
 
 V1 已交付：详见 `WORKLOG.md` 末尾「V1 交付摘要」节。
 
@@ -10,9 +10,9 @@ V1 已交付：详见 `WORKLOG.md` 末尾「V1 交付摘要」节。
 |---|---|---|
 | macOS | 14+ | |
 | Xcode | 15+（含 iOS 17+ SDK） | iOS 26.5 simulator runtime 也可，但需要在 Xcode → Settings → Platforms 下载 |
-| xcodegen | 任意近期版本 | `brew install xcodegen`。仅在改 `project.yml` 后才需要重跑 |
+| xcodegen | 任意近期版本 | `brew install xcodegen`。改 `project.yml` 或新增源文件后需要重跑 |
 
-无外部网络依赖（不接云端服务）。GRDB.swift 6.29+ 通过 SwiftPM 自动拉取。
+默认本地优先。GRDB.swift 6.29+ 通过 SwiftPM 自动拉取；AI 摘要 / 饮食视觉估算只有在用户手动配置 API Key 后才会访问对应 LLM 服务。
 
 ## 快速开始
 
@@ -42,7 +42,7 @@ open HealthManager.xcodeproj
 3. **同步中心** → 点「立即对账（7 天）」
 4. **仪表盘** → 三色质量徽标出现（完整度 / 新鲜度 / 冲突度）；告警红点反映 `missing_data_alerts` 数
 5. **来源** tab → 看每个数据源最近 N 天的活跃天数
-6. **总结** → 一键生成日报 + 周报（本地确定性聚合，不联网）
+6. **仪表盘 → 数据质量 / 同步明细 / 报告 → 总结** → 一键生成日报 + 周报（本地确定性聚合；配置 LLM 后可生成 AI 评注）
 
 之后 **HKObserverQuery** 会在 Apple Health 收到外部 App 写入时秒级自动触发增量同步；**BGAppRefresh** ≥1h 兜底；**BGProcessing** ≥6h 自动对账。
 
@@ -55,8 +55,10 @@ HealthManager/
 │   ├── Database/        # GRDB DatabaseManager + Migrations + Models（14 张表）
 │   ├── HealthKit/       # HealthKitManager + TypeCatalog + SampleMapper
 │   ├── Sync/            # Backfill / Incremental / Manual / Observer / BGScheduler / StateMachine
+│   ├── Aggregate/       # DailyAggregator + 活动能量/手动活动估算
 │   ├── Reconcile/       # DailyReconciler（R-001 三分数 + missing_data_alerts）
 │   ├── Summary/         # SummaryGenerator（日报/周报，本地确定性）
+│   ├── LLM/             # OpenAI-compatible config/client + 饮食视觉营养估算
 │   └── Logging/         # AppLogger
 ├── UI/
 │   ├── Onboarding/      # 授权页
@@ -65,6 +67,7 @@ HealthManager/
 │   ├── Medication/      # 用药
 │   ├── Sources/         # 来源归因
 │   ├── Summary/         # 日/周报
+│   ├── Workouts/        # 运动记录 + 手动活动补录
 │   ├── Alerts/          # 告警面板
 │   ├── Settings/        # 设置 / 隐私
 │   └── SyncCenter/      # 同步中心
@@ -115,12 +118,13 @@ find App Core UI -name "*.swift" -print0 | xargs -0 swiftc -typecheck \
 - **状态机**：`SyncStateMachine` 是 PRD §5 状态机；backfill / incremental / manual 三条路径都通过它
 - **手动同步两阶段**：先拉一遍 → `await promptForExternalSync()`（`CheckedContinuation`）→ `scenePhase=.active` 自动 ack 后再拉一遍
 - **对账三分数**：completeness / freshness / conflict，定义在 `DailyReconciler` 顶部 `Config`
+- **热量缺口口径**：`DailyAggregator` 写入 `activity_metrics_daily.active_energy_kcal` 时，会以 Active Energy 样本为基线，再把 `HKWorkout.totalEnergyBurned` 中未被覆盖的运动消耗补入，避免 Garmin/手动运动漏算，也避免同一段训练重复计入
 - **永远不要 in-place 改已应用的迁移**：见 `Core/Database/Migrations.swift` 顶部注释；要加表/列就新增 `v2_*` 迁移
 
 ## 隐私
 
 - 所有数据存本地 SQLite（`Application Support/HealthManager/health.sqlite`，WAL）
-- 不向云端上传任何健康数据
+- 默认不向云端上传任何健康数据；用户配置 LLM 后，只会上传聚合摘要文本和用户主动选择的餐食图片
 - 不接入第三方分析 / 崩溃收集
 - HealthKit 数据本身由 Apple 系统级加密
 - 卸载 App = 清除所有本地数据

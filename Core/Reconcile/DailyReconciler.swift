@@ -232,8 +232,40 @@ actor DailyReconciler {
                 """, arguments: [date, completeness, freshness, conflict, missingJson, computedAt])
         }
 
-        // 7. Emit alerts for missing core metrics. Severity rises with consecutive missing days.
+        // 7. Emit a threshold-level completeness alert, then per-metric missing alerts.
+        // This is what makes the Settings "完整度警戒线" affect actual alert behavior.
         var alertsEmitted = 0
+        if completeness < config.completenessWarningThreshold {
+            let metric = "__completeness__"
+            let exists: Bool = try database.read { db in
+                try Bool.fetchOne(db, sql: """
+                    SELECT EXISTS(
+                        SELECT 1 FROM missing_data_alerts
+                        WHERE date = ? AND metric = ? AND acknowledged = 0
+                    )
+                    """, arguments: [date, metric]) ?? false
+            }
+            if !exists {
+                var alert = MissingDataAlert(
+                    id: nil,
+                    date: date,
+                    metric: metric,
+                    severity: .warning,
+                    message: String(format: "%@ 数据完整度 %.0f%%，低于警戒线 %.0f%%。",
+                                    date,
+                                    completeness * 100,
+                                    config.completenessWarningThreshold * 100),
+                    acknowledged: false,
+                    createdAt: computedAt
+                )
+                try database.write { db in
+                    try alert.insert(db)
+                }
+                alertsEmitted += 1
+            }
+        }
+
+        // 8. Emit alerts for missing core metrics. Severity rises with consecutive missing days.
         for metric in missingCore {
             let consecutive = try countConsecutiveMissing(metric: metric, upTo: date, dates: allDatesInWindow)
             let severity: MissingDataAlert.Severity = consecutive >= config.consecutiveMissingForCritical
@@ -266,7 +298,7 @@ actor DailyReconciler {
             alertsEmitted += 1
         }
 
-        // 8. Stale-data alert: if freshness is 0 (no samples in 7+ days), one critical alert.
+        // 9. Stale-data alert: if freshness is 0 (no samples in 7+ days), one critical alert.
         if freshness == 0.0, presentTypes.isEmpty {
             let metric = "__stale__"
             let exists: Bool = try database.read { db in
@@ -368,6 +400,7 @@ actor DailyReconciler {
         case "HKQuantityTypeIdentifierHeartRateVariabilitySDNN": return "心率变异性"
         case "HKQuantityTypeIdentifierVO2Max": return "VO₂ Max"
         case "HKWorkoutTypeIdentifier": return "运动"
+        case "__completeness__": return "完整度"
         case "__stale__": return "全类型停摆"
         default: return hkType
         }

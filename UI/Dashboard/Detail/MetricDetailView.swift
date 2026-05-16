@@ -105,7 +105,7 @@ struct MetricDetailView: View {
         guard let d = inspectedDate else { return nil }
         let f = DateFormatter()
         f.locale = Locale(identifier: "zh_CN")
-        f.dateFormat = period == .year ? "yyyy年 第w周" : "M月d日 EEEE"
+        f.dateFormat = period == .year ? "yyyy年M月d日" : "M月d日 EEEE"
         return f.string(from: d)
     }
 
@@ -161,7 +161,7 @@ struct MetricDetailView: View {
                         y: .value(config.title, item.1)
                     )
                     .foregroundStyle(config.theme.gradient)
-                    .interpolationMethod(.catmullRom)
+                    .interpolationMethod(.linear)
                     PointMark(
                         x: .value("日期", item.0, unit: .day),
                         y: .value(config.title, item.1)
@@ -174,13 +174,13 @@ struct MetricDetailView: View {
                         y: .value(config.title, item.1)
                     )
                     .foregroundStyle(config.theme.primary)
-                    .interpolationMethod(.catmullRom)
+                    .interpolationMethod(.linear)
                     AreaMark(
                         x: .value("日期", item.0, unit: .day),
                         y: .value(config.title, item.1)
                     )
                     .foregroundStyle(config.theme.primary.opacity(0.18))
-                    .interpolationMethod(.catmullRom)
+                    .interpolationMethod(.linear)
                 }
             }
 
@@ -262,9 +262,6 @@ struct MetricDetailView: View {
 
     /// Breakdown card for the deficit detail view: shows the three numbers that make
     /// up the selected day's deficit so the user can see how it was computed.
-    ///
-    /// Only meaningful for week / month (per-day granularity). Year view buckets days
-    /// into weekly averages so we hide the breakdown there.
     @ViewBuilder
     private var deficitBreakdownCard: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -273,14 +270,12 @@ struct MetricDetailView: View {
                 Spacer()
                 if inspectedDate == nil {
                     Text("点击图表选中某天").font(.caption2).foregroundStyle(.secondary)
-                } else if period == .year {
-                    Text("年视图按周均值，请切换至 周/月").font(.caption2).foregroundStyle(.secondary)
                 } else if let b = deficitBreakdown {
                     Text(dayLabel(b.date)).font(.caption2).foregroundStyle(.secondary)
                 }
             }
 
-            if let b = deficitBreakdown, inspectedDate != nil, period != .year {
+            if let b = deficitBreakdown, inspectedDate != nil {
                 VStack(spacing: 8) {
                     breakdownRow(
                         icon: "bed.double.fill",
@@ -313,7 +308,7 @@ struct MetricDetailView: View {
                             .foregroundStyle(b.deficit >= 0 ? config.theme.primary : .red)
                     }
                 }
-            } else if inspectedDate != nil, period != .year, deficitBreakdown == nil {
+            } else if inspectedDate != nil, deficitBreakdown == nil {
                 Text("当日无明细数据").font(.caption).foregroundStyle(.secondary)
             }
         }
@@ -352,7 +347,7 @@ struct MetricDetailView: View {
 
     private func loadInspectedBreakdown() async {
         guard case .deficit = config.source else { return }
-        guard let d = inspectedDate, period != .year else {
+        guard let d = inspectedDate else {
             await MainActor.run { deficitBreakdown = nil }
             return
         }
@@ -425,6 +420,18 @@ struct MetricDetailView: View {
     private var yDomain: ClosedRange<Double> {
         let values = points.compactMap { $0.value }
         guard let mn = values.min(), let mx = values.max() else { return 0...1 }
+
+        // Bar charts are drawn from a 0 baseline — the domain MUST include 0, otherwise
+        // every bar overflows past the visible plot and the chart reads as a solid block.
+        // (Line/area charts float freely, so they keep the tight padded domain below.)
+        if config.chartStyle == .bar {
+            let lo = min(0, mn)
+            let hi = max(0, mx)
+            let span = max(hi - lo, 1)
+            let pad = span * 0.12
+            return (lo == 0 ? 0 : lo - pad)...(hi == 0 ? 0 : hi + pad)
+        }
+
         // Single value: pad ±5% (or 1 unit absolute if data is huge) so the dot lands mid-chart.
         if mn == mx {
             let pad = max(abs(mn) * 0.05, 0.5)
@@ -496,9 +503,9 @@ struct MetricDetailConfig {
         unit: "kg",
         source: .tableColumn("body_metrics_daily", "weight_kg", .latest),
         theme: .body,
-        chartStyle: .area,
+        chartStyle: .line,
         summary: .latest,
-        footnote: "数据来自 Apple 健康 · 每日记录最后一次称重；年视图为周均值。",
+        footnote: "数据来自 Apple 健康 · 每日记录最后一次称重。",
         format: { String(format: "%.1f", $0) }
     )
 
@@ -507,7 +514,7 @@ struct MetricDetailConfig {
         unit: "%",
         source: .tableColumn("body_metrics_daily", "body_fat_pct", .latest),
         theme: .body,
-        chartStyle: .area,
+        chartStyle: .line,
         summary: .latest,
         footnote: "数据来自 Apple 健康 · 体脂率换算为百分比展示。",
         format: { String(format: "%.1f", $0 * 100) }
@@ -518,7 +525,7 @@ struct MetricDetailConfig {
         unit: nil,
         source: .tableColumn("body_metrics_daily", "bmi", .latest),
         theme: .body,
-        chartStyle: .area,
+        chartStyle: .line,
         summary: .latest,
         footnote: "BMI = 体重(kg) / 身高²(m²)。来自 Apple 健康。",
         format: { String(format: "%.1f", $0) }
@@ -531,7 +538,7 @@ struct MetricDetailConfig {
         theme: .activity,
         chartStyle: .bar,
         summary: .total,
-        footnote: "Apple 健康每日步数汇总；月/年视图按桶累计或按周均值。",
+        footnote: "Apple 健康每日步数汇总。",
         format: { String(format: "%.0f", $0) }
     )
 
@@ -608,7 +615,7 @@ struct MetricDetailConfig {
         theme: .diet,
         chartStyle: .bar,
         summary: .average,
-        footnote: "按日合计的 meal_records.calories_kcal · 年视图为周均。",
+        footnote: "按日合计的 meal_records.calories_kcal。",
         format: { String(format: "%.0f", $0) }
     )
 

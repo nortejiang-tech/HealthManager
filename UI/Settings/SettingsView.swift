@@ -19,7 +19,7 @@ struct SettingsView: View {
     @State private var consecutiveCritical: Int = ReconcilerSettings.consecutiveMissingForCritical
     @State private var defaultWindowDays: Int = ReconcilerSettings.defaultWindowDays
 
-    @State private var exportURL: URL?
+    @State private var exportSnapshot: ExportDatabaseSnapshot?
     @State private var notifStatus: UNAuthorizationStatus = .notDetermined
 
     var body: some View {
@@ -181,8 +181,8 @@ struct SettingsView: View {
             await refresh()
             await refreshNotifStatus()
         }
-        .sheet(item: $exportURL) { url in
-            ShareSheet(items: [url])
+        .sheet(item: $exportSnapshot) { snapshot in
+            ShareSheet(items: [snapshot.url])
         }
         .confirmationDialog(
             "重新触发 onboarding 授权页？",
@@ -280,7 +280,7 @@ struct SettingsView: View {
                 try FileManager.default.removeItem(at: dstURL)
             }
             try FileManager.default.copyItem(atPath: srcPath, toPath: dstURL.path)
-            await MainActor.run { exportURL = dstURL }
+            await MainActor.run { exportSnapshot = ExportDatabaseSnapshot(url: dstURL) }
         } catch {
             AppLogger.shared.error("DB export failed: \(error.localizedDescription)")
         }
@@ -293,8 +293,9 @@ struct SettingsView: View {
     }
 }
 
-extension URL: Identifiable {
-    public var id: String { absoluteString }
+private struct ExportDatabaseSnapshot: Identifiable {
+    let url: URL
+    var id: String { url.absoluteString }
 }
 
 private struct ShareSheet: UIViewControllerRepresentable {

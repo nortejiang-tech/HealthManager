@@ -10,14 +10,14 @@ struct ActivityCard: View {
             accessory: { TrendChip(series: data.last7Days, theme: .activity) }
         ) {
             CardMetric(
-                value: data.todaySteps.map { "\($0)" } ?? "—",
-                unit: "步",
+                value: data.todayActiveKcal.map { String(format: "%.0f", $0) } ?? "—",
+                unit: "kcal",
                 theme: .activity
             )
 
             HStack(spacing: 10) {
-                if let kcal = data.todayActiveKcal, kcal > 0 {
-                    Label(String(format: "%.0f kcal", kcal), systemImage: "flame.fill")
+                if let steps = data.todaySteps, steps > 0 {
+                    Label("\(steps) 步", systemImage: "figure.walk")
                         .foregroundStyle(CardTheme.activity.primary)
                 }
                 if let dist = data.todayDistanceM, dist > 0 {
@@ -36,7 +36,7 @@ struct ActivityCard: View {
                 Chart(data.last7Days) { d in
                     BarMark(
                         x: .value("日期", d.date, unit: .day),
-                        y: .value("步数", d.value)
+                        y: .value("活动能量", d.value)
                     )
                     .foregroundStyle(CardTheme.activity.gradient)
                     .cornerRadius(2)
@@ -50,7 +50,7 @@ struct ActivityCard: View {
                 }
                 .chartYAxis(.hidden)
             } else {
-                CardEmptyState(text: "近 7 日无步数")
+                CardEmptyState(text: "近 7 日无活动能量")
                     .frame(height: 52)
             }
         }

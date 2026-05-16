@@ -1,5 +1,6 @@
 import Foundation
 import Combine
+import HealthKit
 
 /// Public surface for triggering syncs. UI calls into this; coordinators do the work.
 @MainActor
@@ -92,8 +93,7 @@ final class SyncEngine: ObservableObject {
             lastResult = result
             // Refresh per-day rollups so Dashboard cards have data immediately.
             // Failures here don't roll back the sync — log and continue.
-            try? await dailyAggregator.rebuild(daysBack: max(days, 30))
-            aggregationTick &+= 1
+            await rebuildDailyProjections(daysBack: max(days, 30))
             progressDescription = "回补完成：共 \(result.totalSamples) 条样本。"
         } catch {
             try? stateMachine.handle(.fail)
@@ -135,8 +135,7 @@ final class SyncEngine: ObservableObject {
             phase = stateMachine.phase
 
             lastResult = result
-            try? await dailyAggregator.rebuild(daysBack: 7)
-            aggregationTick &+= 1
+            await rebuildDailyProjections(daysBack: 7)
             progressDescription = result.succeeded
                 ? "增量同步完成：本轮新增 \(result.totalSamples) 条。"
                 : "增量同步失败：\(result.errorMessage ?? "未知错误")"
@@ -193,8 +192,7 @@ final class SyncEngine: ObservableObject {
             phase = stateMachine.phase
 
             lastResult = result
-            try? await dailyAggregator.rebuild(daysBack: 7)
-            aggregationTick &+= 1
+            await rebuildDailyProjections(daysBack: 7)
             progressDescription = result.succeeded
                 ? "手动同步完成：共新增 \(result.totalSamples) 条。"
                 : "手动同步失败：\(result.errorMessage ?? "未知错误")"
@@ -273,8 +271,108 @@ final class SyncEngine: ObservableObject {
     /// (e.g. user upgraded from a build that didn't run `DailyAggregator`). Bumps
     /// `aggregationTick` so observers re-fetch.
     func runCatchUpAggregation(windowDays: Int) async {
-        try? await dailyAggregator.rebuild(daysBack: windowDays)
+        await rebuildDailyProjections(daysBack: windowDays)
+    }
+
+    private func rebuildDailyProjections(daysBack: Int) async {
+        try? await dailyAggregator.rebuild(daysBack: daysBack)
+        await projectAppleHealthStepStatistics(daysBack: daysBack)
+        await projectAppleHealthBasalEnergyStatistics(daysBack: daysBack)
         aggregationTick &+= 1
+    }
+
+    private func projectAppleHealthStepStatistics(daysBack: Int) async {
+        guard healthKitManager.isAvailable else { return }
+
+        do {
+            let calendar = Calendar.current
+            let today = calendar.startOfDay(for: Date())
+            let safeDays = max(daysBack, 1)
+            let start = calendar.date(byAdding: .day, value: -(safeDays - 1), to: today) ?? today
+            let end = calendar.date(byAdding: .day, value: 1, to: today) ?? Date()
+            let stats = try await healthKitManager.fetchDailyCumulativeStatistics(
+                for: .stepCount,
+                unit: .count(),
+                from: start,
+                to: end
+            )
+            let computedAt = Int64(Date().timeIntervalSince1970)
+            let rows: [(String, Int?)] = stats.map { stat in
+                let rounded = stat.value.map { Int($0.rounded()) }
+                let stepCount = (rounded ?? 0) > 0 ? rounded : nil
+                return (DashboardLoader.dateKey.string(from: calendar.startOfDay(for: stat.startDate)), stepCount)
+            }
+
+            try await database.asyncWrite { db in
+                for (date, stepCount) in rows {
+                    // No system statistic for this day → keep whatever DailyAggregator
+                    // already projected. Never NULL out an aggregated value.
+                    guard let stepCount else { continue }
+                    try db.execute(sql: """
+                        INSERT INTO activity_metrics_daily (date, step_count, computed_at)
+                        VALUES (?, ?, ?)
+                        ON CONFLICT(date) DO UPDATE SET
+                          step_count = excluded.step_count,
+                          computed_at = excluded.computed_at
+                        """, arguments: [date, stepCount, computedAt])
+                }
+            }
+        } catch {
+            AppLogger.shared.sync.info(
+                "Apple Health step statistics projection skipped: \(error.localizedDescription, privacy: .public)"
+            )
+        }
+    }
+
+    private func projectAppleHealthBasalEnergyStatistics(daysBack: Int) async {
+        guard healthKitManager.isAvailable else { return }
+
+        do {
+            let calendar = Calendar.current
+            let today = calendar.startOfDay(for: Date())
+            let safeDays = max(daysBack, 1)
+            let start = calendar.date(byAdding: .day, value: -(safeDays - 1), to: today) ?? today
+            let end = calendar.date(byAdding: .day, value: 1, to: today) ?? Date()
+            let stats = try await healthKitManager.fetchDailyCumulativeStatistics(
+                for: .basalEnergyBurned,
+                unit: .kilocalorie(),
+                from: start,
+                to: end
+            )
+            let computedAt = Int64(Date().timeIntervalSince1970)
+            let rows: [(String, Double?)] = stats.map { stat in
+                let basal = stat.value.map { max(0, $0) }
+                let basalKcal = (basal ?? 0) > 0 ? basal : nil
+                return (DashboardLoader.dateKey.string(from: calendar.startOfDay(for: stat.startDate)), basalKcal)
+            }
+
+            try await database.asyncWrite { db in
+                for (date, basalKcal) in rows {
+                    // No system statistic for this day → keep whatever DailyAggregator
+                    // already projected. Never NULL out an aggregated value.
+                    guard let basalKcal else { continue }
+                    try db.execute(sql: """
+                        INSERT INTO activity_metrics_daily (date, basal_energy_kcal, computed_at)
+                        VALUES (?, ?, ?)
+                        ON CONFLICT(date) DO UPDATE SET
+                          basal_energy_kcal = excluded.basal_energy_kcal,
+                          computed_at = excluded.computed_at
+                        """, arguments: [date, basalKcal, computedAt])
+
+                    try db.execute(sql: """
+                        INSERT INTO body_metrics_daily (date, basal_energy_kcal, computed_at)
+                        VALUES (?, ?, ?)
+                        ON CONFLICT(date) DO UPDATE SET
+                          basal_energy_kcal = excluded.basal_energy_kcal,
+                          computed_at = excluded.computed_at
+                        """, arguments: [date, basalKcal, computedAt])
+                }
+            }
+        } catch {
+            AppLogger.shared.sync.info(
+                "Apple Health basal-energy statistics projection skipped: \(error.localizedDescription, privacy: .public)"
+            )
+        }
     }
 
     // MARK: - Reset

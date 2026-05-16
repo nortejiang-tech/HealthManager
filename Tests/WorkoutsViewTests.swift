@@ -4,8 +4,11 @@ import XCTest
 final class WorkoutsViewTests: XCTestCase {
 
     func test_activityLabel_knownTypes() {
+        XCTAssertEqual(WorkoutsView.label(for: 5), "棒球")
+        XCTAssertEqual(WorkoutsView.label(for: 6), "篮球")
         XCTAssertEqual(WorkoutsView.label(for: 13), "骑行")
         XCTAssertEqual(WorkoutsView.label(for: 37), "跑步")
+        XCTAssertEqual(WorkoutsView.label(for: 41), "足球")
         XCTAssertEqual(WorkoutsView.label(for: 46), "游泳")
         XCTAssertEqual(WorkoutsView.label(for: 74), "力量训练")
     }

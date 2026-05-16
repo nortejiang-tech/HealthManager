@@ -33,15 +33,16 @@ struct LLMClient {
     /// Convenience init that reads from `LLMConfig`. Returns nil if text-model not configured.
     init?(fromConfig: Bool = true) {
         guard LLMConfig.isConfigured,
-              let key = LLMConfig.apiKey else { return nil }
+              let key = LLMConfig.textApiKey else { return nil }
         self.init(baseURL: LLMConfig.baseURL, model: LLMConfig.textModel, apiKey: key)
     }
 
-    /// Same as `fromConfig`, but uses the vision model. Returns nil if vision not configured.
+    /// Same as `fromConfig`, but uses the vision model + vision endpoint's own key.
+    /// Returns nil if vision not configured.
     static func visionClient() -> LLMClient? {
         guard LLMConfig.isVisionConfigured,
-              let key = LLMConfig.apiKey else { return nil }
-        return LLMClient(baseURL: LLMConfig.baseURL, model: LLMConfig.visionModel, apiKey: key)
+              let key = LLMConfig.visionApiKey else { return nil }
+        return LLMClient(baseURL: LLMConfig.resolvedVisionBaseURL, model: LLMConfig.visionModel, apiKey: key)
     }
 
     // MARK: - Request / Response shapes

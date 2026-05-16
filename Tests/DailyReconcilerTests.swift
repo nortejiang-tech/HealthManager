@@ -126,6 +126,32 @@ final class DailyReconcilerTests: XCTestCase {
         XCTAssertGreaterThan(outcome.alertsEmitted, 0)
     }
 
+    func test_completenessThreshold_emitsThresholdAlertWhenBelowSetting() async throws {
+        ReconcilerSettings.completenessThreshold = 0.9
+        try seedSample(hkType: "HKQuantityTypeIdentifierBodyMass", value: 70)
+        try seedSample(hkType: "HKQuantityTypeIdentifierStepCount", value: 1000)
+        try seedSample(hkType: "HKQuantityTypeIdentifierHeartRate", value: 70)
+
+        let reconciler = DailyReconciler(database: db)
+        _ = try await reconciler.run(windowDays: 1)
+
+        let exists = try thresholdAlertExists()
+        XCTAssertTrue(exists)
+    }
+
+    func test_completenessThreshold_noThresholdAlertWhenAboveSetting() async throws {
+        ReconcilerSettings.completenessThreshold = 0.5
+        try seedSample(hkType: "HKQuantityTypeIdentifierBodyMass", value: 70)
+        try seedSample(hkType: "HKQuantityTypeIdentifierStepCount", value: 1000)
+        try seedSample(hkType: "HKQuantityTypeIdentifierHeartRate", value: 70)
+
+        let reconciler = DailyReconciler(database: db)
+        _ = try await reconciler.run(windowDays: 1)
+
+        let exists = try thresholdAlertExists()
+        XCTAssertFalse(exists)
+    }
+
     func test_staleAlert_emittedWhenNoSamples() async throws {
         let reconciler = DailyReconciler(database: db)
         let outcome = try await reconciler.run(windowDays: 1)
@@ -169,5 +195,16 @@ final class DailyReconcilerTests: XCTestCase {
             throw NSError(domain: "test", code: -1, userInfo: [NSLocalizedDescriptionKey: "no quality row for \(key)"])
         }
         return row
+    }
+
+    private func thresholdAlertExists() throws -> Bool {
+        try db.read { db in
+            try Bool.fetchOne(db, sql: """
+                SELECT EXISTS(
+                    SELECT 1 FROM missing_data_alerts
+                    WHERE metric = '__completeness__'
+                )
+                """) ?? false
+        }
     }
 }

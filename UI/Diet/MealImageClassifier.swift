@@ -23,19 +23,19 @@ enum MealImageClassifier {
     static func classify(image: UIImage, limit: Int = 3, minConfidence: Float = 0.15) async -> [Suggestion] {
         guard let cgImage = image.cgImage else { return [] }
         return await withCheckedContinuation { continuation in
-            let request = VNClassifyImageRequest { request, _ in
-                let observations = (request.results as? [VNClassificationObservation]) ?? []
-                let filtered = observations
-                    .filter { $0.confidence >= minConfidence }
-                    .prefix(limit)
-                let mapped = filtered.map { obs in
-                    Suggestion(label: localize(obs.identifier), confidence: obs.confidence)
-                }
-                continuation.resume(returning: Array(mapped))
-            }
-            let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
             // Run off the calling actor — Vision blocks otherwise.
             DispatchQueue.global(qos: .userInitiated).async {
+                let request = VNClassifyImageRequest { request, _ in
+                    let observations = (request.results as? [VNClassificationObservation]) ?? []
+                    let filtered = observations
+                        .filter { $0.confidence >= minConfidence }
+                        .prefix(limit)
+                    let mapped = filtered.map { obs in
+                        Suggestion(label: localize(obs.identifier), confidence: obs.confidence)
+                    }
+                    continuation.resume(returning: Array(mapped))
+                }
+                let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
                 do {
                     try handler.perform([request])
                 } catch {

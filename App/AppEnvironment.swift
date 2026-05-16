@@ -16,6 +16,9 @@ final class AppEnvironment: ObservableObject {
     let syncEngine: SyncEngine
     let backgroundScheduler: BackgroundTaskScheduler
     let healthKitObserver: HealthKitObserver
+    @Published private(set) var localDataTick: Int = 0
+    private let aggregateProjectionVersionKey = "aggregates.projectionVersion"
+    private let currentAggregateProjectionVersion = 4
 
     private init() {
         let database = DatabaseManager.makeDefault()
@@ -39,27 +42,29 @@ final class AppEnvironment: ObservableObject {
         // never opens the Sync Center.
         backgroundScheduler.scheduleIncrementalIfNeeded()
         backgroundScheduler.scheduleReconcileIfNeeded()
-        // If raw samples exist but the day-level projection tables are empty (e.g. user
-        // upgraded from a build without the aggregator hook), catch them up so the
-        // dashboard sparklines render without waiting for the next sync.
+        // If projections are empty or the projection logic changed, catch them up so
+        // the dashboard and deficit card don't wait for the next sync.
         Task { await self.backfillAggregatesIfNeeded() }
     }
 
     private func backfillAggregatesIfNeeded() async {
         let database = self.database
+        let storedVersion = UserDefaults.standard.integer(forKey: aggregateProjectionVersionKey)
+        let targetVersion = currentAggregateProjectionVersion
         let needs: Bool = (try? await database.asyncRead { db -> Bool in
             let rawCount = try Int.fetchOne(db,
                 sql: "SELECT COUNT(*) FROM health_samples_raw WHERE is_deleted = 0") ?? 0
-            if rawCount == 0 { return false }
+            if rawCount == 0 { return storedVersion < targetVersion }
             let actCount = try Int.fetchOne(db,
                 sql: "SELECT COUNT(*) FROM activity_metrics_daily") ?? 0
             let bodyCount = try Int.fetchOne(db,
                 sql: "SELECT COUNT(*) FROM body_metrics_daily") ?? 0
-            return (actCount + bodyCount) == 0
+            return (actCount + bodyCount) == 0 || storedVersion < targetVersion
         }) ?? false
         guard needs else { return }
-        AppLogger.shared.info("Dashboard projections empty but raw is not — running one-shot DailyAggregator(90).")
+        AppLogger.shared.info("Dashboard projections need refresh — running one-shot DailyAggregator(90).")
         await syncEngine.runCatchUpAggregation(windowDays: 90)
+        UserDefaults.standard.set(targetVersion, forKey: aggregateProjectionVersionKey)
     }
 
     /// Called by `RootView` whenever the authorization gate changes. Idempotent.
@@ -70,5 +75,9 @@ final class AppEnvironment: ObservableObject {
         case .denied, .unknown, .needsRequest:
             break
         }
+    }
+
+    func notifyLocalDataChanged() {
+        localDataTick &+= 1
     }
 }

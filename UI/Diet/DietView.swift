@@ -117,6 +117,7 @@ struct DietView: View {
             if let path = meal.photoPath {
                 MealPhotoStore.shared.removeIfManaged(path: path)
             }
+            environment.notifyLocalDataChanged()
             await refresh()
         } catch {
             AppLogger.shared.error("Meal delete failed: \(error.localizedDescription)")
@@ -628,6 +629,7 @@ struct MealEditView: View {
             if let old = originalPhotoPath, old != savedPhotoPath {
                 MealPhotoStore.shared.removeIfManaged(path: old)
             }
+            environment.notifyLocalDataChanged()
         } catch {
             AppLogger.shared.error("Meal save failed: \(error.localizedDescription)")
         }

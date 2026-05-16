@@ -834,3 +834,99 @@ xcodebuild -scheme HealthManager test
 2. 饮食 tab → 添加餐次 → 拍照 / 从相册选图
 3. 等 ~2s → 「AI 估算营养」卡片出现 → 点「一键填入」→ 营养字段自动 prefill
 4. 总结页 → 重新生成日报 → AI 评注自动跑（text model）
+
+---
+
+## Codex Round — 2026-05-16 活动能量口径 + 活动详情 + 手动补录
+
+用户反馈活动页只有步数、热量缺口准确性最重要；本轮优先修底层活动能量和缺口链路。
+
+**完成**
+
+### 1. 活动能量成为热量缺口的可信口径
+- 新增 `ActivityEnergyCalculator`。
+- 每日 `active_energy_kcal` 现在以 `HKQuantityTypeIdentifierActiveEnergyBurned` 主来源为基线，再把 `HKWorkoutTypeIdentifier.extra_json.totalEnergyKcal` 中未被 Active Energy 覆盖的训练消耗补入。
+- 重叠训练按时间比例抵扣，避免同一段运动同时出现在 Active Energy 和 Workout 时重复计入。
+- `SummaryGenerator` 的日报/周报活动能量同步使用同一口径。
+- App 启动时通过 projection version 触发一次聚合回算，升级后已有 raw 数据会自动刷新到新口径。
+
+### 2. 活动详情页
+- 仪表盘「活动」卡片不再只进入步数详情，而是进入 `ActivityDetailView`。
+- 页面展示今日总消耗、活动能量、基础代谢、饮食摄入、热量缺口、步数、距离、锻炼时长。
+- 今日训练列表直接展示运动类型、时长、消耗、距离和来源。
+
+### 3. 手动活动补录
+- 新增 `ManualActivityEntryView`，支持足球、篮球、棒球。
+- 可填时长，或只填距离并按默认速度反推时长。
+- 消耗估算公式：`MET × 最新体重(kg) × 小时`；找不到体重时按 75 kg 兜底。
+- 保存后写入 `health_samples_raw` 的 workout 记录，并立即回算聚合，热量缺口随之刷新。
+
+### 4. 其他修复
+- 体重 / 体脂 / BMI 详情页从 area chart 改成 line chart，避免下半部分像柱状/填充图。
+- 「更多指标」「数据质量 / 同步明细 / 报告」「运动记录」整行扩大为可点击区域。
+- 饮食/用药保存删除后触发 app-level local data tick，仪表盘可及时刷新。
+- LLM 设置清除配置时同步清空页面上的 `visionModel` state。
+- 对账「完整度警戒线」现在会实际产生 `__completeness__` 告警。
+- 修掉 `MedicationPlanEditView.save()` 的 Swift 6 捕获 var 并发警告。
+- README / NEXT_TASK 同步当前状态。
+
+**验证**
+```
+xcodegen generate
+xcodebuild -scheme HealthManager -destination 'generic/platform=iOS Simulator' build
+  BUILD SUCCEEDED
+xcodebuild -scheme HealthManager -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:HealthManagerTests test
+  Unit: Executed 89 tests, 0 failures
+xcodebuild -scheme HealthManager -destination 'platform=iOS Simulator,name=iPhone 17' test
+  Unit: Executed 89 tests, 0 failures
+  UI:   Executed 1 test, 0 failures
+```
+
+**新增 / 修改文件**
+```
+新文件
+  Core/Aggregate/ActivityEnergyCalculator.swift
+  Core/Aggregate/ManualActivityKind.swift
+  UI/Dashboard/Detail/ActivityDetailView.swift
+  UI/Workouts/ManualActivityEntryView.swift
+  Tests/DailyAggregatorEnergyTests.swift
+
+重点修改
+  Core/Aggregate/DailyAggregator.swift
+  Core/Summary/SummaryGenerator.swift
+  UI/Dashboard/DashboardView.swift
+  UI/Workouts/WorkoutsView.swift
+  Core/Reconcile/DailyReconciler.swift
+  UI/Dashboard/Detail/MetricDetailView.swift
+  UI/Diet/DietView.swift
+  UI/Medication/MedicationView.swift
+  UI/Settings/LLMSettingsView.swift
+  README.md
+  NEXT_TASK.md
+```
+
+---
+
+## Codex Follow-up — 2026-05-16 活动卡片改为能量主视角
+
+用户真机试用反馈：活动卡片仍以步数为主，详情页缺少柱状趋势；步数与 Apple 健康显示不一致。
+
+**完成**
+- `ActivityCard` 主数字从步数改为活动能量 kcal，小柱图从 `step_count` 改为 `active_energy_kcal`。
+- `ActivityDetailView` 新增趋势 section，支持周/月/年切换，并同时显示「活动能量」和「步数」两张柱状图。
+- 同步完成后的日聚合新增一步 HealthKit 统计投影：用 `HKStatisticsCollectionQuery(.stepCount, .cumulativeSum)` 的每日结果覆盖 `activity_metrics_daily.step_count`，让 App 的步数尽量贴近 Apple 健康 App 的系统统计口径。
+- 同口径还投影了基础代谢：用 `HKStatisticsCollectionQuery(.basalEnergyBurned, .cumulativeSum)` 的每日结果写入 `activity_metrics_daily` 与 `body_metrics_daily` 的 `basal_energy_kcal`。
+- 投影只在某天确有系统统计值时才写入，不会用 NULL 覆盖 `DailyAggregator` 已算出的值（避免 HealthKit 当天暂无数据时清空已聚合口径）。
+- 聚合 projection version 提到 3，升级后启动会触发一次 90 天投影刷新。
+- 新增/扩展测试，确认活动卡片的 7 日 series 使用活动能量而不是步数。
+
+**验证**
+```
+xcodebuild -scheme HealthManager -destination 'generic/platform=iOS Simulator' build
+  BUILD SUCCEEDED
+xcodebuild -scheme HealthManager -destination 'platform=iOS Simulator,name=iPhone 17' test
+  Unit: Executed 90 tests, 0 failures
+  UI:   Executed 1 test, 0 failures
+Simulator launch check:
+  最新 Debug 包可启动；活动卡片主指标/空态已显示为 kcal / 活动能量。
+```

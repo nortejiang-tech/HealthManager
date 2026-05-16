@@ -35,35 +35,9 @@ actor SummaryGenerator {
         "HKQuantityTypeIdentifierAppleStandTime",
     ]
 
-    /// Dominant-source sum for one cumulative type in [start, end]. Group raw samples by
-    /// source_bundle_id, pick the source with highest `sourcePriority` (tie-break: larger sum),
-    /// return only that source's total. Returns 0 when no samples exist.
+    /// Dominant-source sum for one cumulative type in [start, end].
     private func cumulativeSum(db: Database, hkType: String, start: Int64, end: Int64) throws -> Double {
-        let rows = try Row.fetchAll(db, sql: """
-            SELECT
-                COALESCE(source_bundle_id, 'unknown') AS bid,
-                COALESCE(source_name, '') AS sname,
-                SUM(value) AS s
-            FROM health_samples_raw
-            WHERE hk_type = ?
-              AND is_deleted = 0
-              AND start_at BETWEEN ? AND ?
-            GROUP BY bid
-            """, arguments: [hkType, start, end])
-        var bestSum: Double = 0
-        var bestPriority: Int = -1
-        for r in rows {
-            let bid: String = r["bid"] ?? ""
-            let sname: String = r["sname"] ?? ""
-            let s: Double = r["s"] ?? 0
-            let origin = SourceAttribution.classify(bundleId: bid, sourceName: sname)
-            let p = origin.cumulativePriority
-            if p > bestPriority || (p == bestPriority && s > bestSum) {
-                bestPriority = p
-                bestSum = s
-            }
-        }
-        return bestSum
+        try ActivityEnergyCalculator.cumulativeSum(db: db, hkType: hkType, start: start, end: end)
     }
 
     // MARK: - Daily
@@ -109,9 +83,12 @@ actor SummaryGenerator {
             let stepsDedup = perType["HKQuantityTypeIdentifierStepCount"] == nil
                 ? nil
                 : try cumulativeSum(db: db, hkType: "HKQuantityTypeIdentifierStepCount", start: dayStart, end: dayEnd)
-            let activeEnergyDedup = perType["HKQuantityTypeIdentifierActiveEnergyBurned"] == nil
-                ? nil
-                : try cumulativeSum(db: db, hkType: "HKQuantityTypeIdentifierActiveEnergyBurned", start: dayStart, end: dayEnd)
+            let activeEnergy = try ActivityEnergyCalculator.dailyActiveEnergyKcal(
+                db: db,
+                start: dayStart,
+                end: dayEnd
+            )
+            let activeEnergyDedup = activeEnergy > 0 ? activeEnergy : nil
 
             let mealRow = try Row.fetchOne(db, sql: """
                 SELECT
@@ -279,9 +256,10 @@ actor SummaryGenerator {
                     db: db, hkType: "HKQuantityTypeIdentifierStepCount",
                     start: dayStart, end: dayEnd
                 )
-                a.energyTotal += try cumulativeSum(
-                    db: db, hkType: "HKQuantityTypeIdentifierActiveEnergyBurned",
-                    start: dayStart, end: dayEnd
+                a.energyTotal += try ActivityEnergyCalculator.dailyActiveEnergyKcal(
+                    db: db,
+                    start: dayStart,
+                    end: dayEnd
                 )
             }
 

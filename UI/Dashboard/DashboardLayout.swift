@@ -63,7 +63,7 @@ enum DashboardCardKind: String, Codable, CaseIterable, Identifiable {
 
     var route: MetricRoute {
         switch self {
-        case .activity: return .steps
+        case .activity: return .activity
         case .heart: return .restingHR
         case .sleep: return .sleep
         case .body: return .weight

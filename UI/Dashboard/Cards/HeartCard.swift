@@ -37,7 +37,7 @@ struct HeartCard: View {
                         y: .value("BPM", d.value)
                     )
                     .foregroundStyle(CardTheme.heart.gradient)
-                    .interpolationMethod(.catmullRom)
+                    .interpolationMethod(.linear)
                     PointMark(
                         x: .value("日期", d.date, unit: .day),
                         y: .value("BPM", d.value)
