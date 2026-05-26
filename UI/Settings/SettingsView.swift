@@ -315,10 +315,15 @@ struct SettingsView: View {
                 }
                 if newId != nil { count += 1 }
             }
+            let storedInHealth = await healthKit.countAppNutritionSamples()
             await MainActor.run {
-                nutritionSyncStatus = count > 0
-                    ? "已同步 \(count) 条餐次到 Apple 健康。可在健康 App 的「营养」分类查看。"
-                    : "没有可同步的营养数据（餐次需先填入热量或营养素）。"
+                if count == 0 {
+                    nutritionSyncStatus = "没有可同步的营养数据（餐次需先填入热量或营养素）。"
+                } else if storedInHealth > 0 {
+                    nutritionSyncStatus = "已同步 \(count) 条餐次。Apple 健康中本 App 写入的膳食能量记录共 \(storedInHealth) 条 ✓。若健康 App 里看不到，多半是用了模拟器（无健康 App）——请用真机查看。"
+                } else {
+                    nutritionSyncStatus = "尝试同步 \(count) 条，但 Apple 健康中查不到本 App 写入的记录。请确认在授权弹窗里把「营养」相关项设为允许，或到 健康 App → 头像 → 隐私 →「App 与服务」→ 健康管理 中开启写入后重试。"
+                }
             }
         } catch {
             await MainActor.run { nutritionSyncStatus = "同步失败：\(error.localizedDescription)" }

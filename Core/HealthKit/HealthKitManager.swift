@@ -144,17 +144,35 @@ final class HealthKitManager: ObservableObject {
     func requestNutritionWriteAuthorization() async -> Bool {
         guard isAvailable else { return false }
         let types = HealthKitTypeCatalog.nutritionWriteSampleTypes
-        let undetermined = HealthKitTypeCatalog.writeSampleTypes.contains {
-            store.authorizationStatus(for: $0) == .notDetermined
-        }
-        if undetermined {
-            do {
-                try await store.requestAuthorization(toShare: HealthKitTypeCatalog.writeSampleTypes, read: [])
-            } catch {
-                AppLogger.shared.error("Nutrition write authorization failed: \(error.localizedDescription)")
-            }
+        // Always (re)request — HealthKit only shows the sheet for still-undetermined types,
+        // and returns immediately otherwise. We also request *read* of the same types so the
+        // post-sync read-back sanity check can see what we wrote.
+        do {
+            try await store.requestAuthorization(
+                toShare: HealthKitTypeCatalog.writeSampleTypes,
+                read: Set(types.map { $0 as HKObjectType })
+            )
+        } catch {
+            AppLogger.shared.error("Nutrition write authorization failed: \(error.localizedDescription)")
         }
         return types.contains { store.authorizationStatus(for: $0) == .sharingAuthorized }
+    }
+
+    /// Number of dietary-energy samples authored by THIS app currently in HealthKit — a
+    /// post-sync sanity check that's independent of the Health app UI (which is missing on
+    /// the Simulator). >0 means the write genuinely landed in the HealthKit store.
+    func countAppNutritionSamples() async -> Int {
+        guard isAvailable,
+              let type = HKQuantityType.quantityType(forIdentifier: .dietaryEnergyConsumed)
+        else { return 0 }
+        let predicate = HKQuery.predicateForObjects(from: HKSource.default())
+        return await withCheckedContinuation { (cont: CheckedContinuation<Int, Never>) in
+            let q = HKSampleQuery(sampleType: type, predicate: predicate,
+                                  limit: HKObjectQueryNoLimit, sortDescriptors: nil) { _, samples, _ in
+                cont.resume(returning: samples?.count ?? 0)
+            }
+            store.execute(q)
+        }
     }
 
     /// True when at least one dietary write type is authorized — used to show status.
