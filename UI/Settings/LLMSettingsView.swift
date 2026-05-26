@@ -84,7 +84,7 @@ struct LLMSettingsView: View {
                         Text(testing ? "测试中…" : "测试文本模型连接")
                     }
                 }
-                .disabled(testing || baseURL.isEmpty || textModel.isEmpty || textKey.isEmpty)
+                .disabled(testing || baseURL.isEmpty || textModel.isEmpty || (textKey.isEmpty && !LLMConfig.isLocalHost(baseURL)))
 
                 if let result = testResult {
                     Label(result, systemImage: testFailed ? "xmark.octagon" : "checkmark.seal")

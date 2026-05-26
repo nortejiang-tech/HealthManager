@@ -13,6 +13,13 @@ struct MetricDetailView: View {
     @State private var loadError: String?
     @State private var inspectedDate: Date?
     @State private var deficitBreakdown: DashboardLoader.DeficitBreakdown?
+    @State private var dayMeasurements: [DashboardLoader.BodyMeasurementSample] = []
+    /// Leading edge (oldest visible day) of the scrollable chart window. Drives the
+    /// Apple-Health-style pan; stats/header recompute from whatever is currently visible.
+    @State private var scrollPositionX: Date = Calendar.current.startOfDay(for: Date())
+    /// Transient selection from `chartXSelection` — nil while no gesture is active. We
+    /// copy non-nil values into `inspectedDate` so the selection sticks after release.
+    @State private var rawSelection: Date?
 
     var body: some View {
         ScrollView {
@@ -29,6 +36,10 @@ struct MetricDetailView: View {
                     deficitBreakdownCard
                 }
 
+                if config.rawSamplesType != nil {
+                    dayMeasurementsCard
+                }
+
                 Text(config.footnote)
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
@@ -40,11 +51,18 @@ struct MetricDetailView: View {
         .navigationBarTitleDisplayMode(.large)
         .task(id: period) {
             inspectedDate = nil
+            rawSelection = nil
             deficitBreakdown = nil
             await load()
         }
         .task(id: inspectedDate) {
             await loadInspectedBreakdown()
+            await loadDayMeasurements()
+        }
+        // Selection persists after the finger lifts: only adopt non-nil values, ignore
+        // the reset-to-nil that fires on gesture end.
+        .onChange(of: rawSelection) { _, newValue in
+            if let newValue { inspectedDate = newValue }
         }
     }
 
@@ -66,11 +84,20 @@ struct MetricDetailView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 if inspectedDate == nil {
-                    let trendSeries = points.compactMap { p -> DatedDouble? in
+                    let trendSeries = visiblePoints.compactMap { p -> DatedDouble? in
                         guard let v = p.value else { return nil }
                         return DatedDouble(date: p.date, value: v)
                     }
                     TrendChip(series: trendSeries, lowerIsBetter: lowerIsBetter, theme: config.theme)
+                } else {
+                    Button {
+                        inspectedDate = nil
+                        rawSelection = nil
+                    } label: {
+                        Text("清除选中")
+                            .font(.caption2)
+                    }
+                    .buttonStyle(.borderless)
                 }
             }
             HStack(alignment: .firstTextBaseline, spacing: 4) {
@@ -119,6 +146,34 @@ struct MetricDetailView: View {
     private func nearestPoint(to date: Date) -> MetricPoint? {
         guard !points.isEmpty else { return nil }
         return points.min(by: { abs($0.date.timeIntervalSince(date)) < abs($1.date.timeIntervalSince(date)) })
+    }
+
+    /// Width of the visible window in seconds. Normally the period's pane (周/月/年), but
+    /// when the available data spans less than that pane we shrink to the data span so the
+    /// bars stretch to fill the chart instead of cramming into a corner.
+    private var effectiveVisibleSeconds: TimeInterval {
+        let plotted = points.compactMap { $0.value != nil ? $0.date : nil }
+        guard let first = plotted.first, let last = plotted.last, last > first else {
+            return period.visibleDomainSeconds
+        }
+        let dataSpan = last.timeIntervalSince(first) + 86_400  // +1 day so the last bar isn't clipped
+        return min(period.visibleDomainSeconds, max(dataSpan, 86_400))
+    }
+
+    /// The date interval currently scrolled into view.
+    private var visibleInterval: DateInterval {
+        let end = scrollPositionX.addingTimeInterval(effectiveVisibleSeconds)
+        return DateInterval(start: scrollPositionX, end: end)
+    }
+
+    /// Points whose date falls inside the visible window — the basis for the summary
+    /// header and the 平均 / 最高 / 最低 / 最新 stat cells (so they track the pan).
+    private var visiblePoints: [MetricPoint] {
+        let interval = visibleInterval
+        let filtered = points.filter { interval.contains($0.date) }
+        // Before the first layout pass scrollPositionX may not align with data yet;
+        // fall back to all points so the header isn't blank on first render.
+        return filtered.isEmpty ? points : filtered
     }
 
     @ViewBuilder
@@ -217,37 +272,16 @@ struct MetricDetailView: View {
                 }
             }
         }
-        .chartOverlay { proxy in
-            GeometryReader { geo in
-                Rectangle()
-                    .fill(.clear)
-                    .contentShape(Rectangle())
-                    .gesture(
-                        DragGesture(minimumDistance: 0)
-                            .onChanged { drag in
-                                let plotFrame: CGRect = {
-                                    if let anchor = proxy.plotFrame {
-                                        return geo[anchor]
-                                    }
-                                    return geo.frame(in: .local)
-                                }()
-                                let relativeX = drag.location.x - plotFrame.origin.x
-                                if let d: Date = proxy.value(atX: relativeX) {
-                                    inspectedDate = d
-                                }
-                            }
-                            .onEnded { _ in
-                                // Keep the inspection sticky so users can read the value;
-                                // tapping elsewhere or switching period clears it via .task(id:).
-                            }
-                    )
-                    .onTapGesture(count: 2) { inspectedDate = nil }
-            }
-        }
+        // Apple-Health-style horizontal pan: a fixed-width window scrolls across the
+        // full loaded history. Tap to select a day; the header + stats follow the window.
+        .chartScrollableAxes(.horizontal)
+        .chartXVisibleDomain(length: effectiveVisibleSeconds)
+        .chartScrollPosition(x: $scrollPositionX)
+        .chartXSelection(value: $rawSelection)
     }
 
     private var statsGrid: some View {
-        let values = points.compactMap { $0.value }
+        let values = visiblePoints.compactMap { $0.value }
         let avg = values.isEmpty ? nil : values.reduce(0, +) / Double(values.count)
         let mn = values.min()
         let mx = values.max()
@@ -315,6 +349,92 @@ struct MetricDetailView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(14)
         .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+
+    /// Lists every raw sample recorded on the inspected day for body metrics
+    /// (weight / body fat / BMI), so the user can see each individual weigh-in
+    /// behind the day's average.
+    @ViewBuilder
+    private var dayMeasurementsCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .firstTextBaseline) {
+                Text("当日全部测量").font(.subheadline.weight(.semibold))
+                Spacer()
+                if inspectedDate == nil {
+                    Text("点击图表选中某天").font(.caption2).foregroundStyle(.secondary)
+                } else {
+                    Text("\(dayMeasurements.count) 次").font(.caption2).foregroundStyle(.secondary)
+                }
+            }
+
+            if inspectedDate != nil {
+                if dayMeasurements.isEmpty {
+                    Text("当日无明细记录").font(.caption).foregroundStyle(.secondary)
+                } else {
+                    VStack(spacing: 8) {
+                        ForEach(dayMeasurements) { m in
+                            HStack(alignment: .firstTextBaseline) {
+                                Text(timeLabel(m.time))
+                                    .font(.callout.monospacedDigit())
+                                    .foregroundStyle(.secondary)
+                                Spacer()
+                                VStack(alignment: .trailing, spacing: 1) {
+                                    Text(measurementLabel(m.value))
+                                        .font(.callout.weight(.semibold).monospacedDigit())
+                                    Text(m.source)
+                                        .font(.caption2)
+                                        .foregroundStyle(.tertiary)
+                                }
+                            }
+                        }
+                        if dayMeasurements.count > 1 {
+                            Divider()
+                            HStack {
+                                Text("当日平均").font(.callout.weight(.semibold))
+                                Spacer()
+                                Text(measurementLabel(averageMeasurement))
+                                    .font(.callout.weight(.semibold).monospacedDigit())
+                                    .foregroundStyle(config.theme.primary)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(14)
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+
+    private var averageMeasurement: Double {
+        guard !dayMeasurements.isEmpty else { return 0 }
+        return dayMeasurements.map(\.value).reduce(0, +) / Double(dayMeasurements.count)
+    }
+
+    private func measurementLabel(_ value: Double) -> String {
+        config.format(value) + (config.unit.map { " \($0)" } ?? "")
+    }
+
+    private func timeLabel(_ date: Date) -> String {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "zh_CN")
+        f.dateFormat = "HH:mm"
+        return f.string(from: date)
+    }
+
+    private func loadDayMeasurements() async {
+        guard let hkType = config.rawSamplesType else { return }
+        guard let d = inspectedDate, let target = nearestPoint(to: d)?.date else {
+            await MainActor.run { dayMeasurements = [] }
+            return
+        }
+        do {
+            let loader = DashboardLoader(database: environment.database)
+            let list = try await loader.loadDayMeasurements(hkType: hkType, day: target)
+            await MainActor.run { dayMeasurements = list }
+        } catch {
+            await MainActor.run { dayMeasurements = [] }
+        }
     }
 
     private func breakdownRow(icon: String, label: String, value: Double?,
@@ -387,7 +507,7 @@ struct MetricDetailView: View {
     }
 
     private var headerValue: String {
-        let values = points.compactMap { $0.value }
+        let values = visiblePoints.compactMap { $0.value }
         guard !values.isEmpty else { return "—" }
         switch config.summary {
         case .latest: return values.last.map { config.format($0) } ?? "—"
@@ -400,9 +520,10 @@ struct MetricDetailView: View {
     }
 
     private var periodRangeLabel: String {
-        guard !points.isEmpty else { return "" }
-        let first = points.first?.date ?? Date()
-        let last = points.last?.date ?? Date()
+        let vis = visiblePoints
+        guard !vis.isEmpty else { return "" }
+        let first = vis.first?.date ?? Date()
+        let last = vis.last?.date ?? Date()
         let f = DateFormatter()
         f.locale = Locale(identifier: "zh_CN")
         f.dateFormat = period == .year ? "yyyy年M月" : "M月d日"
@@ -464,6 +585,19 @@ struct MetricDetailView: View {
             await MainActor.run {
                 self.points = pts
                 self.loadError = nil
+                // Anchor the scroll window. When the data fills the pane, show the most
+                // recent window; when it doesn't, start at the first datum (the window is
+                // shrunk to the data span, so everything is visible and stretched anyway).
+                let cal = Calendar.current
+                let plotted = pts.compactMap { $0.value != nil ? $0.date : nil }
+                if let first = plotted.first, let last = plotted.last {
+                    let dataDays = cal.dateComponents([.day], from: first, to: last).day ?? 0
+                    if dataDays + 1 < period.days {
+                        self.scrollPositionX = first
+                    } else {
+                        self.scrollPositionX = cal.date(byAdding: .day, value: -(period.days - 1), to: last) ?? last
+                    }
+                }
             }
         } catch {
             await MainActor.run {
@@ -497,6 +631,9 @@ struct MetricDetailConfig {
     let footnote: String
     /// Closure that turns a double value into its display string.
     let format: (Double) -> String
+    /// HealthKit identifier whose raw samples should be listed when a day is inspected.
+    /// nil for derived/aggregate-only metrics (steps, deficit, …).
+    var rawSamplesType: String? = nil
 
     static let weight = MetricDetailConfig(
         title: "体重",
@@ -505,8 +642,9 @@ struct MetricDetailConfig {
         theme: .body,
         chartStyle: .line,
         summary: .latest,
-        footnote: "数据来自 Apple 健康 · 每日记录最后一次称重。",
-        format: { String(format: "%.1f", $0) }
+        footnote: "数据来自 Apple 健康 · 每日多次称重取平均；点击某天可查看当天全部记录。",
+        format: { String(format: "%.1f", $0) },
+        rawSamplesType: "HKQuantityTypeIdentifierBodyMass"
     )
 
     static let bodyFat = MetricDetailConfig(
@@ -516,8 +654,9 @@ struct MetricDetailConfig {
         theme: .body,
         chartStyle: .line,
         summary: .latest,
-        footnote: "数据来自 Apple 健康 · 体脂率换算为百分比展示。",
-        format: { String(format: "%.1f", $0 * 100) }
+        footnote: "数据来自 Apple 健康 · 每日多次测量取平均；体脂率换算为百分比展示。",
+        format: { String(format: "%.1f", $0 * 100) },
+        rawSamplesType: "HKQuantityTypeIdentifierBodyFatPercentage"
     )
 
     static let bmi = MetricDetailConfig(
@@ -527,8 +666,9 @@ struct MetricDetailConfig {
         theme: .body,
         chartStyle: .line,
         summary: .latest,
-        footnote: "BMI = 体重(kg) / 身高²(m²)。来自 Apple 健康。",
-        format: { String(format: "%.1f", $0) }
+        footnote: "BMI = 体重(kg) / 身高²(m²)。每日多次测量取平均。来自 Apple 健康。",
+        format: { String(format: "%.1f", $0) },
+        rawSamplesType: "HKQuantityTypeIdentifierBodyMassIndex"
     )
 
     static let steps = MetricDetailConfig(
@@ -564,17 +704,6 @@ struct MetricDetailConfig {
         format: { String(format: "%.0f", $0) }
     )
 
-    static let hrv = MetricDetailConfig(
-        title: "心率变异性",
-        unit: "ms",
-        source: .tableColumn("activity_metrics_daily", "hrv_ms", .average),
-        theme: .heart,
-        chartStyle: .line,
-        summary: .average,
-        footnote: "HKHeartRateVariabilitySDNN · 越高一般代表恢复越好。",
-        format: { String(format: "%.0f", $0) }
-    )
-
     static let sleep = MetricDetailConfig(
         title: "睡眠",
         unit: "小时",
@@ -584,17 +713,6 @@ struct MetricDetailConfig {
         summary: .average,
         footnote: "汇总每晚 Asleep 状态时长（不含 inBed）。",
         format: { (v: Double) in String(format: "%.1f", v / 3600.0) }
-    )
-
-    static let exercise = MetricDetailConfig(
-        title: "锻炼时长",
-        unit: "分钟",
-        source: .tableColumn("activity_metrics_daily", "exercise_minutes", .sum),
-        theme: .activity,
-        chartStyle: .bar,
-        summary: .total,
-        footnote: "Apple 健康 Apple Exercise Time。",
-        format: { String(format: "%.0f", $0) }
     )
 
     static let distance = MetricDetailConfig(

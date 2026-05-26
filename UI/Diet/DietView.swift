@@ -117,6 +117,10 @@ struct DietView: View {
             if let path = meal.photoPath {
                 MealPhotoStore.shared.removeIfManaged(path: path)
             }
+            // Remove the nutrition samples we wrote to Apple Health for this meal.
+            if let syncId = meal.hkSyncId {
+                await environment.healthKitManager.deleteNutritionSamples(syncId: syncId)
+            }
             environment.notifyLocalDataChanged()
             await refresh()
         } catch {
@@ -191,6 +195,9 @@ struct MealEditView: View {
     @State private var nutritionEstimate: MealNutritionAnalyzer.Estimate?
     @State private var isAnalyzingNutrition: Bool = false
     @State private var nutritionError: String?
+    /// Free-form text the user types to describe the meal (e.g. "十个猪肉芹菜水饺").
+    /// Estimated via the text LLM, independent of any photo.
+    @State private var foodDescription: String = ""
     /// Editable copy of `nutritionEstimate.items`. Each row shows name + grams; macros
     /// scale proportionally to the per-item baseline when the user edits grams. Totals
     /// auto-sync into the caloriesKcal/proteinG/fatG/carbsG fields below.
@@ -305,7 +312,34 @@ struct MealEditView: View {
                     }
                 }
 
-                if previewImage != nil {
+                Section {
+                    TextField("用文字描述这餐，如「十个猪肉芹菜水饺」「麦香鱼汉堡不要酱」",
+                              text: $foodDescription, axis: .vertical)
+                        .lineLimit(2...4)
+                    Button {
+                        Task { await runTextNutritionAnalysis() }
+                    } label: {
+                        if isAnalyzingNutrition {
+                            HStack(spacing: 8) {
+                                ProgressView().controlSize(.small)
+                                Text("AI 估算中…")
+                            }
+                        } else {
+                            Label("AI 估算营养", systemImage: "sparkles")
+                        }
+                    }
+                    .disabled(foodDescription.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isAnalyzingNutrition)
+                    if !LLMConfig.isConfigured {
+                        Text("未配置文本模型。前往「设置 → AI 摘要」填写 Base URL 与 Text Model 即可按描述估算。")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                } header: {
+                    Text("文字估算")
+                } footer: {
+                    Text("根据文字描述推测营养，结果可在下方逐项调整。")
+                }
+
+                if previewImage != nil || !nutritionItems.isEmpty || isAnalyzingNutrition || nutritionError != nil {
                     nutritionSection
                 }
                 Section("营养（可选）") {
@@ -419,6 +453,39 @@ struct MealEditView: View {
         }
     }
 
+    /// Estimate nutrition from the free-text description via the text LLM and populate
+    /// the editable item list (same flow as the photo path).
+    private func runTextNutritionAnalysis() async {
+        let desc = foodDescription.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !desc.isEmpty else { return }
+        guard LLMConfig.enabled, LLMConfig.isConfigured else {
+            await MainActor.run {
+                nutritionError = "未配置文本模型。前往「设置 → AI 摘要」填写 Base URL 与 Text Model。"
+            }
+            return
+        }
+        await MainActor.run {
+            isAnalyzingNutrition = true
+            nutritionError = nil
+        }
+        do {
+            let est = try await MealNutritionAnalyzer.analyze(text: desc)
+            await MainActor.run {
+                nutritionEstimate = est
+                nutritionItems = est.items.map(EditableNutritionItem.init(from:))
+                isAnalyzingNutrition = false
+                syncTotalsFromItems()
+                if notes.isEmpty { notes = desc }
+            }
+        } catch {
+            await MainActor.run {
+                nutritionError = error.localizedDescription
+                isAnalyzingNutrition = false
+            }
+            AppLogger.shared.error("Text nutrition analysis failed: \(error.localizedDescription)")
+        }
+    }
+
     /// Build a "实际上是：米饭 100g、炒青菜 150g、…" hint from the current items and
     /// re-run the LLM. Items the user just added (empty name) are skipped from the
     /// hint but stay in the array, so they'll be replaced once the new estimate lands.
@@ -509,7 +576,7 @@ struct MealEditView: View {
                     .textSelection(.enabled)
             }
 
-            if nutritionItems.isEmpty && !isAnalyzingNutrition && nutritionError == nil {
+            if previewImage != nil && nutritionItems.isEmpty && !isAnalyzingNutrition && nutritionError == nil {
                 if !LLMConfig.isVisionConfigured {
                     Text("未配置视觉模型。前往「设置 → AI 摘要」填入 Vision Model 字段（如 glm-4v-flash）即可自动估算。")
                         .font(.footnote)
@@ -612,16 +679,18 @@ struct MealEditView: View {
             carbsG: Double(carbs),
             photoPath: savedPhotoPath,
             notes: notes.isEmpty ? nil : notes,
-            createdAt: createdAt
+            createdAt: createdAt,
+            hkSyncId: editing?.hkSyncId
         )
         do {
-            try await environment.database.asyncWrite { db in
+            let savedId: Int64? = try await environment.database.asyncWrite { db -> Int64? in
                 var r = record
                 if r.id == nil {
                     try r.insert(db)
                 } else {
                     try r.update(db)
                 }
+                return r.id
             }
             // Drop the previously-saved photo if the user swapped it for a new one
             // (or removed it) — but only after the DB write succeeds so we don't
@@ -630,8 +699,29 @@ struct MealEditView: View {
                 MealPhotoStore.shared.removeIfManaged(path: old)
             }
             environment.notifyLocalDataChanged()
+            await syncNutritionToHealth(mealId: savedId ?? record.id, record: record)
         } catch {
             AppLogger.shared.error("Meal save failed: \(error.localizedDescription)")
+        }
+    }
+
+    /// Best-effort write of this meal's macros to Apple Health, then persist the returned
+    /// sync id so future edits/deletes update the same Health samples. Never blocks saving.
+    private func syncNutritionToHealth(mealId: Int64?, record: MealRecord) async {
+        let mealName = record.notes ?? mealType.label
+        let newSyncId = await environment.healthKitManager.syncMealNutrition(
+            eatenAt: record.eatenAt,
+            calories: record.caloriesKcal,
+            protein: record.proteinG,
+            fat: record.fatG,
+            carbs: record.carbsG,
+            name: mealName,
+            existingSyncId: record.hkSyncId
+        )
+        guard newSyncId != record.hkSyncId, let id = mealId else { return }
+        try? await environment.database.asyncWrite { db in
+            try db.execute(sql: "UPDATE meal_records SET hk_sync_id = ? WHERE id = ?",
+                           arguments: [newSyncId, id])
         }
     }
 }

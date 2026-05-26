@@ -14,7 +14,8 @@ enum MetricPeriod: String, CaseIterable, Identifiable {
         }
     }
 
-    /// Days of history to load (inclusive of today).
+    /// Width of the *visible* window (inclusive of today on first render). Mirrors
+    /// Apple Health's 周/月/年 panes.
     var days: Int {
         switch self {
         case .week: return 7
@@ -22,6 +23,20 @@ enum MetricPeriod: String, CaseIterable, Identifiable {
         case .year: return 365
         }
     }
+
+    /// How many days of history to actually load behind the visible window so the
+    /// chart can be scrolled back in time (Apple Health style). The visible pane is
+    /// `days`; the user can pan across `historyDays` total.
+    var historyDays: Int {
+        switch self {
+        case .week: return 182    // ~6 months of weekly panning
+        case .month: return 365   // 1 year
+        case .year: return 1095   // 3 years
+        }
+    }
+
+    /// Length of the visible window in seconds — fed to `.chartXVisibleDomain`.
+    var visibleDomainSeconds: TimeInterval { TimeInterval(days) * 86_400 }
 
     /// Bucket size used when rolling points into wider buckets. All periods keep
     /// day-level granularity (year view plots every day, not weekly averages).
@@ -302,7 +317,8 @@ struct DashboardLoader {
         let database = self.database
         let cal = Calendar.current
         let todayStart = cal.startOfDay(for: Date())
-        let cutoff = cal.date(byAdding: .day, value: -(period.days - 1), to: todayStart) ?? todayStart
+        let historyDays = period.historyDays
+        let cutoff = cal.date(byAdding: .day, value: -(historyDays - 1), to: todayStart) ?? todayStart
         let fromKey = Self.dateKey.string(from: cutoff)
         let toKey = Self.dateKey.string(from: todayStart)
 
@@ -310,12 +326,13 @@ struct DashboardLoader {
             try Self.dailyValues(db, column: column, table: table, fromKey: fromKey, toKey: toKey)
         }
 
-        // Fill every day in window (so empty days render as gaps, not "missing dates").
+        // Fill every day in the loaded history (so empty days render as gaps, not
+        // "missing dates"). The view shows a scrollable window over this full range.
         var byDate: [Date: Double] = [:]
         for r in raw { byDate[cal.startOfDay(for: r.date)] = r.value }
         var points: [MetricPoint] = []
-        for offset in 0..<period.days {
-            guard let d = cal.date(byAdding: .day, value: -(period.days - 1 - offset), to: todayStart) else { continue }
+        for offset in 0..<historyDays {
+            guard let d = cal.date(byAdding: .day, value: -(historyDays - 1 - offset), to: todayStart) else { continue }
             points.append(MetricPoint(date: d, value: byDate[cal.startOfDay(for: d)]))
         }
 
@@ -329,7 +346,8 @@ struct DashboardLoader {
     func loadDietSeries(period: MetricPeriod) async throws -> [MetricPoint] {
         let cal = Calendar.current
         let todayStart = cal.startOfDay(for: Date())
-        guard let cutoff = cal.date(byAdding: .day, value: -(period.days - 1), to: todayStart) else {
+        let historyDays = period.historyDays
+        guard let cutoff = cal.date(byAdding: .day, value: -(historyDays - 1), to: todayStart) else {
             return []
         }
         let from = Int64(cutoff.timeIntervalSince1970)
@@ -349,7 +367,7 @@ struct DashboardLoader {
                 return DatedDouble(date: d, value: row["kcal"] ?? 0)
             }
         }
-        return Self.fillAndBucket(raw, period: period, aggregation: .sum)
+        return Self.fillAndBucket(raw, period: period, aggregation: .sum, daysOverride: historyDays)
     }
 
     /// Per-day breakdown of the deficit calculation. Used by the detail view when a
@@ -399,12 +417,51 @@ struct DashboardLoader {
         }
     }
 
+    /// A single raw body-composition sample (one weigh-in / one reading) used by the
+    /// detail view to list everything measured on an inspected day.
+    struct BodyMeasurementSample: Identifiable, Equatable, Sendable {
+        let id: String
+        let time: Date
+        let value: Double
+        let source: String
+    }
+
+    /// All raw samples of `hkType` recorded on the local day containing `day`, ordered
+    /// by time. Powers the "当日全部测量" list when the user selects a day in a body chart.
+    func loadDayMeasurements(hkType: String, day: Date) async throws -> [BodyMeasurementSample] {
+        let cal = Calendar.current
+        let start = cal.startOfDay(for: day)
+        let end = cal.date(byAdding: .day, value: 1, to: start) ?? start
+        let s = Int64(start.timeIntervalSince1970)
+        let e = Int64(end.timeIntervalSince1970) - 1
+
+        return try await database.asyncRead { db in
+            let rows = try Row.fetchAll(db, sql: """
+                SELECT sample_uuid, start_at, value, source_name, source_origin
+                FROM health_samples_raw
+                WHERE hk_type = ? AND is_deleted = 0 AND start_at BETWEEN ? AND ?
+                ORDER BY start_at ASC
+                """, arguments: [hkType, s, e])
+            return rows.map { r in
+                let origin = SourceAttribution.Origin(rawValue: r["source_origin"] ?? "unknown")?.label
+                let sname: String? = r["source_name"]
+                return BodyMeasurementSample(
+                    id: r["sample_uuid"] ?? UUID().uuidString,
+                    time: Date(timeIntervalSince1970: TimeInterval(r["start_at"] ?? 0)),
+                    value: r["value"] ?? 0,
+                    source: origin ?? sname ?? "未知来源"
+                )
+            }
+        }
+    }
+
     /// Per-day deficit (active + basal − intake), padded to the full window.
     /// Returns `nil` on a day when there's neither activity nor intake (to keep the chart sparse).
     func loadDeficitSeries(period: MetricPeriod) async throws -> [MetricPoint] {
         let cal = Calendar.current
         let todayStart = cal.startOfDay(for: Date())
-        guard let cutoff = cal.date(byAdding: .day, value: -(period.days - 1), to: todayStart) else {
+        let historyDays = period.historyDays
+        guard let cutoff = cal.date(byAdding: .day, value: -(historyDays - 1), to: todayStart) else {
             return []
         }
         let fromKey = Self.dateKey.string(from: cutoff)
@@ -413,20 +470,22 @@ struct DashboardLoader {
         let raw: [DatedDouble] = try await database.asyncRead { db in
             try Self.deficitSeries(db, fromKey: fromKey, toKey: toKey)
         }
-        return Self.fillAndBucket(raw, period: period, aggregation: .average)
+        return Self.fillAndBucket(raw, period: period, aggregation: .average, daysOverride: historyDays)
     }
 
     // MARK: - Window fill helpers
 
     static func fillAndBucket(_ raw: [DatedDouble], period: MetricPeriod,
-                              aggregation: SeriesAggregation) -> [MetricPoint] {
+                              aggregation: SeriesAggregation,
+                              daysOverride: Int? = nil) -> [MetricPoint] {
         let cal = Calendar.current
         let todayStart = cal.startOfDay(for: Date())
+        let span = daysOverride ?? period.days
         var byDate: [Date: Double] = [:]
         for r in raw { byDate[cal.startOfDay(for: r.date)] = r.value }
         var points: [MetricPoint] = []
-        for offset in 0..<period.days {
-            guard let d = cal.date(byAdding: .day, value: -(period.days - 1 - offset), to: todayStart) else { continue }
+        for offset in 0..<span {
+            guard let d = cal.date(byAdding: .day, value: -(span - 1 - offset), to: todayStart) else { continue }
             points.append(MetricPoint(date: d, value: byDate[cal.startOfDay(for: d)]))
         }
         if period.bucketDays > 1 {

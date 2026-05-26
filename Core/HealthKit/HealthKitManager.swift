@@ -113,6 +113,157 @@ final class HealthKitManager: ObservableObject {
         }
     }
 
+    // MARK: - Nutrition write-back
+
+    /// Metadata key stamped on every dietary sample we write, valued with the meal's
+    /// sync id so we can find/replace/delete exactly this app's samples for a meal.
+    static let mealSyncIdKey = "HMMealSyncID"
+
+    /// Prompt for dietary share permission only when still undetermined. HealthKit won't
+    /// re-show the sheet for types the user already decided on.
+    func ensureNutritionWriteAuthorization() async {
+        guard isAvailable else { return }
+        // Include the food correlation type so users who only granted the nutrient toggles
+        // (before grouping existed) get re-prompted to allow saving meals as one entry.
+        let needsRequest = HealthKitTypeCatalog.writeSampleTypes.contains {
+            store.authorizationStatus(for: $0) == .notDetermined
+        }
+        guard needsRequest else { return }
+        do {
+            // Request the macros + the food correlation so we can save grouped meals.
+            try await store.requestAuthorization(toShare: HealthKitTypeCatalog.writeSampleTypes, read: [])
+        } catch {
+            AppLogger.shared.error("Nutrition write authorization failed: \(error.localizedDescription)")
+        }
+    }
+
+    /// Explicitly (re)request dietary share permission and report whether any dietary type
+    /// is authorized afterwards. Drives the Settings "同步到 Apple 健康" button so the user
+    /// can grant write access on demand even if they skipped it during onboarding.
+    @discardableResult
+    func requestNutritionWriteAuthorization() async -> Bool {
+        guard isAvailable else { return false }
+        let types = HealthKitTypeCatalog.nutritionWriteSampleTypes
+        let undetermined = HealthKitTypeCatalog.writeSampleTypes.contains {
+            store.authorizationStatus(for: $0) == .notDetermined
+        }
+        if undetermined {
+            do {
+                try await store.requestAuthorization(toShare: HealthKitTypeCatalog.writeSampleTypes, read: [])
+            } catch {
+                AppLogger.shared.error("Nutrition write authorization failed: \(error.localizedDescription)")
+            }
+        }
+        return types.contains { store.authorizationStatus(for: $0) == .sharingAuthorized }
+    }
+
+    /// True when at least one dietary write type is authorized — used to show status.
+    var isNutritionWriteAuthorized: Bool {
+        HealthKitTypeCatalog.nutritionWriteSampleTypes.contains {
+            store.authorizationStatus(for: $0) == .sharingAuthorized
+        }
+    }
+
+    /// Write (or re-write) one meal's macros to Apple Health. Returns the sync id stamped
+    /// on the samples (caller persists it on the meal), or the existing id / nil on failure.
+    /// Idempotent: if `existingSyncId` is set, its previously-written samples are deleted first.
+    func syncMealNutrition(
+        eatenAt: Int64,
+        calories: Double?, protein: Double?, fat: Double?, carbs: Double?,
+        name: String?,
+        existingSyncId: String?
+    ) async -> String? {
+        guard isAvailable else { return existingSyncId }
+        await ensureNutritionWriteAuthorization()
+
+        if let old = existingSyncId {
+            await deleteNutritionSamples(syncId: old)
+        }
+
+        let date = Date(timeIntervalSince1970: TimeInterval(eatenAt))
+        let syncId = existingSyncId ?? UUID().uuidString
+        let pairs: [(HKQuantityTypeIdentifier, Double?)] = [
+            (.dietaryEnergyConsumed, calories),
+            (.dietaryProtein, protein),
+            (.dietaryFatTotal, fat),
+            (.dietaryCarbohydrates, carbs)
+        ]
+        var samples: [HKQuantitySample] = []
+        for (id, value) in pairs {
+            guard let value, value > 0,
+                  let type = HKQuantityType.quantityType(forIdentifier: id) else { continue }
+            // Skip types the user declined to share — saving them would throw.
+            guard store.authorizationStatus(for: type) == .sharingAuthorized else { continue }
+            var metadata: [String: Any] = [
+                HKMetadataKeyWasUserEntered: true,
+                Self.mealSyncIdKey: syncId
+            ]
+            if let name, !name.isEmpty { metadata[HKMetadataKeyFoodType] = name }
+            let sample = HKQuantitySample(
+                type: type,
+                quantity: HKQuantity(unit: HealthKitTypeCatalog.preferredUnit(for: id), doubleValue: value),
+                start: date, end: date,
+                metadata: metadata
+            )
+            samples.append(sample)
+        }
+        guard !samples.isEmpty else { return existingSyncId }
+
+        // Preferred: bundle the macros into one `.food` correlation so Apple Health shows
+        // them as a single meal. Requires the food correlation type to be authorized.
+        if let foodType = HealthKitTypeCatalog.foodCorrelationType,
+           store.authorizationStatus(for: foodType) == .sharingAuthorized {
+            var correlationMeta: [String: Any] = [
+                HKMetadataKeyWasUserEntered: true,
+                Self.mealSyncIdKey: syncId
+            ]
+            if let name, !name.isEmpty { correlationMeta[HKMetadataKeyFoodType] = name }
+            let correlation = HKCorrelation(
+                type: foodType, start: date, end: date,
+                objects: Set(samples), metadata: correlationMeta
+            )
+            do {
+                try await store.save(correlation)
+                return syncId
+            } catch {
+                AppLogger.shared.error("Meal correlation write failed, falling back to samples: \(error.localizedDescription)")
+                // Fall through to writing the individual samples below.
+            }
+        }
+
+        // Fallback: write the macros as standalone nutrient samples (still counted in
+        // Apple Health's nutrition totals, just not grouped as one meal).
+        do {
+            try await store.save(samples)
+            return syncId
+        } catch {
+            AppLogger.shared.error("Meal nutrition write failed: \(error.localizedDescription)")
+            return existingSyncId
+        }
+    }
+
+    /// Delete every dietary object previously written for `syncId` (app-authored only):
+    /// the `.food` correlation first (which carries the same sync-id metadata), then any
+    /// standalone nutrient samples left over from a fallback write.
+    func deleteNutritionSamples(syncId: String) async {
+        guard isAvailable else { return }
+        let predicate = HKQuery.predicateForObjects(withMetadataKey: Self.mealSyncIdKey, allowedValues: [syncId])
+        var types: [HKSampleType] = []
+        if let food = HealthKitTypeCatalog.foodCorrelationType { types.append(food) }
+        types.append(contentsOf: HealthKitTypeCatalog.nutritionWriteSampleTypes.map { $0 as HKSampleType })
+        for type in types {
+            guard store.authorizationStatus(for: type) == .sharingAuthorized else { continue }
+            await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
+                store.deleteObjects(of: type, predicate: predicate) { _, _, error in
+                    if let error {
+                        AppLogger.shared.error("Meal nutrition delete failed: \(error.localizedDescription)")
+                    }
+                    cont.resume()
+                }
+            }
+        }
+    }
+
     // MARK: - Query primitives
 
     /// Bounded historical fetch. Used by Backfill (default 30 days).

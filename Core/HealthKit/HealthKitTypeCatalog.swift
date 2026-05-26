@@ -85,8 +85,32 @@ enum HealthKitTypeCatalog {
         Set(allReadSampleTypes.map { $0 as HKObjectType })
     }
 
-    /// V1: read-only. Write entitlement is declared but we don't request share for any type.
-    static let writeSampleTypes: Set<HKSampleType> = []
+    /// Dietary quantity types we write back to Apple Health from the app's diet log,
+    /// so Health can record and aggregate nutrition the app captured (photo / 文字 / 手动).
+    static let nutritionWriteIdentifiers: [HKQuantityTypeIdentifier] = [
+        .dietaryEnergyConsumed,
+        .dietaryProtein,
+        .dietaryFatTotal,
+        .dietaryCarbohydrates
+    ]
+
+    static var nutritionWriteSampleTypes: [HKQuantityType] {
+        nutritionWriteIdentifiers.compactMap { HKQuantityType.quantityType(forIdentifier: $0) }
+    }
+
+    /// The `.food` correlation type — lets us group a meal's macros into one Apple Health
+    /// entry (a "meal") instead of four loose nutrient samples.
+    static var foodCorrelationType: HKCorrelationType? {
+        HKCorrelationType.correlationType(forIdentifier: .food)
+    }
+
+    /// Types the app requests *share* (write) permission for: the dietary macros plus the
+    /// food correlation that bundles them into a single meal.
+    static var writeSampleTypes: Set<HKSampleType> {
+        var set = Set(nutritionWriteSampleTypes.map { $0 as HKSampleType })
+        if let food = foodCorrelationType { set.insert(food) }
+        return set
+    }
 
     // MARK: - Canonical units
 

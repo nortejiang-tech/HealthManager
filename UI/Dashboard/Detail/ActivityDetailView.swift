@@ -174,7 +174,8 @@ struct ActivityDetailView: View {
     nonisolated private static func trendPoints(db: Database, column: String, period: MetricPeriod) throws -> [MetricPoint] {
         let calendar = Calendar.current
         let todayStart = calendar.startOfDay(for: Date())
-        let cutoff = calendar.date(byAdding: .day, value: -(period.days - 1), to: todayStart) ?? todayStart
+        let historyDays = period.historyDays
+        let cutoff = calendar.date(byAdding: .day, value: -(historyDays - 1), to: todayStart) ?? todayStart
         let raw = try DashboardLoader.dailyValues(
             db,
             column: column,
@@ -182,7 +183,7 @@ struct ActivityDetailView: View {
             fromKey: DashboardLoader.dateKey.string(from: cutoff),
             toKey: DashboardLoader.dateKey.string(from: todayStart)
         )
-        return DashboardLoader.fillAndBucket(raw, period: period, aggregation: .sum)
+        return DashboardLoader.fillAndBucket(raw, period: period, aggregation: .sum, daysOverride: historyDays)
     }
 
     private func kcalLabel(_ value: Double?) -> String {
@@ -292,6 +293,8 @@ private struct ActivityMetricBarChart: View {
     let emptyText: String
     let format: (Double) -> String
 
+    @State private var scrollPositionX: Date = Calendar.current.startOfDay(for: Date())
+
     private var plotPoints: [(Date, Double)] {
         points.compactMap { point in
             guard let value = point.value else { return nil }
@@ -302,6 +305,29 @@ private struct ActivityMetricBarChart: View {
     private var yDomain: ClosedRange<Double> {
         let maxValue = max(plotPoints.map(\.1).max() ?? 0, 1)
         return 0...(maxValue * 1.15)
+    }
+
+    /// Shrink the visible window to the data span when there's less than a full pane of
+    /// data, so partial-year (etc.) data stretches to fill instead of cramming.
+    private var effectiveVisibleSeconds: TimeInterval {
+        guard let first = plotPoints.first?.0, let last = plotPoints.last?.0, last > first else {
+            return period.visibleDomainSeconds
+        }
+        let dataSpan = last.timeIntervalSince(first) + 86_400
+        return min(period.visibleDomainSeconds, max(dataSpan, 86_400))
+    }
+
+    /// Anchor the scroll window: latest pane when data fills it, else the first datum
+    /// (window is shrunk to the data span, so all of it shows stretched).
+    private func resetScrollToLatest() {
+        let cal = Calendar.current
+        guard let first = plotPoints.first?.0, let last = plotPoints.last?.0 else { return }
+        let dataDays = cal.dateComponents([.day], from: first, to: last).day ?? 0
+        if dataDays + 1 < period.days {
+            scrollPositionX = first
+        } else {
+            scrollPositionX = cal.date(byAdding: .day, value: -(period.days - 1), to: last) ?? last
+        }
     }
 
     var body: some View {
@@ -346,7 +372,13 @@ private struct ActivityMetricBarChart: View {
                         }
                     }
                 }
+                .chartScrollableAxes(.horizontal)
+                .chartXVisibleDomain(length: effectiveVisibleSeconds)
+                .chartScrollPosition(x: $scrollPositionX)
                 .frame(height: 150)
+                .onAppear { resetScrollToLatest() }
+                .onChange(of: points) { _, _ in resetScrollToLatest() }
+                .onChange(of: period) { _, _ in resetScrollToLatest() }
             }
         }
         .padding(.vertical, 6)

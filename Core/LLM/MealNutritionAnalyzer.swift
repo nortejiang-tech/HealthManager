@@ -39,6 +39,7 @@ enum MealNutritionAnalyzer {
 
     enum AnalyzeError: LocalizedError {
         case notConfigured
+        case notConfiguredText
         case llm(Error)
         case parseFailure(rawSnippet: String)
 
@@ -46,8 +47,10 @@ enum MealNutritionAnalyzer {
             switch self {
             case .notConfigured:
                 return "尚未配置视觉模型。请到「设置 → AI 摘要」填入 Vision Model 字段。"
+            case .notConfiguredText:
+                return "尚未配置文本模型。请到「设置 → AI 摘要」填入 Base URL 与 Text Model。"
             case .llm(let e):
-                return "视觉模型调用失败：\(e.localizedDescription)"
+                return "模型调用失败：\(e.localizedDescription)"
             case .parseFailure(let s):
                 return "模型返回不是 JSON：\(s)"
             }
@@ -73,6 +76,50 @@ enum MealNutritionAnalyzer {
     7. 估算保守一些，宁可偏低不要夸大
     8. 严格要求：禁止输出 Python / JavaScript 代码、函数定义、print 语句、注释或 import；禁止使用单引号 / None / True / False。字符串必须双引号，布尔小写 true/false，空值写 null。只输出一个 JSON 对象字面量，从 { 开始到 } 结束。
     """
+
+    /// System prompt for the text-only path: the user types a free-form description
+    /// (e.g. "十个芹菜猪肉水饺", "麦香鱼汉堡不要酱") and we estimate macros from it.
+    static let textSystemPrompt: String = """
+    你是营养估算助手。用户会用一句话描述这一餐吃了什么（可能含数量、份量、做法、是否加酱料等）。请：
+    1. 把描述中的每一种食物 / 菜品识别出来，每种作为 items 数组的一项；
+    2. 对每一项估算：name（中文菜名）、grams（份量，克；依据描述里的数量/常识推断，如「十个水饺」约 250g）、calories_kcal、protein_g、fat_g、carbs_g；
+    3. 认真考虑描述里的数量与做法对份量/热量的影响（如「不要酱」要减少脂肪与热量，「油炸」要增加）；
+    4. 输出严格 JSON，不要包裹在 markdown 里，也不要任何额外文字；schema：
+       {
+         "items": [
+           {"name": "猪肉芹菜水饺", "grams": 250, "calories_kcal": 520, "protein_g": 20, "fat_g": 18, "carbs_g": 68}
+         ],
+         "confidence": "low/medium/high",
+         "note": "可选备注"
+       }
+    5. 每个 item 必须给出 name 和 grams；macros 尽量给出；估算保守一些，宁可偏低；
+    6. 如果描述无法识别为食物，items 写空数组 []、confidence 写 "low"、note 写明原因；
+    7. 严格要求：禁止输出 Python / JavaScript 代码、函数定义、注释或 import；禁止单引号 / None / True / False。字符串必须双引号，布尔小写 true/false，空值 null。只输出一个 JSON 对象字面量，从 { 开始到 } 结束。
+    """
+
+    /// Estimate nutrition from a free-form text description using the configured **text**
+    /// model (not vision). Mirrors `analyze(image:)`'s output shape so the UI can reuse the
+    /// same item-editing flow.
+    static func analyze(text: String) async throws -> Estimate {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            return Estimate(items: [], confidence: "low", note: "描述为空")
+        }
+        guard let client = LLMClient(fromConfig: true) else {
+            throw AnalyzeError.notConfiguredText
+        }
+        let raw: String
+        do {
+            raw = try await client.complete(
+                systemPrompt: textSystemPrompt,
+                user: "用户描述：\(trimmed)\n请按 items 数组估算这一餐的营养，仅返回 JSON。",
+                temperature: 0.2
+            )
+        } catch {
+            throw AnalyzeError.llm(error)
+        }
+        return try parse(raw)
+    }
 
     /// Analyze a meal image and return a structured estimate.
     /// `LLMConfig.isVisionConfigured` must be true.

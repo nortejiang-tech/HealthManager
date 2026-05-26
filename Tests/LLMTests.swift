@@ -179,6 +179,7 @@ final class LLMTests: XCTestCase {
 
     func test_summarySystemPrompt_nonEmpty() {
         XCTAssertFalse(LLMClient.summarySystemPrompt.isEmpty)
-        XCTAssertTrue(LLMClient.summarySystemPrompt.contains("健康"))
+        // Prompt is now weight-management focused and actionable.
+        XCTAssertTrue(LLMClient.summarySystemPrompt.contains("体重"))
     }
 }

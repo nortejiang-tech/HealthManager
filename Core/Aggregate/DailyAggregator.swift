@@ -70,10 +70,13 @@ actor DailyAggregator {
             d.hrv             = try avgValue(db: db, hkType: "HKQuantityTypeIdentifierHeartRateVariabilitySDNN", start: s, end: e)
             d.vo2Max          = try avgValue(db: db, hkType: "HKQuantityTypeIdentifierVO2Max", start: s, end: e)
             d.sleepSeconds    = try sleepDuration(db: db, start: s, end: e)
-            d.weight          = try latestValue(db: db, hkType: "HKQuantityTypeIdentifierBodyMass", start: s, end: e)
-            d.bodyFat         = try latestValue(db: db, hkType: "HKQuantityTypeIdentifierBodyFatPercentage", start: s, end: e)
-            d.bmi             = try latestValue(db: db, hkType: "HKQuantityTypeIdentifierBodyMassIndex", start: s, end: e)
-            d.leanMass        = try latestValue(db: db, hkType: "HKQuantityTypeIdentifierLeanBodyMass", start: s, end: e)
+            // Body composition: average all of the day's measurements (PRD update — user
+            // may weigh in multiple times a day; the daily rollup is the mean, not the last).
+            d.weight          = try avgValue(db: db, hkType: "HKQuantityTypeIdentifierBodyMass", start: s, end: e)
+            d.bodyFat         = try avgValue(db: db, hkType: "HKQuantityTypeIdentifierBodyFatPercentage", start: s, end: e)
+            d.bmi             = try avgValue(db: db, hkType: "HKQuantityTypeIdentifierBodyMassIndex", start: s, end: e)
+            d.leanMass        = try avgValue(db: db, hkType: "HKQuantityTypeIdentifierLeanBodyMass", start: s, end: e)
+            // Height is essentially constant — keep the latest reading rather than averaging.
             d.height          = try latestValue(db: db, hkType: "HKQuantityTypeIdentifierHeight", start: s, end: e)
             return d
         }

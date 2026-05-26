@@ -31,7 +31,12 @@ HealthManager.xcodeproj
 .env
 .env.local
 
+## TLS certs / keys for local Tailscale Ollama (never commit private keys)
+*.ts.net.crt
+*.ts.net.key
+
 ## Claude Code (personal overrides)
+.claude/
 .claude/settings.local.json
 
 ## Logs

@@ -165,20 +165,6 @@ struct DashboardView: View {
                 unit: "km",
                 format: { String(format: "%.2f", $0 / 1000) }
             )
-        case .exercise:
-            SlimMetricCard(
-                kind: kind,
-                value: snapshot.activity.todayExerciseMin,
-                unit: "min",
-                format: { String(format: "%.0f", $0) }
-            )
-        case .hrv:
-            SlimMetricCard(
-                kind: kind,
-                value: snapshot.heart.todayHRV,
-                unit: "ms",
-                format: { String(format: "%.0f", $0) }
-            )
         case .bodyFat:
             SlimMetricCard(
                 kind: kind,
@@ -275,7 +261,7 @@ struct DashboardView: View {
 
 /// Routes for each card → detail screen.
 enum MetricRoute: Hashable {
-    case activity, steps, activeKcal, restingHR, hrv, sleep, weight, bodyFat, bmi, diet, deficit, exercise, distance
+    case activity, steps, activeKcal, restingHR, sleep, weight, bodyFat, bmi, diet, deficit, distance
 
     var config: MetricDetailConfig? {
         switch self {
@@ -283,12 +269,10 @@ enum MetricRoute: Hashable {
         case .steps: return .steps
         case .activeKcal: return .activeKcal
         case .restingHR: return .restingHR
-        case .hrv: return .hrv
         case .sleep: return .sleep
         case .weight: return .weight
         case .bodyFat: return .bodyFat
         case .bmi: return .bmi
-        case .exercise: return .exercise
         case .distance: return .distance
         case .diet: return .diet
         case .deficit: return .deficit

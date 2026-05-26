@@ -29,8 +29,15 @@
 	<false/>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
 	<key>NSCameraUsageDescription</key>
 	<string>拍摄饮食照片以记录餐次。</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>用于连接局域网或 Tailscale 网络中的本地 AI 推理服务（如 Ollama）。</string>
 	<key>NSHealthShareUsageDescription</key>
 	<string>读取 Apple 健康中的体重、体脂、活动、心率、睡眠等数据以进行健康分析与对账。</string>
 	<key>NSHealthUpdateUsageDescription</key>

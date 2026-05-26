@@ -31,17 +31,18 @@ struct LLMClient {
     }
 
     /// Convenience init that reads from `LLMConfig`. Returns nil if text-model not configured.
+    /// Local providers (Tailscale / loopback) may have no API key — pass `""` in that case.
     init?(fromConfig: Bool = true) {
-        guard LLMConfig.isConfigured,
-              let key = LLMConfig.textApiKey else { return nil }
+        guard LLMConfig.isConfigured else { return nil }
+        let key = LLMConfig.textApiKey ?? ""
         self.init(baseURL: LLMConfig.baseURL, model: LLMConfig.textModel, apiKey: key)
     }
 
     /// Same as `fromConfig`, but uses the vision model + vision endpoint's own key.
     /// Returns nil if vision not configured.
     static func visionClient() -> LLMClient? {
-        guard LLMConfig.isVisionConfigured,
-              let key = LLMConfig.visionApiKey else { return nil }
+        guard LLMConfig.isVisionConfigured else { return nil }
+        let key = LLMConfig.visionApiKey ?? ""
         return LLMClient(baseURL: LLMConfig.resolvedVisionBaseURL, model: LLMConfig.visionModel, apiKey: key)
     }
 
@@ -157,7 +158,9 @@ struct LLMClient {
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        req.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        if !apiKey.isEmpty {
+            req.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        }
         req.timeoutInterval = 60
         req.httpBody = body
 
@@ -227,12 +230,13 @@ struct LLMClient {
     }
 
     /// Shared system prompt for health summary analysis. Constrains the model to
-    /// plain-language Chinese, ≤120 字, no diagnostic claims.
+    /// plain-language Chinese, weight-management focused, actionable, no diagnostics.
     static let summarySystemPrompt: String = """
-    你是一名健康数据助手。基于用户提供的本地聚合摘要（不含原始样本），用 80–120 字写出 1 段中文分析：
-    - 指出趋势 / 异常（步数、心率、体重、睡眠、饮食、用药）；
-    - 给 1 条可执行建议；
-    - 不要做医疗诊断，遇到风险点建议「咨询医生」。
-    - 直接输出正文，不要重复用户原文。
+    你是一名体重管理教练。基于用户提供的本地聚合摘要（不含原始样本），用 80–120 字中文给出**针对体重管理的指导意见**，而不是复述数据：
+    - 核心围绕能量平衡：摄入 vs 消耗（活动能量 + 基础代谢）、热量缺口/盈余、以及体重变化趋势是否与缺口一致；
+    - 蛋白质摄入是否足够（保肌减脂）、是否需要调整进食或活动量；
+    - 必须给出 1–2 条**今天/本周就能照做的具体行动**（例如「再多走 2000 步」「晚餐减少约 200 kcal 主食」「把蛋白质提到  XX g」），给出大致数字而非空泛建议；
+    - 不要逐条罗列原始数字，不要做医疗诊断；若出现明显异常（如体重骤变、静息心率异常）提示「建议咨询医生」。
+    - 直接输出正文，不要重复用户原文，不要使用「根据数据」这类开场白。
     """
 }

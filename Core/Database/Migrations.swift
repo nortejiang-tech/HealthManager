@@ -273,6 +273,18 @@ enum Migrations {
             }
         }
 
+        // MARK: v4 — track HealthKit write-back of meal nutrition
+        //
+        // When a meal's nutrition is written to Apple Health, we tag every sample with a
+        // per-meal sync id (stored here). Lets us idempotently re-write on edit and delete
+        // the matching samples when the meal is removed. Nullable: meals that predate the
+        // feature or were never synced just leave it empty.
+        migrator.registerMigration("v4_meal_hk_sync_id") { db in
+            try db.alter(table: "meal_records") { t in
+                t.add(column: "hk_sync_id", .text)
+            }
+        }
+
         try migrator.migrate(pool)
     }
 }

@@ -38,6 +38,9 @@ struct MealRecord: Codable, FetchableRecord, MutablePersistableRecord, Identifia
     var photoPath: String?
     var notes: String?
     var createdAt: Int64
+    /// Per-meal id stamped onto the HealthKit nutrition samples we wrote for this meal.
+    /// nil when the meal was never synced to Apple Health.
+    var hkSyncId: String? = nil
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -50,6 +53,7 @@ struct MealRecord: Codable, FetchableRecord, MutablePersistableRecord, Identifia
         case photoPath = "photo_path"
         case notes
         case createdAt = "created_at"
+        case hkSyncId = "hk_sync_id"
     }
 
     mutating func didInsert(_ inserted: InsertionSuccess) {

@@ -12,7 +12,7 @@ enum DashboardCardKind: String, Codable, CaseIterable, Identifiable {
     // Rich (existing) cards
     case activity, heart, sleep, body, diet, deficit
     // Slim single-metric cards
-    case activeKcal, distance, exercise, hrv, bodyFat, bmi
+    case activeKcal, distance, bodyFat, bmi
 
     var id: String { rawValue }
 
@@ -26,8 +26,6 @@ enum DashboardCardKind: String, Codable, CaseIterable, Identifiable {
         case .deficit: return "热量缺口"
         case .activeKcal: return "活动能量"
         case .distance: return "距离"
-        case .exercise: return "锻炼时长"
-        case .hrv: return "心率变异性"
         case .bodyFat: return "体脂率"
         case .bmi: return "BMI"
         }
@@ -43,8 +41,6 @@ enum DashboardCardKind: String, Codable, CaseIterable, Identifiable {
         case .deficit: return "flame.fill"
         case .activeKcal: return "flame.fill"
         case .distance: return "figure.walk.motion"
-        case .exercise: return "stopwatch.fill"
-        case .hrv: return "waveform.path.ecg"
         case .bodyFat: return "figure"
         case .bmi: return "scalemass.fill"
         }
@@ -52,8 +48,8 @@ enum DashboardCardKind: String, Codable, CaseIterable, Identifiable {
 
     var theme: CardTheme {
         switch self {
-        case .activity, .activeKcal, .distance, .exercise: return .activity
-        case .heart, .hrv: return .heart
+        case .activity, .activeKcal, .distance: return .activity
+        case .heart: return .heart
         case .sleep: return .sleep
         case .body, .bodyFat, .bmi: return .body
         case .diet: return .diet
@@ -71,8 +67,6 @@ enum DashboardCardKind: String, Codable, CaseIterable, Identifiable {
         case .deficit: return .deficit
         case .activeKcal: return .activeKcal
         case .distance: return .distance
-        case .exercise: return .exercise
-        case .hrv: return .hrv
         case .bodyFat: return .bodyFat
         case .bmi: return .bmi
         }

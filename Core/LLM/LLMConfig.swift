@@ -66,8 +66,29 @@ enum LLMConfig {
         Preset(name: "Ollama Cloud",
                baseURL: "https://api.ollama.com/v1",
                suggestedTextModel: "gpt-oss:20b",
-               suggestedVisionModel: "qwen2.5vl:7b")
+               suggestedVisionModel: "qwen2.5vl:7b"),
+        Preset(name: "Ollama 本地 · Tailscale HTTPS",
+               baseURL: "https://<your-mac>.<your-tailnet>.ts.net/v1",
+               suggestedTextModel: "qwen3-vl:30b-a3b",
+               suggestedVisionModel: "qwen3-vl:30b-a3b"),
+        Preset(name: "Ollama 本地 · Tailscale IP",
+               baseURL: "http://100.x.x.x:11434/v1",
+               suggestedTextModel: "qwen3-vl:30b-a3b",
+               suggestedVisionModel: "qwen3-vl:30b-a3b")
     ]
+
+    /// True when the URL points at a local/private host where API-key auth is
+    /// not expected (Tailscale, RFC1918, loopback). Used to let local providers
+    /// pass `isConfigured` without a key.
+    static func isLocalHost(_ urlString: String) -> Bool {
+        guard let host = URL(string: urlString)?.host?.lowercased() else { return false }
+        if host.hasSuffix(".ts.net") { return true }
+        if host == "localhost" || host == "127.0.0.1" || host == "::1" { return true }
+        if host.hasPrefix("100.") { return true }   // Tailscale CGNAT 100.64.0.0/10
+        if host.hasPrefix("192.168.") { return true }
+        if host.hasPrefix("10.") { return true }
+        return false
+    }
 
     /// User-added presets, persisted as JSON in UserDefaults.
     static var customPresets: [Preset] {
@@ -151,14 +172,19 @@ enum LLMConfig {
         set { defaults.set(newValue, forKey: enabledKey) }
     }
 
-    /// Whether the basic text-model triple is filled (key + baseURL + textModel).
+    /// Whether the basic text-model triple is filled. Local providers (Tailscale /
+    /// loopback / RFC1918) don't require an API key — Ollama ignores Authorization.
     static var isConfigured: Bool {
-        !baseURL.isEmpty && !textModel.isEmpty && !(textApiKey ?? "").isEmpty
+        guard !baseURL.isEmpty, !textModel.isEmpty else { return false }
+        if isLocalHost(baseURL) { return true }
+        return !(textApiKey ?? "").isEmpty
     }
 
-    /// Whether vision-model usage is configured (key + baseURL + visionModel).
+    /// Whether vision-model usage is configured. Same local-host relaxation as `isConfigured`.
     static var isVisionConfigured: Bool {
-        !resolvedVisionBaseURL.isEmpty && !visionModel.isEmpty && !(visionApiKey ?? "").isEmpty
+        guard !resolvedVisionBaseURL.isEmpty, !visionModel.isEmpty else { return false }
+        if isLocalHost(resolvedVisionBaseURL) { return true }
+        return !(visionApiKey ?? "").isEmpty
     }
 
     // MARK: - Per-provider API keys
