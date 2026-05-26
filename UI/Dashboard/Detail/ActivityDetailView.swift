@@ -428,10 +428,7 @@ struct ActivityWorkoutRowView: View {
     }
 
     private var dateLabel: String {
-        let formatter = DateFormatter()
-        formatter.dateStyle = .short
-        formatter.timeStyle = .short
-        return formatter.string(from: Date(timeIntervalSince1970: TimeInterval(row.startAt)))
+        AppDateFormats.shortDateTime.string(from: Date(timeIntervalSince1970: TimeInterval(row.startAt)))
     }
 
     private var durationLabel: String {

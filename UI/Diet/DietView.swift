@@ -164,10 +164,7 @@ private struct MealRow: View {
     }
 
     private var dateLabel: String {
-        let f = DateFormatter()
-        f.dateStyle = .short
-        f.timeStyle = .short
-        return f.string(from: Date(timeIntervalSince1970: TimeInterval(meal.eatenAt)))
+        AppDateFormats.shortDateTime.string(from: Date(timeIntervalSince1970: TimeInterval(meal.eatenAt)))
     }
 }
 

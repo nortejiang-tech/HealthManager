@@ -54,6 +54,40 @@ struct MetricPoint: Identifiable, Hashable, Sendable {
 /// (e.g. year view → 1 point per week).
 enum SeriesAggregation: Sendable { case sum, average, latest }
 
+/// App-wide cached `DateFormatter`s. Building a `DateFormatter` is expensive, so these are
+/// constructed once and reused — important on MainActor hot paths like chart scrolling and
+/// day-selection, where labels are recomputed on every frame. Use these instead of
+/// allocating `DateFormatter()` inline. (Access from the main actor only.)
+enum AppDateFormats {
+    /// "M月d日 周三" — selected/short day with weekday (week & month detail headers).
+    static let monthDayWeekday = make("M月d日 EEEE")
+    /// "2026年5月26日" — fully-qualified day (year detail header).
+    static let yearMonthDay = make("yyyy年M月d日")
+    /// "2026年5月" — month bucket label (year range).
+    static let yearMonth = make("yyyy年M月")
+    /// "5月26日" — short day label (week/month range).
+    static let monthDay = make("M月d日")
+    /// "21:30" — time of a single measurement / sample.
+    static let hourMinute = make("HH:mm")
+
+    /// Locale-aware short date+time (e.g. workout rows). Uses styles, not a fixed pattern.
+    static let shortDateTime: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "zh_CN")
+        f.dateStyle = .short
+        f.timeStyle = .short
+        return f
+    }()
+
+    private static func make(_ pattern: String) -> DateFormatter {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "zh_CN")
+        f.timeZone = .current
+        f.dateFormat = pattern
+        return f
+    }
+}
+
 /// Today / hero snapshot used at the top of the dashboard.
 struct DashboardSnapshot: Sendable, Equatable {
     var activity = ActivityCardData()
@@ -524,6 +558,19 @@ struct DashboardLoader {
 
     // MARK: - SQL helpers
 
+    /// Convert a `[fromKey, toKey]` (inclusive, yyyy-MM-dd) window into a half-open epoch
+    /// range `[start-of-fromKey, start-of-(toKey+1day))` for indexed `eaten_at` filters.
+    static func epochBounds(fromKey: String, toKey: String) -> (Int64, Int64) {
+        let cal = Calendar.current
+        guard let fromDate = dateKey.date(from: fromKey),
+              let toDate = dateKey.date(from: toKey) else {
+            return (0, Int64.max)
+        }
+        let start = Int64(cal.startOfDay(for: fromDate).timeIntervalSince1970)
+        let endDay = cal.date(byAdding: .day, value: 1, to: cal.startOfDay(for: toDate)) ?? toDate
+        return (start, Int64(endDay.timeIntervalSince1970))
+    }
+
     static func dailyValues(_ db: Database, column: String, table: String,
                             fromKey: String, toKey: String) throws -> [DatedDouble] {
         // Whitelist table/column to keep this SQL injection-safe (callers are ours only).
@@ -549,13 +596,16 @@ struct DashboardLoader {
             WHERE date BETWEEN ? AND ?
             ORDER BY date ASC
             """, arguments: [fromKey, toKey])
-        // Get intake per day from meal_records.
+        // Get intake per day from meal_records — bounded to the same window so we hit the
+        // `idx_meal_eaten_at` index instead of scanning/aggregating the whole meal table.
+        let (fromEpoch, toExclusive) = Self.epochBounds(fromKey: fromKey, toKey: toKey)
         let intakeRows = try Row.fetchAll(db, sql: """
             SELECT strftime('%Y-%m-%d', datetime(eaten_at, 'unixepoch', 'localtime')) AS date,
                    SUM(COALESCE(calories_kcal, 0)) AS intake
             FROM meal_records
+            WHERE eaten_at >= ? AND eaten_at < ?
             GROUP BY date
-            """)
+            """, arguments: [fromEpoch, toExclusive])
         var intakeMap: [String: Double] = [:]
         for r in intakeRows {
             if let d: String = r["date"] {

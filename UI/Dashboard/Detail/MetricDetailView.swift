@@ -130,9 +130,7 @@ struct MetricDetailView: View {
 
     private var inspectedDateLabel: String? {
         guard let d = inspectedDate else { return nil }
-        let f = DateFormatter()
-        f.locale = Locale(identifier: "zh_CN")
-        f.dateFormat = period == .year ? "yyyy年M月d日" : "M月d日 EEEE"
+        let f = period == .year ? AppDateFormats.yearMonthDay : AppDateFormats.monthDayWeekday
         return f.string(from: d)
     }
 
@@ -416,10 +414,7 @@ struct MetricDetailView: View {
     }
 
     private func timeLabel(_ date: Date) -> String {
-        let f = DateFormatter()
-        f.locale = Locale(identifier: "zh_CN")
-        f.dateFormat = "HH:mm"
-        return f.string(from: date)
+        AppDateFormats.hourMinute.string(from: date)
     }
 
     private func loadDayMeasurements() async {
@@ -459,10 +454,7 @@ struct MetricDetailView: View {
     }
 
     private func dayLabel(_ d: Date) -> String {
-        let f = DateFormatter()
-        f.locale = Locale(identifier: "zh_CN")
-        f.dateFormat = "M月d日 EEEE"
-        return f.string(from: d)
+        AppDateFormats.monthDayWeekday.string(from: d)
     }
 
     private func loadInspectedBreakdown() async {
@@ -524,9 +516,7 @@ struct MetricDetailView: View {
         guard !vis.isEmpty else { return "" }
         let first = vis.first?.date ?? Date()
         let last = vis.last?.date ?? Date()
-        let f = DateFormatter()
-        f.locale = Locale(identifier: "zh_CN")
-        f.dateFormat = period == .year ? "yyyy年M月" : "M月d日"
+        let f = period == .year ? AppDateFormats.yearMonth : AppDateFormats.monthDay
         return "\(f.string(from: first)) – \(f.string(from: last))"
     }
 

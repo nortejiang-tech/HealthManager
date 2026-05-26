@@ -40,8 +40,8 @@ targets:
       path: App/Info.plist
       properties:
         CFBundleDisplayName: 健康管理
-        CFBundleShortVersionString: "0.1.0"
-        CFBundleVersion: "1"
+        CFBundleShortVersionString: "0.2.0"
+        CFBundleVersion: "2"
         LSRequiresIPhoneOS: true
         UILaunchScreen:
           UIColorName: ""
@@ -59,6 +59,9 @@ targets:
         NSHealthUpdateUsageDescription: "将手动补录的健康数据（如内脏脂肪等级、饮食记录）写回 Apple 健康。"
         NSCameraUsageDescription: "拍摄饮食照片以记录餐次。"
         NSPhotoLibraryUsageDescription: "选择饮食照片以记录餐次。"
+        NSLocalNetworkUsageDescription: "用于连接局域网或 Tailscale 网络中的本地 AI 推理服务（如 Ollama）。"
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
         ITSAppUsesNonExemptEncryption: false
     entitlements:
       path: App/HealthManager.entitlements
