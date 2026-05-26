@@ -210,9 +210,9 @@ final class HealthKitManager: ObservableObject {
         guard !samples.isEmpty else { return existingSyncId }
 
         // Preferred: bundle the macros into one `.food` correlation so Apple Health shows
-        // them as a single meal. Requires the food correlation type to be authorized.
-        if let foodType = HealthKitTypeCatalog.foodCorrelationType,
-           store.authorizationStatus(for: foodType) == .sharingAuthorized {
+        // them as a single meal. Saving only needs the contained nutrient types authorized
+        // (the correlation type itself can't be authorization-requested), so we just try it.
+        if let foodType = HealthKitTypeCatalog.foodCorrelationType {
             var correlationMeta: [String: Any] = [
                 HKMetadataKeyWasUserEntered: true,
                 Self.mealSyncIdKey: syncId
@@ -242,16 +242,14 @@ final class HealthKitManager: ObservableObject {
         }
     }
 
-    /// Delete every dietary object previously written for `syncId` (app-authored only):
-    /// the `.food` correlation first (which carries the same sync-id metadata), then any
-    /// standalone nutrient samples left over from a fallback write.
+    /// Delete the dietary nutrient samples previously written for `syncId` (app-authored).
+    /// Removing the member samples empties any food correlation they belonged to, so the
+    /// meal entry clears too — we can't target the correlation type directly because its
+    /// share authorization can't be requested.
     func deleteNutritionSamples(syncId: String) async {
         guard isAvailable else { return }
         let predicate = HKQuery.predicateForObjects(withMetadataKey: Self.mealSyncIdKey, allowedValues: [syncId])
-        var types: [HKSampleType] = []
-        if let food = HealthKitTypeCatalog.foodCorrelationType { types.append(food) }
-        types.append(contentsOf: HealthKitTypeCatalog.nutritionWriteSampleTypes.map { $0 as HKSampleType })
-        for type in types {
+        for type in HealthKitTypeCatalog.nutritionWriteSampleTypes {
             guard store.authorizationStatus(for: type) == .sharingAuthorized else { continue }
             await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
                 store.deleteObjects(of: type, predicate: predicate) { _, _, error in

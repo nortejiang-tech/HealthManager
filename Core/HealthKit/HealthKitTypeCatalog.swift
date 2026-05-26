@@ -98,18 +98,18 @@ enum HealthKitTypeCatalog {
         nutritionWriteIdentifiers.compactMap { HKQuantityType.quantityType(forIdentifier: $0) }
     }
 
-    /// The `.food` correlation type — lets us group a meal's macros into one Apple Health
-    /// entry (a "meal") instead of four loose nutrient samples.
+    /// The `.food` correlation type — used to group a meal's macros into one Apple Health
+    /// entry. NOTE: HealthKit disallows *requesting share authorization* for a correlation
+    /// type (it throws), so this is deliberately NOT part of `writeSampleTypes`. Saving a
+    /// food correlation only needs authorization for its contained nutrient sample types.
     static var foodCorrelationType: HKCorrelationType? {
         HKCorrelationType.correlationType(forIdentifier: .food)
     }
 
-    /// Types the app requests *share* (write) permission for: the dietary macros plus the
-    /// food correlation that bundles them into a single meal.
+    /// Types the app requests *share* (write) permission for: the dietary macros. The food
+    /// correlation that bundles them is saved using these same authorizations.
     static var writeSampleTypes: Set<HKSampleType> {
-        var set = Set(nutritionWriteSampleTypes.map { $0 as HKSampleType })
-        if let food = foodCorrelationType { set.insert(food) }
-        return set
+        Set(nutritionWriteSampleTypes.map { $0 as HKSampleType })
     }
 
     // MARK: - Canonical units
