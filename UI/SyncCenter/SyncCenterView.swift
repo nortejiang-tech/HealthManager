@@ -39,7 +39,7 @@ struct SyncCenterView: View {
                         Label("立即同步", systemImage: "arrow.down.circle")
                     }
                     .disabled(sync.isBusy)
-                    Text("会先拉一次，再提示你打开 Garmin / 米家等外部 App，回到本 App 后自动续跑。")
+                    Text("会先拉一次，再提示你打开 Garmin / 米家等外部 App，回到本 App 后自动续跑；并把已记录的饮食营养写回 Apple 健康（首次会请求授权）。")
                         .font(.footnote).foregroundStyle(.secondary)
                 }
 

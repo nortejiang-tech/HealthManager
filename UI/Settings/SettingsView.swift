@@ -21,8 +21,6 @@ struct SettingsView: View {
 
     @State private var exportSnapshot: ExportDatabaseSnapshot?
     @State private var notifStatus: UNAuthorizationStatus = .notDetermined
-    @State private var nutritionSyncStatus: String?
-    @State private var isSyncingNutrition: Bool = false
 
     var body: some View {
         List {
@@ -46,36 +44,6 @@ struct SettingsView: View {
                 } label: {
                     Label("打开 Apple 健康 App", systemImage: "heart.text.square")
                 }
-            }
-
-            Section {
-                Button {
-                    Task {
-                        isSyncingNutrition = true
-                        await syncNutritionToHealth()
-                        isSyncingNutrition = false
-                    }
-                } label: {
-                    if isSyncingNutrition {
-                        HStack(spacing: 8) {
-                            ProgressView().controlSize(.small)
-                            Text("正在同步…")
-                        }
-                    } else {
-                        Label("把饮食营养同步到 Apple 健康", systemImage: "fork.knife")
-                    }
-                }
-                .disabled(isSyncingNutrition)
-
-                if let nutritionSyncStatus {
-                    Text(nutritionSyncStatus)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            } header: {
-                Text("饮食写回 Apple 健康")
-            } footer: {
-                Text("把已记录的餐次（热量/蛋白/脂肪/碳水）写入 Apple 健康的「营养」分类。首次会弹出授权，请把营养相关项目设为「允许」。之后新增餐次会自动同步。")
             }
 
             Section("数据库") {
@@ -274,60 +242,6 @@ struct SettingsView: View {
         case .partiallyGranted: return "部分授权"
         case .granted: return "已授权"
         case .denied: return "被拒绝"
-        }
-    }
-
-    /// Request write permission (if needed), then push every meal with macros to Apple
-    /// Health. Idempotent — re-running updates the same samples rather than duplicating.
-    private func syncNutritionToHealth() async {
-        await MainActor.run { nutritionSyncStatus = "正在请求授权…" }
-        let authorized = await healthKit.requestNutritionWriteAuthorization()
-        guard authorized else {
-            await MainActor.run {
-                nutritionSyncStatus = "未获得写入授权。请打开 Apple 健康 App → 右上角头像 → 隐私 →「App 与服务」→ 健康管理，开启「营养」相关项目的写入权限后重试。"
-            }
-            return
-        }
-        await MainActor.run { nutritionSyncStatus = "正在同步…" }
-        do {
-            let meals = try await environment.database.asyncRead { db -> [MealRecord] in
-                try MealRecord
-                    .filter(sql: "calories_kcal IS NOT NULL OR protein_g IS NOT NULL OR fat_g IS NOT NULL OR carbs_g IS NOT NULL")
-                    .order(Column("eaten_at").desc)
-                    .fetchAll(db)
-            }
-            var count = 0
-            for meal in meals {
-                let newId = await healthKit.syncMealNutrition(
-                    eatenAt: meal.eatenAt,
-                    calories: meal.caloriesKcal,
-                    protein: meal.proteinG,
-                    fat: meal.fatG,
-                    carbs: meal.carbsG,
-                    name: meal.notes ?? meal.mealType.label,
-                    existingSyncId: meal.hkSyncId
-                )
-                if let newId, newId != meal.hkSyncId, let id = meal.id {
-                    try? await environment.database.asyncWrite { db in
-                        try db.execute(sql: "UPDATE meal_records SET hk_sync_id = ? WHERE id = ?",
-                                       arguments: [newId, id])
-                    }
-                }
-                if newId != nil { count += 1 }
-            }
-            let storedInHealth = await healthKit.countAppNutritionSamples()
-            await MainActor.run {
-                if count == 0 {
-                    nutritionSyncStatus = "没有可同步的营养数据（餐次需先填入热量或营养素）。"
-                } else if storedInHealth > 0 {
-                    nutritionSyncStatus = "已同步 \(count) 条餐次。Apple 健康中本 App 写入的膳食能量记录共 \(storedInHealth) 条 ✓。若健康 App 里看不到，多半是用了模拟器（无健康 App）——请用真机查看。"
-                } else {
-                    nutritionSyncStatus = "尝试同步 \(count) 条，但 Apple 健康中查不到本 App 写入的记录。请确认在授权弹窗里把「营养」相关项设为允许，或到 健康 App → 头像 → 隐私 →「App 与服务」→ 健康管理 中开启写入后重试。"
-                }
-            }
-        } catch {
-            await MainActor.run { nutritionSyncStatus = "同步失败：\(error.localizedDescription)" }
-            AppLogger.shared.error("Nutrition backfill failed: \(error.localizedDescription)")
         }
     }
 

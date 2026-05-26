@@ -158,23 +158,6 @@ final class HealthKitManager: ObservableObject {
         return types.contains { store.authorizationStatus(for: $0) == .sharingAuthorized }
     }
 
-    /// Number of dietary-energy samples authored by THIS app currently in HealthKit — a
-    /// post-sync sanity check that's independent of the Health app UI (which is missing on
-    /// the Simulator). >0 means the write genuinely landed in the HealthKit store.
-    func countAppNutritionSamples() async -> Int {
-        guard isAvailable,
-              let type = HKQuantityType.quantityType(forIdentifier: .dietaryEnergyConsumed)
-        else { return 0 }
-        let predicate = HKQuery.predicateForObjects(from: HKSource.default())
-        return await withCheckedContinuation { (cont: CheckedContinuation<Int, Never>) in
-            let q = HKSampleQuery(sampleType: type, predicate: predicate,
-                                  limit: HKObjectQueryNoLimit, sortDescriptors: nil) { _, samples, _ in
-                cont.resume(returning: samples?.count ?? 0)
-            }
-            store.execute(q)
-        }
-    }
-
     /// True when at least one dietary write type is authorized — used to show status.
     var isNutritionWriteAuthorized: Bool {
         HealthKitTypeCatalog.nutritionWriteSampleTypes.contains {

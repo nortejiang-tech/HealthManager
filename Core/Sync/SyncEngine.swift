@@ -1,6 +1,7 @@
 import Foundation
 import Combine
 import HealthKit
+import GRDB
 
 /// Public surface for triggering syncs. UI calls into this; coordinators do the work.
 @MainActor
@@ -136,6 +137,8 @@ final class SyncEngine: ObservableObject {
 
             lastResult = result
             await rebuildDailyProjections(daysBack: 7)
+            // Silent catch-up: write any not-yet-synced meal nutrition into Apple Health.
+            await pushMealNutritionToHealth(requestAuthIfNeeded: false)
             progressDescription = result.succeeded
                 ? "增量同步完成：本轮新增 \(result.totalSamples) 条。"
                 : "增量同步失败：\(result.errorMessage ?? "未知错误")"
@@ -193,6 +196,10 @@ final class SyncEngine: ObservableObject {
 
             lastResult = result
             await rebuildDailyProjections(daysBack: 7)
+            // User-initiated: also push diet nutrition to Apple Health (prompts for write
+            // permission the first time).
+            progressDescription = "正在把饮食营养写入 Apple 健康…"
+            await pushMealNutritionToHealth(requestAuthIfNeeded: true)
             progressDescription = result.succeeded
                 ? "手动同步完成：共新增 \(result.totalSamples) 条。"
                 : "手动同步失败：\(result.errorMessage ?? "未知错误")"
@@ -261,6 +268,61 @@ final class SyncEngine: ObservableObject {
         } catch {
             AppLogger.shared.sync.error("runReconcile failed: \(error.localizedDescription, privacy: .public)")
             progressDescription = "对账失败：\(error.localizedDescription)"
+        }
+    }
+
+    // MARK: - Diet → Apple Health write-back
+
+    /// Push app-recorded meal nutrition into Apple Health. Only meals that have macros and
+    /// no prior HealthKit sync id are written — an idempotent catch-up for anything that
+    /// wasn't synced inline at save time (e.g. saved before write permission was granted).
+    /// Folded into incremental + manual sync so it runs on launch/foreground, on the
+    /// 立即同步 button, and on observer/BG passes.
+    ///
+    /// - Parameter requestAuthIfNeeded: pass `true` for user-initiated syncs (may show the
+    ///   permission sheet); `false` for background/launch passes (silent — only writes when
+    ///   permission is already granted).
+    func pushMealNutritionToHealth(requestAuthIfNeeded: Bool) async {
+        guard healthKitManager.isAvailable else { return }
+        if requestAuthIfNeeded {
+            _ = await healthKitManager.requestNutritionWriteAuthorization()
+        }
+        guard healthKitManager.isNutritionWriteAuthorized else { return }
+
+        do {
+            let meals = try await database.asyncRead { db -> [MealRecord] in
+                try MealRecord
+                    .filter(sql: "(calories_kcal IS NOT NULL OR protein_g IS NOT NULL OR fat_g IS NOT NULL OR carbs_g IS NOT NULL) AND hk_sync_id IS NULL")
+                    .order(Column("eaten_at").desc)
+                    .fetchAll(db)
+            }
+            guard !meals.isEmpty else { return }
+            var synced = 0
+            for meal in meals {
+                let newId = await healthKitManager.syncMealNutrition(
+                    eatenAt: meal.eatenAt,
+                    calories: meal.caloriesKcal,
+                    protein: meal.proteinG,
+                    fat: meal.fatG,
+                    carbs: meal.carbsG,
+                    name: meal.notes ?? meal.mealType.label,
+                    existingSyncId: meal.hkSyncId
+                )
+                if let newId, let id = meal.id {
+                    try? await database.asyncWrite { db in
+                        try db.execute(sql: "UPDATE meal_records SET hk_sync_id = ? WHERE id = ?",
+                                       arguments: [newId, id])
+                    }
+                    synced += 1
+                }
+            }
+            if synced > 0 {
+                AppLogger.shared.sync.info("Pushed \(synced) meal(s) nutrition to Apple Health")
+            }
+        } catch {
+            AppLogger.shared.sync.info(
+                "Meal nutrition push skipped: \(error.localizedDescription, privacy: .public)"
+            )
         }
     }
 
