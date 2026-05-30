@@ -299,6 +299,10 @@ final class SyncEngine: ObservableObject {
             guard !meals.isEmpty else { return }
             var synced = 0
             for meal in meals {
+                guard let id = meal.id else { continue }
+                // Deterministic per-meal id: a re-sync of the same meal always deletes-then-
+                // writes the *same* Health samples, so a previously-written-but-not-persisted
+                // meal can't be duplicated here (the prior `hk_sync_id` UPDATE may have failed).
                 let newId = await healthKitManager.syncMealNutrition(
                     eatenAt: meal.eatenAt,
                     calories: meal.caloriesKcal,
@@ -306,9 +310,9 @@ final class SyncEngine: ObservableObject {
                     fat: meal.fatG,
                     carbs: meal.carbsG,
                     name: meal.notes ?? meal.mealType.label,
-                    existingSyncId: meal.hkSyncId
+                    existingSyncId: meal.hkSyncId ?? "meal-\(id)"
                 )
-                if let newId, let id = meal.id {
+                if let newId {
                     try? await database.asyncWrite { db in
                         try db.execute(sql: "UPDATE meal_records SET hk_sync_id = ? WHERE id = ?",
                                        arguments: [newId, id])

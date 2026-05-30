@@ -436,9 +436,15 @@ struct MealEditView: View {
         do {
             let est = try await MealNutritionAnalyzer.analyze(image: img, userHint: userHint)
             await MainActor.run {
+                isAnalyzingNutrition = false
+                guard !est.items.isEmpty else {
+                    nutritionError = (est.note?.isEmpty == false)
+                        ? "AI 未能估算营养：\(est.note!)"
+                        : "AI 未能从照片中识别出食物，请换张更清晰的照片或在下方手动填写营养。"
+                    return
+                }
                 nutritionEstimate = est
                 nutritionItems = est.items.map(EditableNutritionItem.init(from:))
-                isAnalyzingNutrition = false
                 syncTotalsFromItems()
             }
         } catch {
@@ -468,9 +474,17 @@ struct MealEditView: View {
         do {
             let est = try await MealNutritionAnalyzer.analyze(text: desc)
             await MainActor.run {
+                isAnalyzingNutrition = false
+                guard !est.items.isEmpty else {
+                    // 模型调用成功但没识别出任何食物（返回空 items）。过去这里会静默地
+                    // 把描述塞进备注、不给任何反馈，看起来像「估算没生效」。改为显式提示。
+                    nutritionError = (est.note?.isEmpty == false)
+                        ? "AI 未能估算营养：\(est.note!)"
+                        : "AI 未能从描述中识别出食物，请调整描述（如补充数量/做法），或在下方手动填写营养。"
+                    return
+                }
                 nutritionEstimate = est
                 nutritionItems = est.items.map(EditableNutritionItem.init(from:))
-                isAnalyzingNutrition = false
                 syncTotalsFromItems()
                 if notes.isEmpty { notes = desc }
             }
@@ -706,6 +720,10 @@ struct MealEditView: View {
     /// sync id so future edits/deletes update the same Health samples. Never blocks saving.
     private func syncNutritionToHealth(mealId: Int64?, record: MealRecord) async {
         let mealName = record.notes ?? mealType.label
+        // Deterministic per-meal id (`meal-<rowid>`) keeps the write idempotent: if the
+        // hk_sync_id persistence below fails, the next sync's catch-up re-targets the same
+        // Health samples (delete-then-write) instead of creating a duplicate.
+        let syncId = record.hkSyncId ?? mealId.map { "meal-\($0)" }
         let newSyncId = await environment.healthKitManager.syncMealNutrition(
             eatenAt: record.eatenAt,
             calories: record.caloriesKcal,
@@ -713,12 +731,17 @@ struct MealEditView: View {
             fat: record.fatG,
             carbs: record.carbsG,
             name: mealName,
-            existingSyncId: record.hkSyncId
+            existingSyncId: syncId
         )
-        guard newSyncId != record.hkSyncId, let id = mealId else { return }
-        try? await environment.database.asyncWrite { db in
-            try db.execute(sql: "UPDATE meal_records SET hk_sync_id = ? WHERE id = ?",
-                           arguments: [newSyncId, id])
+        guard let newSyncId, newSyncId != record.hkSyncId, let id = mealId else { return }
+        do {
+            try await environment.database.asyncWrite { db in
+                try db.execute(sql: "UPDATE meal_records SET hk_sync_id = ? WHERE id = ?",
+                               arguments: [newSyncId, id])
+            }
+        } catch {
+            // Not fatal: deterministic id means the next catch-up re-syncs without duplicating.
+            AppLogger.shared.error("Persist hk_sync_id failed (will re-sync safely): \(error.localizedDescription)")
         }
     }
 }

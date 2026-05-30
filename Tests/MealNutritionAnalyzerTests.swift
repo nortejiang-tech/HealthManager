@@ -151,6 +151,58 @@ final class MealNutritionAnalyzerTests: XCTestCase {
         XCTAssertNil(est.note)
     }
 
+    // MARK: - Thinking-model + alternate-key recovery (qwen3-vl regression: 文字估营养
+    // returned 0 items because the reply had <think> reasoning and/or a non-`items` key)
+
+    func test_parse_thinkBlock_stripped() throws {
+        let raw = """
+        <think>用户说十个猪肉芹菜水饺。十个约 250g，算一下 {大概 520 kcal}。</think>
+        {"items": [{"name": "猪肉芹菜水饺", "grams": 250, "calories_kcal": 520, "protein_g": 20, "fat_g": 18, "carbs_g": 68}], "confidence": "medium"}
+        """
+        let est = try MealNutritionAnalyzer.parse(raw)
+        XCTAssertEqual(est.items.count, 1)
+        XCTAssertEqual(est.items.first?.name, "猪肉芹菜水饺")
+        XCTAssertEqual(est.totalCalories, 520)
+    }
+
+    func test_parse_thinkBlock_unclosed_thenJSON() throws {
+        let raw = "<think>推理中，含 { 和 } 括号\n{\"items\": [{\"name\": \"米饭\", \"grams\": 150, \"calories_kcal\": 200}], \"confidence\": \"low\"}"
+        let est = try MealNutritionAnalyzer.parse(raw)
+        XCTAssertEqual(est.items.first?.name, "米饭")
+        XCTAssertEqual(est.items.first?.calories_kcal, 200)
+    }
+
+    func test_parse_alternateKey_foods() throws {
+        // Model used `foods` instead of `items`.
+        let raw = """
+        {"foods": [{"name": "牛肉面", "grams": 400, "calories_kcal": 540, "protein_g": 25, "fat_g": 16, "carbs_g": 70}], "confidence": "medium", "note": "估算"}
+        """
+        let est = try MealNutritionAnalyzer.parse(raw)
+        XCTAssertEqual(est.items.count, 1)
+        XCTAssertEqual(est.items.first?.name, "牛肉面")
+        XCTAssertEqual(est.totalCalories, 540)
+        XCTAssertEqual(est.note, "估算")
+    }
+
+    func test_parse_nestedKey_resultItems() throws {
+        // Model nested the array under `result`.
+        let raw = """
+        {"result": {"items": [{"name": "汉堡", "grams": 220, "calories_kcal": 500, "protein_g": 24, "fat_g": 26, "carbs_g": 40}]}, "confidence": "high"}
+        """
+        let est = try MealNutritionAnalyzer.parse(raw)
+        XCTAssertEqual(est.items.count, 1)
+        XCTAssertEqual(est.items.first?.name, "汉堡")
+        XCTAssertEqual(est.totalProtein, 24)
+    }
+
+    func test_parse_explicitEmpty_stillHonored() throws {
+        // Regression guard: an explicit empty items array must NOT trigger recovery/throw.
+        let raw = "{\"items\": [], \"confidence\": \"low\", \"note\": \"描述无法识别为食物\"}"
+        let est = try MealNutritionAnalyzer.parse(raw)
+        XCTAssertTrue(est.items.isEmpty)
+        XCTAssertEqual(est.note, "描述无法识别为食物")
+    }
+
     func test_relax_doesNotMangleNoodleOrTruffle() {
         // Token-boundary check: "Noodle" / "Truffle" / "Falsehood" should not be touched.
         let out1 = MealNutritionAnalyzer.relaxPythonDict("\"Noodle\"")

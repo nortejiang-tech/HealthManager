@@ -157,11 +157,20 @@ enum MealNutritionAnalyzer {
     }
 
     /// Best-effort JSON extractor:
-    /// 1. Strip ```json / ``` fences if present
-    /// 2. Trim to the first `{`…last `}` substring
-    /// 3. Try strict JSON; on failure, retry after a Python-dict→JSON relaxation pass.
+    /// 1. Strip reasoning blocks (`<think>…</think>`) emitted by thinking models (qwen3 等)
+    /// 2. Strip ```json / ``` fences if present
+    /// 3. Trim to the first `{`…last `}` substring
+    /// 4. Decode strict, then relaxed (Python-dict→JSON); prefer the first non-empty estimate
+    /// 5. If still empty, recover an items array from an alternate / nested key
+    /// 6. Otherwise return an explicitly-empty estimate (model said "not food") or throw —
+    ///    in both the empty and throw cases the raw reply is logged so failures are diagnosable.
     static func parse(_ raw: String) throws -> Estimate {
         var s = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        // Thinking models (qwen3-vl, deepseek-r1, …) wrap reasoning in <think>…</think>.
+        // That reasoning routinely contains stray braces, which would corrupt the
+        // first-`{`…last-`}` extraction below — strip it before anything else.
+        s = stripReasoningBlocks(s)
 
         // Strip ``` fences (with or without "json" / "python" / etc. lang tag).
         if s.hasPrefix("```") {
@@ -175,30 +184,175 @@ enum MealNutritionAnalyzer {
             s = s.trimmingCharacters(in: .whitespacesAndNewlines)
         }
 
-        // Fall back to first-`{`…last-`}` if there's surrounding chatter or code.
+        // Build candidate JSON strings to try, in priority order:
+        //  1. first-`{`…last-`}` slice (handles plain surrounding chatter), then
+        //  2. each balanced top-level `{…}` block, last one first (handles reasoning that
+        //     contains stray braces followed by the real JSON — e.g. unclosed <think>).
+        var candidates: [String] = []
+        var seen = Set<String>()
+        func add(_ str: String) {
+            let t = str.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !t.isEmpty, seen.insert(t).inserted else { return }
+            candidates.append(t)
+        }
         if let openIdx = s.firstIndex(of: "{"),
            let closeIdx = s.lastIndex(of: "}"),
            openIdx <= closeIdx {
-            s = String(s[openIdx...closeIdx])
+            add(String(s[openIdx...closeIdx]))
         }
+        for obj in topLevelObjects(s).reversed() { add(obj) }
 
         let decoder = JSONDecoder()
+        // For each candidate try strict then Python-relaxed decode; a non-empty estimate
+        // wins immediately, otherwise we keep looking (alternate keys, then explicit-empty).
+        var emptyDecoded: Estimate?
+        for cand in candidates {
+            for variant in [cand, relaxPythonDict(cand)] {
+                if let data = variant.data(using: .utf8),
+                   let est = try? decoder.decode(Estimate.self, from: data) {
+                    if !est.items.isEmpty { return est }
+                    emptyDecoded = emptyDecoded ?? est
+                }
+                // Model may have used a different / nested key (`foods`, `result.items` …).
+                if let est = recoverAlternateItems(from: variant) { return est }
+            }
+        }
 
-        // 1. Strict pass.
-        if let data = s.data(using: .utf8),
-           let est = try? decoder.decode(Estimate.self, from: data) {
+        // If the model *explicitly* returned `items: []` / a name-less object (e.g. "不是食物"),
+        // honor that empty estimate rather than throwing — but log so it's diagnosable.
+        if let est = emptyDecoded, hasExplicitItemsOrName(candidates) {
+            AppLogger.shared.error("Nutrition parse: model returned no items. raw=\(raw.prefix(800))")
             return est
         }
 
-        // 2. Relaxed pass — accommodate GLM-4V-Flash returning Python dict literals:
-        //    single quotes, None/True/False, trailing commas, leading `result = ` etc.
-        let relaxed = relaxPythonDict(s)
-        if let data = relaxed.data(using: .utf8),
-           let est = try? decoder.decode(Estimate.self, from: data) {
-            return est
-        }
-
+        AppLogger.shared.error("Nutrition parse failed (unrecognized shape). raw=\(raw.prefix(800))")
         throw AnalyzeError.parseFailure(rawSnippet: String(raw.prefix(200)))
+    }
+
+    /// Remove `<think>…</think>` (and `<thinking>` / `<reasoning>`) reasoning blocks emitted by
+    /// thinking models. Closed blocks are removed whole; an unclosed opening tag has just the
+    /// tag token removed (its braces-laden body is then filtered out by `topLevelObjects`).
+    static func stripReasoningBlocks(_ input: String) -> String {
+        var s = input
+        let tags = [("<think>", "</think>"), ("<thinking>", "</thinking>"), ("<reasoning>", "</reasoning>")]
+        for (open, close) in tags {
+            while let openRange = s.range(of: open, options: .caseInsensitive) {
+                if let closeRange = s.range(of: close, options: .caseInsensitive,
+                                            range: openRange.upperBound..<s.endIndex) {
+                    s.removeSubrange(openRange.lowerBound..<closeRange.upperBound)
+                } else {
+                    // Unclosed: drop only the opening tag; keep the body for brace extraction.
+                    s.removeSubrange(openRange)
+                    break
+                }
+            }
+        }
+        return s.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// Return every balanced top-level `{…}` object substring, in source order. String
+    /// contents (with escapes) are skipped so braces inside JSON strings don't miscount.
+    static func topLevelObjects(_ s: String) -> [String] {
+        var result: [String] = []
+        let chars = Array(s)
+        var depth = 0
+        var start: Int?
+        var inString = false
+        var prev: Character = " "
+        for (i, c) in chars.enumerated() {
+            if inString {
+                if c == "\"" && prev != "\\" { inString = false }
+                prev = c
+                continue
+            }
+            switch c {
+            case "\"": inString = true
+            case "{":
+                if depth == 0 { start = i }
+                depth += 1
+            case "}":
+                if depth > 0 {
+                    depth -= 1
+                    if depth == 0, let st = start {
+                        result.append(String(chars[st...i]))
+                        start = nil
+                    }
+                }
+            default: break
+            }
+            prev = c
+        }
+        return result
+    }
+
+    /// Recover a meal estimate when the food list lives under a non-`items` key or nested
+    /// inside another object. Returns nil if no array of name-bearing dicts can be found.
+    static func recoverAlternateItems(from jsonString: String) -> Estimate? {
+        guard let data = jsonString.data(using: .utf8),
+              let obj = try? JSONSerialization.jsonObject(with: data),
+              let arr = findItemArray(obj) else { return nil }
+        let items = arr.compactMap(itemFromDict)
+        guard !items.isEmpty else { return nil }
+        let top = obj as? [String: Any]
+        return Estimate(items: items,
+                        confidence: top?["confidence"] as? String,
+                        note: top?["note"] as? String)
+    }
+
+    /// Recursively locate the first array of dictionaries that looks like a food-items list
+    /// (preferred keys first, then any array whose elements carry a `name`).
+    private static func findItemArray(_ obj: Any) -> [[String: Any]]? {
+        if let dict = obj as? [String: Any] {
+            for key in ["items", "foods", "dishes", "meals", "results", "data", "list", "食物", "菜品"] {
+                if let arr = dict[key] as? [[String: Any]],
+                   arr.contains(where: { $0["name"] != nil }) {
+                    return arr
+                }
+            }
+            for value in dict.values {
+                if let found = findItemArray(value) { return found }
+            }
+        }
+        if let array = obj as? [Any] {
+            let dicts = array.compactMap { $0 as? [String: Any] }
+            if !dicts.isEmpty, dicts.count == array.count,
+               dicts.contains(where: { $0["name"] != nil }) {
+                return dicts
+            }
+            for value in array {
+                if let found = findItemArray(value) { return found }
+            }
+        }
+        return nil
+    }
+
+    private static func itemFromDict(_ d: [String: Any]) -> Item? {
+        guard let name = (d["name"] as? String), !name.isEmpty else { return nil }
+        func dbl(_ k: String) -> Double? {
+            switch d[k] {
+            case let v as Double: return v
+            case let v as Int: return Double(v)
+            case let v as NSNumber: return v.doubleValue
+            case let v as String: return Double(v)
+            default: return nil
+            }
+        }
+        return Item(name: name, grams: dbl("grams"),
+                    calories_kcal: dbl("calories_kcal"), protein_g: dbl("protein_g"),
+                    fat_g: dbl("fat_g"), carbs_g: dbl("carbs_g"))
+    }
+
+    /// True when a candidate's top-level object explicitly carries an `items` array or a
+    /// legacy `name` — used to honor a deliberate empty result instead of throwing.
+    private static func hasExplicitItemsOrName(_ candidates: [String]) -> Bool {
+        for cand in candidates {
+            if let data = cand.data(using: .utf8),
+               let top = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               top["items"] != nil || top["name"] != nil {
+                return true
+            }
+        }
+        return false
     }
 
     /// Convert a Python-flavored dict literal into something JSONDecoder accepts.
