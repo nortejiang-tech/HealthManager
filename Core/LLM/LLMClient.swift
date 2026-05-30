@@ -120,6 +120,7 @@ struct LLMClient {
 
     enum LLMError: LocalizedError {
         case invalidURL
+        case imageEncodingFailed
         case httpStatus(Int, String)
         case decode(String)
         case noContent
@@ -127,6 +128,7 @@ struct LLMClient {
         var errorDescription: String? {
             switch self {
             case .invalidURL: return "Base URL 无效。"
+            case .imageEncodingFailed: return "图片编码失败，无法发送给视觉模型。"
             case .httpStatus(let c, let body): return "LLM 服务返回 \(c)：\(body)"
             case .decode(let s): return "LLM 响应解析失败：\(s)"
             case .noContent: return "LLM 返回内容为空。"
@@ -200,7 +202,7 @@ struct LLMClient {
     ) async throws -> String {
         let resized = LLMClient.downscale(image, maxSide: maxSide)
         guard let jpeg = resized.jpegData(compressionQuality: jpegQuality) else {
-            throw LLMError.invalidURL    // reuse — body shape invalid
+            throw LLMError.imageEncodingFailed
         }
         let dataURL = "data:image/jpeg;base64," + jpeg.base64EncodedString()
 

@@ -82,22 +82,16 @@ final class DatabaseManager: @unchecked Sendable {
         try pool.write(block)
     }
 
-    /// Async variant — dispatches the synchronous GRDB read to a detached task so the
-    /// caller's actor (especially MainActor) isn't blocked while SQLite executes.
-    /// Use from UI code paths instead of `read`.
+    /// Async variant — uses GRDB's native async read, which hops onto a reader from the
+    /// pool's own dispatch queue without blocking the caller's actor (especially MainActor)
+    /// and without spawning a detached task per call. Use from UI code paths instead of `read`.
     func asyncRead<T: Sendable>(_ block: @escaping @Sendable (Database) throws -> T) async throws -> T {
-        let pool = self.pool
-        return try await Task.detached(priority: .userInitiated) {
-            try pool.read(block)
-        }.value
+        try await pool.read(block)
     }
 
     /// Async variant for writes; same rationale as `asyncRead`.
     @discardableResult
     func asyncWrite<T: Sendable>(_ block: @escaping @Sendable (Database) throws -> T) async throws -> T {
-        let pool = self.pool
-        return try await Task.detached(priority: .userInitiated) {
-            try pool.write(block)
-        }.value
+        try await pool.write(block)
     }
 }

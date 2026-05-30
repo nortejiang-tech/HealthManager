@@ -56,6 +56,13 @@ struct MetricDetailView: View {
             await load()
         }
         .task(id: inspectedDate) {
+            // Debounce: while dragging the selection, inspectedDate changes every frame and
+            // .task cancels+restarts this closure — the sleep means only the settled value
+            // actually hits the database. (Clearing to nil runs immediately.)
+            if inspectedDate != nil {
+                try? await Task.sleep(nanoseconds: 150_000_000)
+                if Task.isCancelled { return }
+            }
             await loadInspectedBreakdown()
             await loadDayMeasurements()
         }
