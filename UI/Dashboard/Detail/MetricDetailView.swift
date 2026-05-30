@@ -210,33 +210,33 @@ struct MetricDetailView: View {
                 switch config.chartStyle {
                 case .bar:
                     BarMark(
-                        x: .value("日期", item.0, unit: .day),
+                        x: .value("日期", item.0, unit: period.chartUnit),
                         y: .value(config.title, item.1)
                     )
                     .foregroundStyle(config.theme.gradient)
                     .cornerRadius(3)
                 case .line:
                     LineMark(
-                        x: .value("日期", item.0, unit: .day),
+                        x: .value("日期", item.0, unit: period.chartUnit),
                         y: .value(config.title, item.1)
                     )
                     .foregroundStyle(config.theme.gradient)
                     .interpolationMethod(.linear)
                     PointMark(
-                        x: .value("日期", item.0, unit: .day),
+                        x: .value("日期", item.0, unit: period.chartUnit),
                         y: .value(config.title, item.1)
                     )
                     .foregroundStyle(config.theme.primary)
                     .symbolSize(36)
                 case .area:
                     LineMark(
-                        x: .value("日期", item.0, unit: .day),
+                        x: .value("日期", item.0, unit: period.chartUnit),
                         y: .value(config.title, item.1)
                     )
                     .foregroundStyle(config.theme.primary)
                     .interpolationMethod(.linear)
                     AreaMark(
-                        x: .value("日期", item.0, unit: .day),
+                        x: .value("日期", item.0, unit: period.chartUnit),
                         y: .value(config.title, item.1)
                     )
                     .foregroundStyle(config.theme.primary.opacity(0.18))
@@ -246,11 +246,11 @@ struct MetricDetailView: View {
 
             // Inspector marks: drawn on top so they're always visible.
             if let inspected, let v = inspected.value {
-                RuleMark(x: .value("日期", inspected.date, unit: .day))
+                RuleMark(x: .value("日期", inspected.date, unit: period.chartUnit))
                     .foregroundStyle(.secondary.opacity(0.5))
                     .lineStyle(StrokeStyle(lineWidth: 1, dash: [3, 3]))
                 PointMark(
-                    x: .value("日期", inspected.date, unit: .day),
+                    x: .value("日期", inspected.date, unit: period.chartUnit),
                     y: .value(config.title, v)
                 )
                 .foregroundStyle(config.theme.primary)

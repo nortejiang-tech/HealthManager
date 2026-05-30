@@ -38,9 +38,21 @@ enum MetricPeriod: String, CaseIterable, Identifiable {
     /// Length of the visible window in seconds — fed to `.chartXVisibleDomain`.
     var visibleDomainSeconds: TimeInterval { TimeInterval(days) * 86_400 }
 
-    /// Bucket size used when rolling points into wider buckets. All periods keep
-    /// day-level granularity (year view plots every day, not weekly averages).
-    var bucketDays: Int { 1 }
+    /// Bucket size used when rolling daily points into wider buckets. Week / month keep
+    /// day-level granularity; year rolls up to **weekly** buckets so the chart plots ~52
+    /// marks per visible window instead of ~365 (and ~156 instead of ~1095 across history).
+    var bucketDays: Int {
+        switch self {
+        case .week, .month: return 1
+        case .year: return 7
+        }
+    }
+
+    /// Calendar unit the chart marks should span. Year uses weekly buckets, so its bars
+    /// span a week rather than rendering as 1-day slivers spaced 7 days apart.
+    var chartUnit: Calendar.Component {
+        self == .year ? .weekOfYear : .day
+    }
 }
 
 /// One date-value pair fed to a SwiftUI Chart. `value == nil` means "no data that day".

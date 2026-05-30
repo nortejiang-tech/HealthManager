@@ -4,6 +4,11 @@ import GRDB
 /// Per-day rollup of activity metrics (steps, energy, distance, sleep, …). Written by
 /// `DailyAggregator` at the tail of every sync. Dashboard cards read this directly so
 /// they never touch `health_samples_raw` at view time.
+///
+/// NOTE: `sleepEfficiency` and `sourcesJson` are **reserved** — the schema carries them but
+/// `DailyAggregator` currently writes them as NULL. They're kept for forward compatibility
+/// (per-source attribution snapshot / sleep-efficiency rollup) and read sites must treat
+/// them as optional/absent. Don't assume a non-null value until the aggregator populates them.
 struct ActivityMetricsDaily: Codable, FetchableRecord, PersistableRecord, Equatable, Identifiable {
     static let databaseTableName = "activity_metrics_daily"
 
@@ -20,8 +25,8 @@ struct ActivityMetricsDaily: Codable, FetchableRecord, PersistableRecord, Equata
     var hrvMs: Double?
     var vo2Max: Double?
     var sleepSeconds: Int?
-    var sleepEfficiency: Double?
-    var sourcesJson: String?
+    var sleepEfficiency: Double?   // reserved — not yet populated (always NULL)
+    var sourcesJson: String?       // reserved — not yet populated (always NULL)
     var computedAt: Int64
 
     var id: String { date }

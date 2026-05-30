@@ -348,7 +348,7 @@ private struct ActivityMetricBarChart: View {
                 Chart {
                     ForEach(plotPoints, id: \.0) { item in
                         BarMark(
-                            x: .value("日期", item.0, unit: .day),
+                            x: .value("日期", item.0, unit: period.chartUnit),
                             y: .value(title, item.1)
                         )
                         .foregroundStyle(CardTheme.activity.gradient)
