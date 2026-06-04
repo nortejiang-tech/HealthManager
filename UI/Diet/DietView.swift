@@ -113,8 +113,8 @@ struct DietView: View {
             try await environment.database.asyncWrite { db in
                 _ = try MealRecord.deleteOne(db, key: id)
             }
-            // Drop the on-disk photo if it lives in our sandbox.
-            if let path = meal.photoPath {
+            // Drop every on-disk photo for this meal.
+            for path in meal.photoPaths {
                 MealPhotoStore.shared.removeIfManaged(path: path)
             }
             // Remove the nutrition samples we wrote to Apple Health for this meal.
@@ -134,12 +134,23 @@ private struct MealRow: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
-            if let path = meal.photoPath, let img = MealPhotoStore.shared.loadThumbnail(path: path) {
-                Image(uiImage: img)
-                    .resizable()
-                    .aspectRatio(contentMode: .fill)
-                    .frame(width: 56, height: 56)
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
+            if let firstPath = meal.photoPaths.first,
+               let img = MealPhotoStore.shared.loadThumbnail(path: firstPath) {
+                ZStack(alignment: .bottomTrailing) {
+                    Image(uiImage: img)
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                        .frame(width: 56, height: 56)
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                    if meal.photoPaths.count > 1 {
+                        Text("+\(meal.photoPaths.count - 1)")
+                            .font(.caption2.bold().monospacedDigit())
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 5).padding(.vertical, 1)
+                            .background(.black.opacity(0.6), in: Capsule())
+                            .padding(3)
+                    }
+                }
             }
             VStack(alignment: .leading, spacing: 2) {
                 HStack {
@@ -181,17 +192,21 @@ struct MealEditView: View {
     @State private var fat: String
     @State private var carbs: String
     @State private var notes: String
-    @State private var pickedPhoto: PhotosPickerItem?
-    @State private var previewImage: UIImage?
-    @State private var savedPhotoPath: String?
-    @State private var originalPhotoPath: String?
-    @State private var suggestions: [MealImageClassifier.Suggestion] = []
-    @State private var isClassifying: Bool = false
+    @State private var pickedPhotos: [PhotosPickerItem] = []
+    @State private var previewImages: [UIImage] = []
+    @State private var savedPhotoPaths: [String] = []
+    @State private var originalPhotoPaths: [String] = []
     @State private var showingCamera: Bool = false
     @State private var showingPhotoPicker: Bool = false
     @State private var nutritionEstimate: MealNutritionAnalyzer.Estimate?
     @State private var isAnalyzingNutrition: Bool = false
     @State private var nutritionError: String?
+    /// Per-input progress shown next to the AI button, e.g. "分析中：照片 2 / 3".
+    @State private var analysisProgress: String?
+    /// Inputs already analyzed in this session. Keyed by a stable id (`"text:<hash>"` or
+    /// `"photo:<savedPath>"`) so the AI-button only re-runs work for *new* inputs and never
+    /// double-counts. Re-typing the description or re-adding a photo invalidates the key.
+    @State private var analyzedInputKeys: Set<String> = []
     /// Free-form text the user types to describe the meal (e.g. "十个猪肉芹菜水饺").
     /// Estimated via the text LLM, independent of any photo.
     @State private var foodDescription: String = ""
@@ -210,8 +225,9 @@ struct MealEditView: View {
             _fat = State(initialValue: m.fatG.map { String(Int($0)) } ?? "")
             _carbs = State(initialValue: m.carbsG.map { String(Int($0)) } ?? "")
             _notes = State(initialValue: m.notes ?? "")
-            _savedPhotoPath = State(initialValue: m.photoPath)
-            _originalPhotoPath = State(initialValue: m.photoPath)
+            let paths = m.photoPaths
+            _savedPhotoPaths = State(initialValue: paths)
+            _originalPhotoPaths = State(initialValue: paths)
         } else {
             _mealType = State(initialValue: MealRecord.MealType.suggested())
             _eatenAt = State(initialValue: Date())
@@ -220,8 +236,8 @@ struct MealEditView: View {
             _fat = State(initialValue: "")
             _carbs = State(initialValue: "")
             _notes = State(initialValue: "")
-            _savedPhotoPath = State(initialValue: nil)
-            _originalPhotoPath = State(initialValue: nil)
+            _savedPhotoPaths = State(initialValue: [])
+            _originalPhotoPaths = State(initialValue: [])
         }
     }
 
@@ -238,105 +254,25 @@ struct MealEditView: View {
                     }
                     DatePicker("时间", selection: $eatenAt)
                 }
-                Section("照片") {
-                    if let img = previewImage {
-                        Image(uiImage: img)
-                            .resizable()
-                            .aspectRatio(contentMode: .fit)
-                            .frame(maxHeight: 200)
-                            .clipShape(RoundedRectangle(cornerRadius: 10))
-                    }
-                    Menu {
-                        if CameraPicker.isCameraAvailable {
-                            Button {
-                                showingCamera = true
-                            } label: {
-                                Label("拍照", systemImage: "camera.fill")
-                            }
-                        }
-                        Button {
-                            showingPhotoPicker = true
-                        } label: {
-                            Label("从相册选择", systemImage: "photo.on.rectangle")
-                        }
-                    } label: {
-                        Label(previewImage == nil && savedPhotoPath == nil ? "添加照片" : "更换照片", systemImage: "camera")
-                    }
-                    if previewImage != nil || savedPhotoPath != nil {
-                        Button(role: .destructive) {
-                            previewImage = nil
-                            pickedPhoto = nil
-                            suggestions = []
-                            nutritionEstimate = nil
-                            nutritionItems = []
-                            nutritionError = nil
-                            // If the user just imported a new photo this session (not the
-                            // editing record's original), drop it from disk right away.
-                            // The original photo (if any) is left alone — save() will GC it.
-                            if let path = savedPhotoPath, path != originalPhotoPath {
-                                MealPhotoStore.shared.removeIfManaged(path: path)
-                            }
-                            savedPhotoPath = nil
-                        } label: {
-                            Label("移除照片", systemImage: "trash")
-                        }
-                    }
-                    if isClassifying {
-                        HStack(spacing: 8) {
-                            ProgressView().controlSize(.small)
-                            Text("识别中…").font(.footnote).foregroundStyle(.secondary)
-                        }
-                    }
-                    if !suggestions.isEmpty {
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text("本地识别（点击加入备注）")
-                                .font(.caption).foregroundStyle(.secondary)
-                            FlowLayout(spacing: 6) {
-                                ForEach(suggestions, id: \.label) { s in
-                                    Button {
-                                        appendToNotes(s.label)
-                                    } label: {
-                                        Text(s.label + String(format: " %.0f%%", s.confidence * 100))
-                                            .font(.footnote)
-                                            .padding(.horizontal, 10).padding(.vertical, 5)
-                                            .background(Color.accentColor.opacity(0.15))
-                                            .clipShape(Capsule())
-                                    }
-                                    .buttonStyle(.plain)
-                                }
-                            }
-                        }
-                    }
+                Section {
+                    photoCarousel
+                } header: {
+                    Text("照片（可加多张）")
+                } footer: {
+                    Text("每张菜分别拍摄会更准。所有照片连同下方的文字描述会一起按 AI 估算营养。")
                 }
 
                 Section {
                     TextField("用文字描述这餐，如「十个猪肉芹菜水饺」「麦香鱼汉堡不要酱」",
                               text: $foodDescription, axis: .vertical)
                         .lineLimit(2...4)
-                    Button {
-                        Task { await runTextNutritionAnalysis() }
-                    } label: {
-                        if isAnalyzingNutrition {
-                            HStack(spacing: 8) {
-                                ProgressView().controlSize(.small)
-                                Text("AI 估算中…")
-                            }
-                        } else {
-                            Label("AI 估算营养", systemImage: "sparkles")
-                        }
-                    }
-                    .disabled(foodDescription.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isAnalyzingNutrition)
-                    if !LLMConfig.isConfigured {
-                        Text("未配置文本模型。前往「设置 → AI 摘要」填写 Base URL 与 Text Model 即可按描述估算。")
-                            .font(.caption).foregroundStyle(.secondary)
-                    }
                 } header: {
-                    Text("文字估算")
-                } footer: {
-                    Text("根据文字描述推测营养，结果可在下方逐项调整。")
+                    Text("文字描述")
                 }
 
-                if previewImage != nil || !nutritionItems.isEmpty || isAnalyzingNutrition || nutritionError != nil {
+                aiEstimateSection
+
+                if !nutritionItems.isEmpty || isAnalyzingNutrition || nutritionError != nil {
                     nutritionSection
                 }
                 Section("营养（可选）") {
@@ -365,27 +301,29 @@ struct MealEditView: View {
                     }
                 }
             }
-            .onChange(of: pickedPhoto) { _, newItem in
-                guard let newItem else { return }
-                Task { await loadPicked(newItem) }
+            .onChange(of: pickedPhotos) { _, newItems in
+                guard !newItems.isEmpty else { return }
+                Task { await loadPickedBatch(newItems) }
             }
             .photosPicker(
                 isPresented: $showingPhotoPicker,
-                selection: $pickedPhoto,
+                selection: $pickedPhotos,
+                maxSelectionCount: 8,
                 matching: .images,
                 photoLibrary: .shared()
             )
             .task {
-                if previewImage == nil, let path = originalPhotoPath,
-                   let img = MealPhotoStore.shared.loadImage(path: path) {
-                    previewImage = img
+                // Load the meal's original photos for editor preview.
+                if previewImages.isEmpty, !originalPhotoPaths.isEmpty {
+                    let loaded = originalPhotoPaths.compactMap { MealPhotoStore.shared.loadImage(path: $0) }
+                    previewImages = loaded
                 }
             }
             .fullScreenCover(isPresented: $showingCamera) {
                 CameraPicker(
                     onImage: { img in
                         showingCamera = false
-                        Task { await ingestCapturedImage(img) }
+                        ingestCapturedImage(img)
                     },
                     onCancel: { showingCamera = false }
                 )
@@ -394,123 +332,286 @@ struct MealEditView: View {
         }
     }
 
-    private func loadPicked(_ item: PhotosPickerItem) async {
-        guard let data = try? await item.loadTransferable(type: Data.self),
-              let img = UIImage(data: data) else { return }
-        await ingestCapturedImage(img)
-    }
+    // MARK: - Photo carousel + AI estimate section
 
-    /// Shared post-capture pipeline used by both PhotosPicker and CameraPicker.
-    /// Runs (a) on-device Vision classify (cheap, fast) and, if vision LLM is configured,
-    /// (b) cloud nutrition estimate. Both kick off in parallel.
-    private func ingestCapturedImage(_ img: UIImage) async {
-        let saved = MealPhotoStore.shared.save(image: img)
-        await MainActor.run {
-            previewImage = img
-            savedPhotoPath = saved
-            isClassifying = true
-            suggestions = []
-            nutritionEstimate = nil
-            nutritionItems = []
-            nutritionError = nil
-        }
-        async let localTask: () = runLocalClassify(img)
-        async let nutritionTask: () = runNutritionAnalysis(img)
-        _ = await (localTask, nutritionTask)
-    }
-
-    private func runLocalClassify(_ img: UIImage) async {
-        let s = await MealImageClassifier.classify(image: img)
-        await MainActor.run {
-            suggestions = s
-            isClassifying = false
+    /// Horizontal thumbnail strip + a trailing "+" tile for adding more photos. Each
+    /// thumbnail has its own delete overlay. Tap "+" to choose camera or photo library.
+    private var photoCarousel: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(Array(previewImages.enumerated()), id: \.offset) { idx, img in
+                    photoThumb(image: img, index: idx)
+                }
+                addPhotoTile
+            }
+            .padding(.vertical, 4)
         }
     }
 
-    private func runNutritionAnalysis(_ img: UIImage, userHint: String? = nil) async {
-        guard LLMConfig.enabled, LLMConfig.isVisionConfigured else { return }
+    private func photoThumb(image: UIImage, index: Int) -> some View {
+        ZStack(alignment: .topTrailing) {
+            Image(uiImage: image)
+                .resizable()
+                .aspectRatio(contentMode: .fill)
+                .frame(width: 96, height: 96)
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+            Button {
+                removePhoto(at: index)
+            } label: {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.title3)
+                    .foregroundStyle(.white, .black.opacity(0.55))
+            }
+            .buttonStyle(.plain)
+            .padding(4)
+            .accessibilityLabel("移除这张照片")
+        }
+    }
+
+    private var addPhotoTile: some View {
+        Menu {
+            if CameraPicker.isCameraAvailable {
+                Button {
+                    showingCamera = true
+                } label: {
+                    Label("拍照", systemImage: "camera.fill")
+                }
+            }
+            Button {
+                showingPhotoPicker = true
+            } label: {
+                Label("从相册选择…", systemImage: "photo.on.rectangle")
+            }
+        } label: {
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .strokeBorder(.tertiary, style: StrokeStyle(lineWidth: 1.5, dash: [5, 4]))
+                .frame(width: 96, height: 96)
+                .overlay(
+                    VStack(spacing: 4) {
+                        Image(systemName: "plus")
+                            .font(.title2.weight(.semibold))
+                        Text(previewImages.isEmpty ? "添加" : "再添加")
+                            .font(.caption2)
+                    }
+                    .foregroundStyle(.secondary)
+                )
+        }
+        .accessibilityLabel("添加照片")
+    }
+
+    private func removePhoto(at index: Int) {
+        guard previewImages.indices.contains(index) else { return }
+        previewImages.remove(at: index)
+        if savedPhotoPaths.indices.contains(index) {
+            let path = savedPhotoPaths.remove(at: index)
+            // Drop the file only if it was imported this session — don't yank a photo
+            // that's still tied to the saved record on disk; save() will GC stale paths.
+            if !originalPhotoPaths.contains(path) {
+                MealPhotoStore.shared.removeIfManaged(path: path)
+            }
+            analyzedInputKeys.remove(photoKey(for: path))
+        }
+    }
+
+    /// Single "AI 估算营养" trigger + status. Shows how many inputs are still pending and
+    /// surfaces per-input progress while a serial pass is running.
+    @ViewBuilder
+    private var aiEstimateSection: some View {
+        Section {
+            let pending = pendingInputCount
+            Button {
+                Task { await runAIEstimate() }
+            } label: {
+                if isAnalyzingNutrition {
+                    HStack(spacing: 8) {
+                        ProgressView().controlSize(.small)
+                        Text(analysisProgress ?? "AI 估算中…")
+                    }
+                } else if pending > 0 {
+                    Label("AI 估算营养（\(pending) 项待处理）", systemImage: "sparkles")
+                } else {
+                    Label("AI 估算营养", systemImage: "sparkles")
+                }
+            }
+            .disabled(isAnalyzingNutrition || pending == 0 || !canCallAnyModel)
+
+            if !canCallAnyModel {
+                Text("未配置 AI 模型。前往「设置 → AI 摘要」配置文本或图像模型。")
+                    .font(.caption).foregroundStyle(.secondary)
+            } else if foodDescription.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false,
+                      !LLMConfig.isConfigured {
+                Text("文字描述需要配置文本模型。")
+                    .font(.caption).foregroundStyle(.secondary)
+            } else if !previewImages.isEmpty, !LLMConfig.isVisionConfigured {
+                Text("照片估算需要配置视觉模型（如 glm-4v-flash）。")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+        } header: {
+            Text("AI 估算")
+        } footer: {
+            Text("点按钮后会按「文字 → 照片1 → 照片2…」依次调用模型，结果累计添加到下方营养列表。已估算过的输入不会被重复调用。")
+        }
+    }
+
+    /// Inputs that haven't been pushed through the AI yet. Text counts as 1 if non-empty
+    /// and changed since last analysis; each new/changed photo counts as 1.
+    private var pendingInputCount: Int {
+        var n = 0
+        if !textInputKey().isEmpty, !analyzedInputKeys.contains(textInputKey()) { n += 1 }
+        for path in savedPhotoPaths where !analyzedInputKeys.contains(photoKey(for: path)) {
+            n += 1
+        }
+        return n
+    }
+
+    private var canCallAnyModel: Bool {
+        guard LLMConfig.enabled else { return false }
+        let hasText = !foodDescription.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        let hasPhotos = !previewImages.isEmpty
+        return (hasText && LLMConfig.isConfigured) || (hasPhotos && LLMConfig.isVisionConfigured)
+    }
+
+    private func textInputKey() -> String {
+        let trimmed = foodDescription.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? "" : "text:\(trimmed.hashValue)"
+    }
+
+    private func photoKey(for path: String) -> String { "photo:\(path)" }
+
+    // MARK: - Sequential analysis pipeline
+
+    /// Drive the AI through every pending input one at a time. Each successful estimate
+    /// appends its items to `nutritionItems`; per-input failures are collected and shown
+    /// at the end so a single bad photo doesn't kill the whole batch.
+    private func runAIEstimate() async {
+        guard pendingInputCount > 0, canCallAnyModel else { return }
+
+        // Build the work list in the order the user sees inputs (text first, then photos
+        // in carousel order). Each tuple carries everything we need to call + key it.
+        enum Job {
+            case text(String, key: String)
+            case image(UIImage, path: String, key: String)
+            var displayLabel: String {
+                switch self {
+                case .text: return "文字描述"
+                case .image: return "照片"
+                }
+            }
+        }
+        var jobs: [Job] = []
+        let textTrimmed = foodDescription.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !textTrimmed.isEmpty, !analyzedInputKeys.contains(textInputKey()) {
+            jobs.append(.text(textTrimmed, key: textInputKey()))
+        }
+        for (idx, img) in previewImages.enumerated() {
+            guard savedPhotoPaths.indices.contains(idx) else { continue }
+            let path = savedPhotoPaths[idx]
+            let key = photoKey(for: path)
+            if !analyzedInputKeys.contains(key) {
+                jobs.append(.image(img, path: path, key: key))
+            }
+        }
+        guard !jobs.isEmpty else { return }
+
         await MainActor.run {
             isAnalyzingNutrition = true
             nutritionError = nil
         }
-        do {
-            let est = try await MealNutritionAnalyzer.analyze(image: img, userHint: userHint)
-            await MainActor.run {
+        defer {
+            Task { @MainActor in
                 isAnalyzingNutrition = false
-                guard !est.items.isEmpty else {
-                    nutritionError = (est.note?.isEmpty == false)
-                        ? "AI 未能估算营养：\(est.note!)"
-                        : "AI 未能从照片中识别出食物，请换张更清晰的照片或在下方手动填写营养。"
-                    return
-                }
-                nutritionEstimate = est
-                nutritionItems = est.items.map(EditableNutritionItem.init(from:))
-                syncTotalsFromItems()
+                analysisProgress = nil
             }
-        } catch {
-            await MainActor.run {
-                nutritionError = error.localizedDescription
-                isAnalyzingNutrition = false
-            }
-            AppLogger.shared.error("Nutrition analysis failed: \(error.localizedDescription)")
         }
-    }
 
-    /// Estimate nutrition from the free-text description via the text LLM and populate
-    /// the editable item list (same flow as the photo path).
-    private func runTextNutritionAnalysis() async {
-        let desc = foodDescription.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !desc.isEmpty else { return }
-        guard LLMConfig.enabled, LLMConfig.isConfigured else {
-            await MainActor.run {
-                nutritionError = "未配置文本模型。前往「设置 → AI 摘要」填写 Base URL 与 Text Model。"
+        var addedItems: [EditableNutritionItem] = []
+        var errors: [String] = []
+        let total = jobs.count
+        var photoCounter = 0
+
+        for (idx, job) in jobs.enumerated() {
+            // Update progress (1-based, with type-aware label).
+            let progressText: String
+            switch job {
+            case .text:
+                progressText = total == 1 ? "分析文字描述…" : "分析 \(idx + 1)/\(total)：文字描述"
+            case .image:
+                photoCounter += 1
+                progressText = total == 1 ? "分析照片…" : "分析 \(idx + 1)/\(total)：照片 \(photoCounter)"
             }
-            return
+            await MainActor.run { analysisProgress = progressText }
+
+            do {
+                let est: MealNutritionAnalyzer.Estimate
+                switch job {
+                case .text(let desc, _):
+                    est = try await MealNutritionAnalyzer.analyze(text: desc)
+                case .image(let img, _, _):
+                    est = try await MealNutritionAnalyzer.analyze(image: img)
+                }
+                if est.items.isEmpty {
+                    let why = (est.note?.isEmpty == false)
+                        ? "（\(est.note!)）"
+                        : ""
+                    errors.append("\(job.displayLabel) 未识别出食物\(why)")
+                } else {
+                    addedItems.append(contentsOf: est.items.map(EditableNutritionItem.init(from:)))
+                    await MainActor.run {
+                        nutritionEstimate = est                 // keep latest non-empty for note/confidence
+                        switch job {
+                        case .text(_, let key): analyzedInputKeys.insert(key)
+                        case .image(_, _, let key): analyzedInputKeys.insert(key)
+                        }
+                    }
+                }
+            } catch {
+                errors.append("\(job.displayLabel)：\(error.localizedDescription)")
+                AppLogger.shared.error("AI estimate failed for \(job.displayLabel): \(error.localizedDescription)")
+            }
         }
+
         await MainActor.run {
-            isAnalyzingNutrition = true
-            nutritionError = nil
-        }
-        do {
-            let est = try await MealNutritionAnalyzer.analyze(text: desc)
-            await MainActor.run {
-                isAnalyzingNutrition = false
-                guard !est.items.isEmpty else {
-                    // 模型调用成功但没识别出任何食物（返回空 items）。过去这里会静默地
-                    // 把描述塞进备注、不给任何反馈，看起来像「估算没生效」。改为显式提示。
-                    nutritionError = (est.note?.isEmpty == false)
-                        ? "AI 未能估算营养：\(est.note!)"
-                        : "AI 未能从描述中识别出食物，请调整描述（如补充数量/做法），或在下方手动填写营养。"
-                    return
-                }
-                nutritionEstimate = est
-                nutritionItems = est.items.map(EditableNutritionItem.init(from:))
+            if !addedItems.isEmpty {
+                nutritionItems.append(contentsOf: addedItems)
                 syncTotalsFromItems()
-                if notes.isEmpty { notes = desc }
+                // Seed notes with the description on first successful text estimate.
+                if notes.isEmpty, !textTrimmed.isEmpty,
+                   jobs.contains(where: { if case .text = $0 { return true } else { return false } }) {
+                    notes = textTrimmed
+                }
             }
-        } catch {
-            await MainActor.run {
-                nutritionError = error.localizedDescription
-                isAnalyzingNutrition = false
-            }
-            AppLogger.shared.error("Text nutrition analysis failed: \(error.localizedDescription)")
+            nutritionError = errors.isEmpty ? nil : errors.joined(separator: "\n")
         }
     }
 
-    /// Build a "实际上是：米饭 100g、炒青菜 150g、…" hint from the current items and
-    /// re-run the LLM. Items the user just added (empty name) are skipped from the
-    /// hint but stay in the array, so they'll be replaced once the new estimate lands.
-    private func reEstimateWithCorrection() async {
-        guard let img = previewImage else { return }
-        let parts: [String] = nutritionItems.compactMap { item in
-            let n = item.name.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !n.isEmpty else { return nil }
-            let g = Int(item.grams.rounded())
-            return g > 0 ? "\(n) \(g)g" : n
+    // MARK: - Photo intake (camera / picker)
+
+    /// Append a newly-captured camera image to the carousel. We don't auto-analyze —
+    /// estimation only fires from the explicit "AI 估算营养" button.
+    private func ingestCapturedImage(_ img: UIImage) {
+        guard let saved = MealPhotoStore.shared.save(image: img) else { return }
+        previewImages.append(img)
+        savedPhotoPaths.append(saved)
+    }
+
+    /// Same intake path for a batch of PhotosPickerItems (multi-select). Skips items that
+    /// failed to load instead of failing the whole batch.
+    private func loadPickedBatch(_ items: [PhotosPickerItem]) async {
+        var loaded: [(UIImage, String)] = []
+        for item in items {
+            guard let data = try? await item.loadTransferable(type: Data.self),
+                  let img = UIImage(data: data),
+                  let saved = MealPhotoStore.shared.save(image: img) else { continue }
+            loaded.append((img, saved))
         }
-        let hint = parts.joined(separator: "、")
-        guard !hint.isEmpty else { return }
-        await runNutritionAnalysis(img, userHint: hint)
+        guard !loaded.isEmpty else { return }
+        await MainActor.run {
+            for (img, path) in loaded {
+                previewImages.append(img)
+                savedPhotoPaths.append(path)
+            }
+            pickedPhotos = []   // reset so a repeat selection re-fires onChange
+        }
     }
 
     /// Push the sum of `nutritionItems`' (scaled) macros into the bottom calories/
@@ -534,7 +635,7 @@ struct MealEditView: View {
             if isAnalyzingNutrition {
                 HStack(spacing: 8) {
                     ProgressView().controlSize(.small)
-                    Text("AI 估算营养中（首次约 3–8 秒）…")
+                    Text(analysisProgress ?? "AI 估算中…")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 }
@@ -566,15 +667,6 @@ struct MealEditView: View {
                     Text(note).font(.caption).foregroundStyle(.secondary)
                 }
 
-                Button {
-                    Task { await reEstimateWithCorrection() }
-                } label: {
-                    Label("按上方描述重新估算", systemImage: "arrow.clockwise")
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-                .disabled(isAnalyzingNutrition || nutritionItems.allSatisfy { $0.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty })
-
                 Text("修改克数会自动按比例换算各项营养，并合并填入下方字段。")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
@@ -586,16 +678,8 @@ struct MealEditView: View {
                     .foregroundStyle(.red)
                     .textSelection(.enabled)
             }
-
-            if previewImage != nil && nutritionItems.isEmpty && !isAnalyzingNutrition && nutritionError == nil {
-                if !LLMConfig.isVisionConfigured {
-                    Text("未配置视觉模型。前往「设置 → AI 摘要」填入 Vision Model 字段（如 glm-4v-flash）即可自动估算。")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                }
-            }
         } header: {
-            Text("AI 估算营养")
+            Text("估算结果")
         }
     }
 
@@ -670,17 +754,9 @@ struct MealEditView: View {
         }
     }
 
-    private func appendToNotes(_ label: String) {
-        if notes.isEmpty {
-            notes = label
-        } else if !notes.contains(label) {
-            notes += "、" + label
-        }
-    }
-
     private func save() async {
         let createdAt = editing?.createdAt ?? Int64(Date().timeIntervalSince1970)
-        let record = MealRecord(
+        var record = MealRecord(
             id: editing?.id,
             mealType: mealType,
             eatenAt: Int64(eatenAt.timeIntervalSince1970),
@@ -688,11 +764,12 @@ struct MealEditView: View {
             proteinG: Double(protein),
             fatG: Double(fat),
             carbsG: Double(carbs),
-            photoPath: savedPhotoPath,
+            photoPath: nil,
             notes: notes.isEmpty ? nil : notes,
             createdAt: createdAt,
             hkSyncId: editing?.hkSyncId
         )
+        record.photoPaths = savedPhotoPaths  // CSV-encoded into photo_path
         do {
             let savedId: Int64? = try await environment.database.asyncWrite { db -> Int64? in
                 var r = record
@@ -703,10 +780,12 @@ struct MealEditView: View {
                 }
                 return r.id
             }
-            // Drop the previously-saved photo if the user swapped it for a new one
-            // (or removed it) — but only after the DB write succeeds so we don't
-            // strand a record pointing at a missing file on failure.
-            if let old = originalPhotoPath, old != savedPhotoPath {
+            // GC any originally-saved photo that the user removed in this edit. Run after
+            // the DB write succeeds so a failure can't strand the record pointing at deleted
+            // files. New photos added but later removed in-session were already GC'd in
+            // `removePhoto(at:)`.
+            let stillKept = Set(savedPhotoPaths)
+            for old in originalPhotoPaths where !stillKept.contains(old) {
                 MealPhotoStore.shared.removeIfManaged(path: old)
             }
             environment.notifyLocalDataChanged()
@@ -746,49 +825,6 @@ struct MealEditView: View {
     }
 }
 
-/// Simple wrapping flow layout. Lays out children left-to-right; wraps when the next
-/// child would overflow the proposed width. Used for the AI suggestion chips.
-struct FlowLayout: Layout {
-    var spacing: CGFloat = 6
-
-    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
-        let maxWidth = proposal.width ?? .infinity
-        var x: CGFloat = 0
-        var y: CGFloat = 0
-        var rowHeight: CGFloat = 0
-        var maxX: CGFloat = 0
-        for v in subviews {
-            let s = v.sizeThatFits(.unspecified)
-            if x + s.width > maxWidth, x > 0 {
-                x = 0
-                y += rowHeight + spacing
-                rowHeight = 0
-            }
-            x += s.width + spacing
-            rowHeight = max(rowHeight, s.height)
-            maxX = max(maxX, x)
-        }
-        return CGSize(width: min(maxX, maxWidth), height: y + rowHeight)
-    }
-
-    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
-        let maxWidth = bounds.width
-        var x: CGFloat = bounds.minX
-        var y: CGFloat = bounds.minY
-        var rowHeight: CGFloat = 0
-        for v in subviews {
-            let s = v.sizeThatFits(.unspecified)
-            if x - bounds.minX + s.width > maxWidth, x > bounds.minX {
-                x = bounds.minX
-                y += rowHeight + spacing
-                rowHeight = 0
-            }
-            v.place(at: CGPoint(x: x, y: y), proposal: ProposedViewSize(s))
-            x += s.width + spacing
-            rowHeight = max(rowHeight, s.height)
-        }
-    }
-}
 
 struct LabeledTextField: View {
     let label: String

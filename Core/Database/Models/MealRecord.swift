@@ -59,4 +59,18 @@ struct MealRecord: Codable, FetchableRecord, MutablePersistableRecord, Identifia
     mutating func didInsert(_ inserted: InsertionSuccess) {
         id = inserted.rowID
     }
+
+    /// One meal can carry multiple photos. We store them as a comma-separated list in the
+    /// single `photo_path` column (filenames are UUIDs — no commas — so this is safe and
+    /// avoids a migration). A legacy single-filename string parses to a one-element array;
+    /// nil/empty parses to []; setting `[]` clears the column to nil.
+    var photoPaths: [String] {
+        get {
+            guard let raw = photoPath, !raw.isEmpty else { return [] }
+            return raw.split(separator: ",").map { String($0) }
+        }
+        set {
+            photoPath = newValue.isEmpty ? nil : newValue.joined(separator: ",")
+        }
+    }
 }

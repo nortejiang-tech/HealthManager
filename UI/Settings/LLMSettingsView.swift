@@ -20,8 +20,12 @@ struct LLMSettingsView: View {
     @State private var visionKey: String = LLMConfig.visionApiKey ?? ""
 
     @State private var presets: [LLMConfig.Preset] = LLMConfig.presets
+    @State private var profiles: [LLMConfig.Profile] = LLMConfig.profiles
+    @State private var activeProfileName: String? = LLMConfig.activeProfileName
     @State private var showingAddProvider: Bool = false
     @State private var showingResetConfirm: Bool = false
+    @State private var showingSaveProfile: Bool = false
+    @State private var newProfileName: String = ""
 
     @State private var testing: Bool = false
     @State private var testResult: String?
@@ -36,6 +40,8 @@ struct LLMSettingsView: View {
             } footer: {
                 Text("开启后，「总结」页会在本地确定性摘要旁边显示 AI 评注。关闭则只用本地摘要。")
             }
+
+            profileSection
 
             presetSection
 
@@ -115,10 +121,14 @@ struct LLMSettingsView: View {
         }
         .onChange(of: baseURL) { _, newValue in
             if let remembered = LLMConfig.apiKey(forBaseURL: newValue) { textKey = remembered }
+            activeProfileName = nil  // any hand-edit drops the active-profile marker
         }
         .onChange(of: visionBaseURL) { _, newValue in
             if let remembered = LLMConfig.apiKey(forBaseURL: newValue) { visionKey = remembered }
+            activeProfileName = nil
         }
+        .onChange(of: textModel) { _, _ in activeProfileName = nil }
+        .onChange(of: visionModel) { _, _ in activeProfileName = nil }
         .sheet(isPresented: $showingAddProvider) {
             AddProviderView { preset in
                 LLMConfig.addCustomPreset(preset)
@@ -143,6 +153,163 @@ struct LLMSettingsView: View {
             }
             Button("取消", role: .cancel) {}
         }
+    }
+
+    // MARK: - Profile section ("我的配置" — one-tap switch between saved setups)
+
+    private var profileSection: some View {
+        Section {
+            if profiles.isEmpty {
+                Text("尚未保存任何配置。先在下方选/填好接口与模型，再点「保存当前为配置…」即可。")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach(profiles) { profile in
+                    Button {
+                        applyProfile(profile)
+                    } label: {
+                        profileRow(profile)
+                    }
+                    .buttonStyle(.plain)
+                    .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                        Button(role: .destructive) {
+                            removeProfile(profile)
+                        } label: {
+                            Label("删除", systemImage: "trash")
+                        }
+                    }
+                }
+            }
+
+            Button {
+                newProfileName = activeProfileName ?? ""
+                showingSaveProfile = true
+            } label: {
+                Label("保存当前为配置…", systemImage: "square.and.arrow.down")
+            }
+            .disabled(baseURL.isEmpty || textModel.isEmpty)
+        } header: {
+            Text("我的配置")
+        } footer: {
+            Text("把当前文本/图像接口 + 模型保存成一份配置，下次一键切回。API Key 仍按接口地址自动记忆，不会重复填写。")
+        }
+        .sheet(isPresented: $showingSaveProfile) {
+            saveProfileSheet
+        }
+    }
+
+    private func profileRow(_ profile: LLMConfig.Profile) -> some View {
+        HStack(alignment: .top) {
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 6) {
+                    Text(profile.name).font(.body.weight(.medium))
+                    if activeProfileName == profile.name {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundStyle(.tint)
+                            .font(.footnote)
+                    }
+                }
+                if !profile.textModel.isEmpty || !profile.visionModel.isEmpty {
+                    HStack(spacing: 6) {
+                        if !profile.textModel.isEmpty { Text(profile.textModel) }
+                        if !profile.visionModel.isEmpty {
+                            Text("·")
+                            Text(profile.visionModel)
+                        }
+                    }
+                    .font(.caption.monospaced())
+                    .foregroundStyle(.secondary)
+                }
+                Text(URL(string: profile.textBaseURL)?.host ?? profile.textBaseURL)
+                    .font(.caption2.monospaced())
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+            Spacer()
+            Image(systemName: "arrow.forward")
+                .font(.caption)
+                .foregroundStyle(.tertiary)
+        }
+        .contentShape(Rectangle())
+    }
+
+    private var saveProfileSheet: some View {
+        NavigationStack {
+            Form {
+                Section("配置名") {
+                    TextField("如：智谱 GLM 免费", text: $newProfileName)
+                }
+                Section {
+                    LabeledContent("文本接口") {
+                        Text(URL(string: baseURL)?.host ?? baseURL)
+                            .font(.caption.monospaced())
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                    if !textModel.isEmpty {
+                        LabeledContent("文本模型") {
+                            Text(textModel).font(.caption.monospaced()).foregroundStyle(.secondary)
+                        }
+                    }
+                    if !visionBaseURL.isEmpty, visionBaseURL != baseURL {
+                        LabeledContent("图像接口") {
+                            Text(URL(string: visionBaseURL)?.host ?? visionBaseURL)
+                                .font(.caption.monospaced())
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                        }
+                    }
+                    if !visionModel.isEmpty {
+                        LabeledContent("图像模型") {
+                            Text(visionModel).font(.caption.monospaced()).foregroundStyle(.secondary)
+                        }
+                    }
+                } header: {
+                    Text("将保存的配置")
+                } footer: {
+                    Text("API Key 不进入配置，仍保留在 Keychain 中（按接口地址记忆）。")
+                }
+            }
+            .navigationTitle("保存当前配置")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("取消") { showingSaveProfile = false }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("保存") {
+                        // Persist the current form fields first so the profile snapshot matches.
+                        persist()
+                        LLMConfig.saveCurrentAsProfile(name: newProfileName)
+                        profiles = LLMConfig.profiles
+                        activeProfileName = LLMConfig.activeProfileName
+                        showingSaveProfile = false
+                    }
+                    .disabled(newProfileName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+            }
+        }
+        .presentationDetents([.medium])
+    }
+
+    private func applyProfile(_ profile: LLMConfig.Profile) {
+        LLMConfig.applyProfile(profile)
+        // Reflect into the local form fields and re-pull the matching API keys.
+        baseURL = profile.textBaseURL
+        textModel = profile.textModel
+        visionBaseURL = profile.visionBaseURL
+        visionModel = profile.visionModel
+        textKey = LLMConfig.apiKey(forBaseURL: profile.textBaseURL) ?? ""
+        let effectiveVisionBase = profile.visionBaseURL.isEmpty ? profile.textBaseURL : profile.visionBaseURL
+        visionKey = LLMConfig.apiKey(forBaseURL: effectiveVisionBase) ?? ""
+        activeProfileName = profile.name
+    }
+
+    private func removeProfile(_ profile: LLMConfig.Profile) {
+        LLMConfig.removeProfile(named: profile.name)
+        profiles = LLMConfig.profiles
+        activeProfileName = LLMConfig.activeProfileName
     }
 
     // MARK: - Preset section

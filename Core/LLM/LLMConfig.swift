@@ -18,6 +18,8 @@ enum LLMConfig {
     private static let visionModelKey = "llm.visionModel"
     private static let enabledKey = "llm.enabled"
     private static let customPresetsKey = "llm.customPresets"
+    private static let profilesKey = "llm.profiles"
+    private static let activeProfileNameKey = "llm.activeProfileName"
     private static let migratedFlagKey = "llm.keyStore.migrated.v1"
     private static let keychainService = "com.norte.HealthManager.llm"
     private static let keyStoreAccount = "llm.keyStore"
@@ -30,6 +32,21 @@ enum LLMConfig {
         let baseURL: String
         let suggestedTextModel: String
         let suggestedVisionModel: String   // empty string if N/A
+        var id: String { name }
+    }
+
+    /// A saved snapshot of "what to fill into the four model fields" — text & vision
+    /// base URL + model. API keys are deliberately NOT part of a profile: keys are
+    /// already remembered per baseURL in Keychain, so switching to a profile that points
+    /// at a previously-used baseURL will auto-refill its key.
+    ///
+    /// Identified by `name` (must be unique among saved profiles).
+    struct Profile: Identifiable, Hashable, Codable {
+        let name: String
+        let textBaseURL: String
+        let textModel: String
+        let visionBaseURL: String       // empty == follow text endpoint
+        let visionModel: String
         var id: String { name }
     }
 
@@ -127,15 +144,89 @@ enum LLMConfig {
         customPresets = customPresets.filter { $0.id != id }
     }
 
+    // MARK: - Saved profiles (one-tap "switch model setup")
+
+    /// User-saved snapshots of the full text+vision endpoint setup.
+    static var profiles: [Profile] {
+        get {
+            guard let data = defaults.data(forKey: profilesKey),
+                  let list = try? JSONDecoder().decode([Profile].self, from: data)
+            else { return [] }
+            return list
+        }
+        set {
+            if newValue.isEmpty {
+                defaults.removeObject(forKey: profilesKey)
+            } else if let data = try? JSONEncoder().encode(newValue) {
+                defaults.set(data, forKey: profilesKey)
+            }
+        }
+    }
+
+    /// Name of the profile that was last applied — UI uses it to render a ✓ next to it.
+    /// Cleared whenever the user edits one of the four model fields by hand.
+    static var activeProfileName: String? {
+        get { defaults.string(forKey: activeProfileNameKey) }
+        set {
+            if let newValue, !newValue.isEmpty {
+                defaults.set(newValue, forKey: activeProfileNameKey)
+            } else {
+                defaults.removeObject(forKey: activeProfileNameKey)
+            }
+        }
+    }
+
+    /// Capture the current text+vision endpoint state into a named profile (overwrites
+    /// any existing profile with the same name). The current snapshot also becomes the
+    /// active profile.
+    @discardableResult
+    static func saveCurrentAsProfile(name: String) -> Profile {
+        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let p = Profile(
+            name: trimmedName,
+            textBaseURL: baseURL,
+            textModel: textModel,
+            visionBaseURL: visionBaseURL,
+            visionModel: visionModel
+        )
+        var list = profiles
+        list.removeAll { $0.name == trimmedName }
+        list.append(p)
+        profiles = list
+        activeProfileName = trimmedName
+        return p
+    }
+
+    /// Write the four endpoint fields from `profile` and mark it active. API keys are
+    /// not part of the profile — they're looked up per baseURL in Keychain at call time.
+    static func applyProfile(_ profile: Profile) {
+        baseURL = profile.textBaseURL
+        textModel = profile.textModel
+        visionBaseURL = profile.visionBaseURL
+        visionModel = profile.visionModel
+        activeProfileName = profile.name
+    }
+
+    static func removeProfile(named name: String) {
+        profiles = profiles.filter { $0.name != name }
+        if activeProfileName == name { activeProfileName = nil }
+    }
+
     static var baseURL: String {
         get { defaults.string(forKey: baseURLKey) ?? "" }
-        set { defaults.set(newValue, forKey: baseURLKey) }
+        set {
+            if defaults.string(forKey: baseURLKey) != newValue { activeProfileName = nil }
+            defaults.set(newValue, forKey: baseURLKey)
+        }
     }
 
     /// Vision endpoint. Empty means "follow text endpoint" for backward compatibility.
     static var visionBaseURL: String {
         get { defaults.string(forKey: visionBaseURLKey) ?? "" }
-        set { defaults.set(newValue, forKey: visionBaseURLKey) }
+        set {
+            if defaults.string(forKey: visionBaseURLKey) != newValue { activeProfileName = nil }
+            defaults.set(newValue, forKey: visionBaseURLKey)
+        }
     }
 
     static var resolvedVisionBaseURL: String {
@@ -146,14 +237,20 @@ enum LLMConfig {
     /// Text-only model for daily / weekly summary commentary.
     static var textModel: String {
         get { defaults.string(forKey: textModelKey) ?? "" }
-        set { defaults.set(newValue, forKey: textModelKey) }
+        set {
+            if defaults.string(forKey: textModelKey) != newValue { activeProfileName = nil }
+            defaults.set(newValue, forKey: textModelKey)
+        }
     }
 
     /// Vision-capable model for meal photo nutrition estimation.
     /// Optional — feature is disabled when empty.
     static var visionModel: String {
         get { defaults.string(forKey: visionModelKey) ?? "" }
-        set { defaults.set(newValue, forKey: visionModelKey) }
+        set {
+            if defaults.string(forKey: visionModelKey) != newValue { activeProfileName = nil }
+            defaults.set(newValue, forKey: visionModelKey)
+        }
     }
 
     /// DEPRECATED — kept so old call sites don't break. Maps to textModel.
@@ -326,13 +423,15 @@ enum LLMConfig {
     }
 
     /// Wipe baseURL / models / enabled / all remembered keys. Used by Settings 「清除」.
-    /// Custom presets are intentionally kept — they're a user-curated address book.
+    /// Custom presets and saved profiles are intentionally kept — they're a user-curated
+    /// address book that the reset shouldn't blow away.
     static func reset() {
         defaults.removeObject(forKey: baseURLKey)
         defaults.removeObject(forKey: visionBaseURLKey)
         defaults.removeObject(forKey: textModelKey)
         defaults.removeObject(forKey: visionModelKey)
         defaults.removeObject(forKey: enabledKey)
+        defaults.removeObject(forKey: activeProfileNameKey)
         saveKeyStore([:])
         deleteKeychain(account: legacyKeyAccount)
     }
