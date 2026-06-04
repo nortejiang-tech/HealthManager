@@ -14,7 +14,7 @@ import UIKit
 enum MealNutritionAnalyzer {
 
     /// A single identified food item in a meal photo.
-    struct Item: Codable, Equatable {
+    struct Item: Codable, Equatable, Sendable {
         var name: String
         var grams: Double?
         var calories_kcal: Double?
@@ -25,7 +25,7 @@ enum MealNutritionAnalyzer {
 
     /// Multi-item estimate. The model is asked to break a photo into one item per
     /// dish/food so the user can edit grams per item and re-scale macros locally.
-    struct Estimate: Equatable {
+    struct Estimate: Equatable, Sendable {
         var items: [Item]
         var confidence: String?
         /// Free-form note from the model (e.g. "图片模糊，估算偏保守"). Optional.

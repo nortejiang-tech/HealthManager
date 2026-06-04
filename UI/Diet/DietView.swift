@@ -449,7 +449,7 @@ struct MealEditView: View {
         } header: {
             Text("AI 估算")
         } footer: {
-            Text("点按钮后会按「文字 → 照片1 → 照片2…」依次调用模型，结果累计添加到下方营养列表。已估算过的输入不会被重复调用。")
+            Text("点按钮后会把文字描述与每张照片并行交给模型估算，结果合并到下方营养列表（自动去重同名菜品）。已估算过的输入不会重复调用。")
         }
     }
 
@@ -478,44 +478,36 @@ struct MealEditView: View {
 
     private func photoKey(for path: String) -> String { "photo:\(path)" }
 
-    // MARK: - Sequential analysis pipeline
+    // MARK: - Concurrent analysis pipeline
 
-    /// Drive the AI through every pending input one at a time. Each successful estimate
-    /// appends its items to `nutritionItems`; per-input failures are collected and shown
-    /// at the end so a single bad photo doesn't kill the whole batch.
+    /// Drive the AI through every pending input. Inputs run **concurrently with a small cap**
+    /// (each call still carries a single input, so no one call is large enough to time out),
+    /// which overlaps model latency instead of waiting input-by-input. Results are then folded
+    /// back in the user's input order, de-duplicated by dish name, with per-input failures
+    /// collected so one bad photo doesn't sink the batch.
     private func runAIEstimate() async {
         guard pendingInputCount > 0, canCallAnyModel else { return }
 
-        // Build the work list in the order the user sees inputs (text first, then photos
-        // in carousel order). Each tuple carries everything we need to call + key it.
-        enum Job {
-            case text(String, key: String)
-            case image(UIImage, path: String, key: String)
-            var displayLabel: String {
-                switch self {
-                case .text: return "文字描述"
-                case .image: return "照片"
-                }
-            }
-        }
-        var jobs: [Job] = []
+        // Build the work list in display order (text first, then photos in carousel order).
+        var jobs: [AnalysisJob] = []
         let textTrimmed = foodDescription.trimmingCharacters(in: .whitespacesAndNewlines)
         if !textTrimmed.isEmpty, !analyzedInputKeys.contains(textInputKey()) {
-            jobs.append(.text(textTrimmed, key: textInputKey()))
+            jobs.append(AnalysisJob(kind: .text(textTrimmed), key: textInputKey(), label: "文字描述"))
         }
         for (idx, img) in previewImages.enumerated() {
             guard savedPhotoPaths.indices.contains(idx) else { continue }
-            let path = savedPhotoPaths[idx]
-            let key = photoKey(for: path)
+            let key = photoKey(for: savedPhotoPaths[idx])
             if !analyzedInputKeys.contains(key) {
-                jobs.append(.image(img, path: path, key: key))
+                jobs.append(AnalysisJob(kind: .image(img), key: key, label: "照片"))
             }
         }
         guard !jobs.isEmpty else { return }
 
+        let total = jobs.count
         await MainActor.run {
             isAnalyzingNutrition = true
             nutritionError = nil
+            analysisProgress = "AI 估算中…（0/\(total)）"
         }
         defer {
             Task { @MainActor in
@@ -524,64 +516,88 @@ struct MealEditView: View {
             }
         }
 
+        // Run with bounded concurrency (sliding window). Cap keeps a local single-GPU
+        // server from being hit by too many simultaneous requests.
+        var results = [Int: Result<MealNutritionAnalyzer.Estimate, Error>](minimumCapacity: total)
+        var done = 0
+        await withTaskGroup(of: (Int, Result<MealNutritionAnalyzer.Estimate, Error>).self) { group in
+            let cap = min(4, total)
+            var next = 0
+            func submit() {
+                let i = next
+                next += 1
+                let job = jobs[i]
+                group.addTask { (i, await Self.analyzeNutritionJob(job)) }
+            }
+            while next < cap { submit() }
+            for await (i, res) in group {
+                results[i] = res
+                done += 1
+                let d = done
+                await MainActor.run { analysisProgress = "AI 估算中…（\(d)/\(total)）" }
+                if next < total { submit() }
+            }
+        }
+
+        // Fold results back in input order so item ordering is deterministic.
         var addedItems: [EditableNutritionItem] = []
         var errors: [String] = []
-        let total = jobs.count
-        var photoCounter = 0
-
-        for (idx, job) in jobs.enumerated() {
-            // Update progress (1-based, with type-aware label).
-            let progressText: String
-            switch job {
-            case .text:
-                progressText = total == 1 ? "分析文字描述…" : "分析 \(idx + 1)/\(total)：文字描述"
-            case .image:
-                photoCounter += 1
-                progressText = total == 1 ? "分析照片…" : "分析 \(idx + 1)/\(total)：照片 \(photoCounter)"
-            }
-            await MainActor.run { analysisProgress = progressText }
-
-            do {
-                let est: MealNutritionAnalyzer.Estimate
-                switch job {
-                case .text(let desc, _):
-                    est = try await MealNutritionAnalyzer.analyze(text: desc)
-                case .image(let img, _, _):
-                    est = try await MealNutritionAnalyzer.analyze(image: img)
-                }
+        var newlyAnalyzedKeys: [String] = []
+        var lastEstimate: MealNutritionAnalyzer.Estimate?
+        for i in 0..<total {
+            let job = jobs[i]
+            switch results[i] {
+            case .success(let est):
                 if est.items.isEmpty {
-                    let why = (est.note?.isEmpty == false)
-                        ? "（\(est.note!)）"
-                        : ""
-                    errors.append("\(job.displayLabel) 未识别出食物\(why)")
+                    let why = (est.note?.isEmpty == false) ? "（\(est.note!)）" : ""
+                    errors.append("\(job.label)未识别出食物\(why)")
                 } else {
                     addedItems.append(contentsOf: est.items.map(EditableNutritionItem.init(from:)))
-                    await MainActor.run {
-                        nutritionEstimate = est                 // keep latest non-empty for note/confidence
-                        switch job {
-                        case .text(_, let key): analyzedInputKeys.insert(key)
-                        case .image(_, _, let key): analyzedInputKeys.insert(key)
-                        }
-                    }
+                    newlyAnalyzedKeys.append(job.key)
+                    lastEstimate = est
                 }
-            } catch {
-                errors.append("\(job.displayLabel)：\(error.localizedDescription)")
-                AppLogger.shared.error("AI estimate failed for \(job.displayLabel): \(error.localizedDescription)")
+            case .failure(let err):
+                errors.append("\(job.label)：\(err.localizedDescription)")
+                AppLogger.shared.error("AI estimate failed for \(job.label): \(err.localizedDescription)")
+            case .none:
+                break
             }
         }
 
         await MainActor.run {
+            if let lastEstimate { nutritionEstimate = lastEstimate }   // note/confidence display
             if !addedItems.isEmpty {
-                nutritionItems.append(contentsOf: addedItems)
+                appendDedupedItems(addedItems)
+                for key in newlyAnalyzedKeys { analyzedInputKeys.insert(key) }
                 syncTotalsFromItems()
-                // Seed notes with the description on first successful text estimate.
+                // Seed notes with the description on a successful text estimate.
                 if notes.isEmpty, !textTrimmed.isEmpty,
-                   jobs.contains(where: { if case .text = $0 { return true } else { return false } }) {
+                   newlyAnalyzedKeys.contains(textInputKey()) {
                     notes = textTrimmed
                 }
             }
             nutritionError = errors.isEmpty ? nil : errors.joined(separator: "\n")
         }
+    }
+
+    /// Analyze one input off the main actor. Pure (no view state) so it's safe to run inside
+    /// the task group; errors are returned rather than thrown so one failure can't cancel siblings.
+    private static func analyzeNutritionJob(_ job: AnalysisJob) async -> Result<MealNutritionAnalyzer.Estimate, Error> {
+        do {
+            switch job.kind {
+            case .text(let desc): return .success(try await MealNutritionAnalyzer.analyze(text: desc))
+            case .image(let img): return .success(try await MealNutritionAnalyzer.analyze(image: img))
+            }
+        } catch {
+            return .failure(error)
+        }
+    }
+
+    /// Append only items whose normalized name isn't already present — across the existing
+    /// list and within this batch — so overlapping text+photo inputs don't double-list a dish
+    /// (e.g. "米饭" appearing in both the text description and a photo).
+    private func appendDedupedItems(_ newItems: [EditableNutritionItem]) {
+        nutritionItems.append(contentsOf: EditableNutritionItem.deduped(newItems, against: nutritionItems))
     }
 
     // MARK: - Photo intake (camera / picker)
@@ -843,6 +859,19 @@ struct LabeledTextField: View {
     }
 }
 
+/// One unit of AI nutrition work for the meal editor's concurrent estimate pass.
+/// `@unchecked Sendable`: the only non-Sendable field is `UIImage`, which we treat as
+/// read-only (never mutated) while it's handed to the analysis task.
+private struct AnalysisJob: @unchecked Sendable {
+    enum Kind {
+        case text(String)
+        case image(UIImage)
+    }
+    let kind: Kind
+    let key: String
+    let label: String
+}
+
 /// One row in the AI-nutrition section. `gramsText` is what the user types; `baseline*`
 /// is the model's original estimate against `baselineGrams`. Computed macros scale
 /// linearly with the gramsText-to-baseline ratio so editing grams immediately reflects
@@ -891,5 +920,30 @@ struct EditableNutritionItem: Identifiable, Equatable {
         ))
         item.name = ""
         return item
+    }
+
+    /// Conservative name key for dedup: trim, drop spaces, lowercase (for ASCII brand names).
+    /// Deliberately does NOT strip qualifiers like「（无酱）」so genuinely distinct dishes
+    /// aren't wrongly merged — only truly identical names collapse.
+    static func normalizedName(_ s: String) -> String {
+        s.trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: " ", with: "")
+            .replacingOccurrences(of: "\u{3000}", with: "")   // full-width space
+            .lowercased()
+    }
+
+    /// Filter `incoming` to the items whose normalized name is not already present in
+    /// `existing` and not repeated earlier within `incoming`. Empty-named items are dropped.
+    /// Pure + order-preserving so it's unit-testable and deterministic.
+    static func deduped(_ incoming: [EditableNutritionItem],
+                        against existing: [EditableNutritionItem]) -> [EditableNutritionItem] {
+        var seen = Set(existing.map { normalizedName($0.name) })
+        var out: [EditableNutritionItem] = []
+        for item in incoming {
+            let key = normalizedName(item.name)
+            guard !key.isEmpty else { continue }
+            if seen.insert(key).inserted { out.append(item) }
+        }
+        return out
     }
 }
