@@ -110,12 +110,62 @@ struct LLMClient {
         }
     }
 
-    private struct ChatResponse: Decodable {
+    struct ChatResponse: Decodable {
         struct Choice: Decodable {
-            struct ResMessage: Decodable { let role: String; let content: String }
+            struct ResMessage: Decodable {
+                let role: String?
+                // Thinking models (qwen3-vl, deepseek-r1, …) may leave `content` null and
+                // put the text under `reasoning_content` / `reasoning`. All optional so a
+                // null `content` no longer fails the whole decode.
+                let content: String?
+                let reasoningContent: String?
+                let reasoning: String?
+
+                enum CodingKeys: String, CodingKey {
+                    case role, content, reasoning
+                    case reasoningContent = "reasoning_content"
+                }
+            }
             let message: ResMessage
         }
         let choices: [Choice]
+    }
+
+    /// Pull the assistant's usable text out of a chat-completions response body.
+    /// Tolerates thinking-model shapes: null `content` → falls back to `reasoning_content`
+    /// / `reasoning`, and strips any inline `<think>…</think>` reasoning so summaries read
+    /// as clean prose. Throws `noContent` if nothing usable remains.
+    static func extractContent(from data: Data) throws -> String {
+        let decoded = try JSONDecoder().decode(ChatResponse.self, from: data)
+        let msg = decoded.choices.first?.message
+        let raw: String = {
+            if let c = msg?.content, !c.isEmpty { return c }
+            if let r = msg?.reasoningContent, !r.isEmpty { return r }
+            if let r = msg?.reasoning, !r.isEmpty { return r }
+            return ""
+        }()
+        let cleaned = stripThinkBlocks(raw)
+        guard !cleaned.isEmpty else { throw LLMError.noContent }
+        return cleaned
+    }
+
+    /// Remove `<think>…</think>` (and `<thinking>` / `<reasoning>`) reasoning blocks that
+    /// some models emit inline before their final answer.
+    static func stripThinkBlocks(_ input: String) -> String {
+        var s = input
+        for (open, close) in [("<think>", "</think>"), ("<thinking>", "</thinking>"), ("<reasoning>", "</reasoning>")] {
+            while let openRange = s.range(of: open, options: .caseInsensitive) {
+                if let closeRange = s.range(of: close, options: .caseInsensitive,
+                                            range: openRange.upperBound..<s.endIndex) {
+                    s.removeSubrange(openRange.lowerBound..<closeRange.upperBound)
+                } else {
+                    // Unclosed opening tag — drop just the tag, keep whatever follows.
+                    s.removeSubrange(openRange)
+                    break
+                }
+            }
+        }
+        return s.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     enum LLMError: LocalizedError {
@@ -163,7 +213,9 @@ struct LLMClient {
         if !apiKey.isEmpty {
             req.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         }
-        req.timeoutInterval = 60
+        // Local thinking models (qwen3-vl-30b etc.) can spend a while in <think> before
+        // emitting the answer; 60s was occasionally too tight.
+        req.timeoutInterval = 120
         req.httpBody = body
 
         let (data, response) = try await session.data(for: req)
@@ -176,12 +228,7 @@ struct LLMClient {
         }
 
         do {
-            let decoded = try JSONDecoder().decode(ChatResponse.self, from: data)
-            guard let content = decoded.choices.first?.message.content,
-                  !content.isEmpty else {
-                throw LLMError.noContent
-            }
-            return content
+            return try LLMClient.extractContent(from: data)
         } catch let e as LLMError {
             throw e
         } catch {

@@ -15,6 +15,41 @@ final class LLMTests: XCTestCase {
         super.tearDown()
     }
 
+    // MARK: - Response parsing (thinking-model tolerance)
+
+    private func body(_ json: String) -> Data { json.data(using: .utf8)! }
+
+    func test_extractContent_plainContent() throws {
+        let out = try LLMClient.extractContent(from: body(
+            #"{"choices":[{"message":{"role":"assistant","content":"今天步数偏低，建议加 2000 步。"}}]}"#))
+        XCTAssertEqual(out, "今天步数偏低，建议加 2000 步。")
+    }
+
+    func test_extractContent_nullContent_fallsBackToReasoningContent() throws {
+        // qwen3-vl-30b style: content is null, text lives in reasoning_content.
+        let out = try LLMClient.extractContent(from: body(
+            #"{"choices":[{"message":{"role":"assistant","content":null,"reasoning_content":"摄入偏高，注意主食。"}}]}"#))
+        XCTAssertEqual(out, "摄入偏高，注意主食。")
+    }
+
+    func test_extractContent_stripsInlineThinkBlock() throws {
+        let out = try LLMClient.extractContent(from: body(
+            #"{"choices":[{"message":{"role":"assistant","content":"<think>先算缺口…大约 -300</think>今天热量缺口约 300 kcal，保持。"}}]}"#))
+        XCTAssertEqual(out, "今天热量缺口约 300 kcal，保持。")
+    }
+
+    func test_extractContent_missingContentKeyEntirely() throws {
+        // Some servers omit `content` and only send `reasoning`.
+        let out = try LLMClient.extractContent(from: body(
+            #"{"choices":[{"message":{"role":"assistant","reasoning":"体重稳定。"}}]}"#))
+        XCTAssertEqual(out, "体重稳定。")
+    }
+
+    func test_extractContent_empty_throwsNoContent() {
+        XCTAssertThrowsError(try LLMClient.extractContent(from: body(
+            #"{"choices":[{"message":{"role":"assistant","content":""}}]}"#)))
+    }
+
     // MARK: - LLMConfig
 
     func test_config_defaultsEnabledIsTrue() {
