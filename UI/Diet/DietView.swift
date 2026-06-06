@@ -521,7 +521,10 @@ struct MealEditView: View {
         var results = [Int: Result<MealNutritionAnalyzer.Estimate, Error>](minimumCapacity: total)
         var done = 0
         await withTaskGroup(of: (Int, Result<MealNutritionAnalyzer.Estimate, Error>).self) { group in
-            let cap = min(4, total)
+            // A single local GPU model serves requests one-at-a-time, so high concurrency
+            // doesn't speed anything up — it just multiplies connection-drop risk against the
+            // local server. Cap at 2 for a little prefill/decode overlap without contention.
+            let cap = min(2, total)
             var next = 0
             func submit() {
                 let i = next

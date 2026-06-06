@@ -218,7 +218,27 @@ struct LLMClient {
         req.timeoutInterval = 120
         req.httpBody = body
 
-        let (data, response) = try await session.data(for: req)
+        // Retry transient connection drops. A local server over LAN/Tailscale frequently
+        // produces NSURLErrorNetworkConnectionLost (-1005): iOS reuses a pooled TCP socket
+        // the server already closed. These fail fast, so a couple of quick retries (fresh
+        // socket) recover transparently instead of surfacing "网络连接已断开" to the user.
+        let (data, response): (Data, URLResponse) = try await {
+            var lastError: Error = LLMError.httpStatus(0, "no response")
+            let maxAttempts = 3
+            for attempt in 1...maxAttempts {
+                do {
+                    return try await session.data(for: req)
+                } catch let e as URLError where Self.isTransientNetworkError(e) {
+                    lastError = e
+                    if attempt < maxAttempts {
+                        // short backoff: 0.4s, 0.8s
+                        try? await Task.sleep(nanoseconds: UInt64(attempt) * 400_000_000)
+                    }
+                }
+            }
+            throw lastError
+        }()
+
         guard let http = response as? HTTPURLResponse else {
             throw LLMError.httpStatus(0, "no HTTPURLResponse")
         }
@@ -234,6 +254,21 @@ struct LLMClient {
         } catch {
             let snippet = String(data: data, encoding: .utf8)?.prefix(500).description ?? ""
             throw LLMError.decode("\(error.localizedDescription) | body: \(snippet)")
+        }
+    }
+
+    /// Transient, worth-retrying network failures. Deliberately excludes `.timedOut`
+    /// (already waited the full 120s — retrying would triple the wait) and auth/HTTP errors.
+    static func isTransientNetworkError(_ error: URLError) -> Bool {
+        switch error.code {
+        case .networkConnectionLost,    // -1005, the keep-alive reuse race
+             .cannotConnectToHost,      // server briefly not accepting
+             .secureConnectionFailed,   // TLS handshake blip (Tailscale HTTPS)
+             .cannotFindHost,
+             .dnsLookupFailed:
+            return true
+        default:
+            return false
         }
     }
 

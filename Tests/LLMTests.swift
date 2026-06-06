@@ -50,6 +50,15 @@ final class LLMTests: XCTestCase {
             #"{"choices":[{"message":{"role":"assistant","content":""}}]}"#)))
     }
 
+    func test_isTransientNetworkError_classification() {
+        XCTAssertTrue(LLMClient.isTransientNetworkError(URLError(.networkConnectionLost)))
+        XCTAssertTrue(LLMClient.isTransientNetworkError(URLError(.cannotConnectToHost)))
+        XCTAssertTrue(LLMClient.isTransientNetworkError(URLError(.secureConnectionFailed)))
+        // Not retried: a full timeout (already waited) and genuine offline / bad-URL.
+        XCTAssertFalse(LLMClient.isTransientNetworkError(URLError(.timedOut)))
+        XCTAssertFalse(LLMClient.isTransientNetworkError(URLError(.badURL)))
+    }
+
     // MARK: - LLMConfig
 
     func test_config_defaultsEnabledIsTrue() {
