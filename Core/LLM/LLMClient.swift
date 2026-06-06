@@ -186,18 +186,38 @@ struct LLMClient {
         }
     }
 
+    /// A unique, ignorable marker prepended to the **system** prompt on every request.
+    /// Works around a prompt-cache bug seen on local servers (oMLX 0.3.x): when the model
+    /// gets a cache hit on a constant system-prompt prefix it returns an EMPTY completion
+    /// (0 tokens). Because our nutrition/summary system prompts are constant, every call
+    /// after the first would hit that broken path. A per-request nonce forces a cache miss
+    /// → reliable generation. The ~1k-token re-prefill is sub-second; correctness wins.
+    static func cacheBustedSystem(_ prompt: String) -> String {
+        "（本行为请求标识，请忽略：\(UUID().uuidString.prefix(8))）\n" + prompt
+    }
+
     /// Send a system + user message pair and return the assistant content.
+    /// Retries once on an empty completion (each attempt uses a fresh cache-bust nonce, so
+    /// a stale-cache empty on attempt 1 is dodged on attempt 2).
     func complete(systemPrompt: String, user: String, temperature: Double = 0.5) async throws -> String {
-        let payload = ChatRequest(
-            model: model,
-            messages: [
-                Message(role: "system", content: systemPrompt),
-                Message(role: "user", content: user)
-            ],
-            temperature: temperature
-        )
-        let body = try JSONEncoder().encode(payload)
-        return try await send(body: body)
+        var lastError: Error = LLMError.noContent
+        for attempt in 1...2 {
+            let payload = ChatRequest(
+                model: model,
+                messages: [
+                    Message(role: "system", content: Self.cacheBustedSystem(systemPrompt)),
+                    Message(role: "user", content: user)
+                ],
+                temperature: temperature
+            )
+            do {
+                return try await send(body: try JSONEncoder().encode(payload))
+            } catch LLMError.noContent {
+                lastError = LLMError.noContent
+                if attempt < 2 { try? await Task.sleep(nanoseconds: 200_000_000) }
+            }
+        }
+        throw lastError
     }
 
     /// Send a pre-built request body. Internal entry point used by `complete` and tests.
@@ -288,18 +308,28 @@ struct LLMClient {
         }
         let dataURL = "data:image/jpeg;base64," + jpeg.base64EncodedString()
 
-        var messages: [VisionMessage] = []
-        if let systemPrompt {
-            // Some providers expect text-only system messages; ContentPart supports that.
-            messages.append(VisionMessage(role: "system", content: [.text(systemPrompt)]))
+        var lastError: Error = LLMError.noContent
+        for attempt in 1...2 {
+            var messages: [VisionMessage] = []
+            if let systemPrompt {
+                // Some providers expect text-only system messages; ContentPart supports that.
+                // Cache-bust the system prefix (same prompt-cache workaround as `complete`).
+                messages.append(VisionMessage(role: "system",
+                                              content: [.text(Self.cacheBustedSystem(systemPrompt))]))
+            }
+            messages.append(VisionMessage(role: "user", content: [
+                .text(prompt),
+                .imageDataURL(dataURL)
+            ]))
+            let payload = VisionRequest(model: model, messages: messages, temperature: temperature)
+            do {
+                return try await send(body: try JSONEncoder().encode(payload))
+            } catch LLMError.noContent {
+                lastError = LLMError.noContent
+                if attempt < 2 { try? await Task.sleep(nanoseconds: 200_000_000) }
+            }
         }
-        messages.append(VisionMessage(role: "user", content: [
-            .text(prompt),
-            .imageDataURL(dataURL)
-        ]))
-        let payload = VisionRequest(model: model, messages: messages, temperature: temperature)
-        let body = try JSONEncoder().encode(payload)
-        return try await send(body: body)
+        throw lastError
     }
 
     /// Image down-scaler. Bottlenecks the long side so vision-model token cost
