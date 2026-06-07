@@ -260,10 +260,20 @@ struct MetricDetailView: View {
         }
         .chartYScale(domain: yDomain)
         .chartXAxis {
-            AxisMarks(values: .automatic(desiredCount: period == .year ? 6 : 5)) { _ in
-                AxisGridLine()
-                AxisValueLabel(format: xAxisFormat, centered: false)
-                    .font(.system(size: 10))
+            if period == .year {
+                // Year: daily data points, but tick + date label once per week. Charts
+                // auto-thins labels that would overlap, so the ruler stays readable.
+                AxisMarks(values: .stride(by: .weekOfYear)) { _ in
+                    AxisGridLine()
+                    AxisValueLabel(format: .dateTime.month(.defaultDigits).day(), centered: false)
+                        .font(.system(size: 10))
+                }
+            } else {
+                AxisMarks(values: .automatic(desiredCount: 5)) { _ in
+                    AxisGridLine()
+                    AxisValueLabel(format: xAxisFormat, centered: false)
+                        .font(.system(size: 10))
+                }
             }
         }
         .chartYAxis {

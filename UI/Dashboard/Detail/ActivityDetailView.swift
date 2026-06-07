@@ -357,10 +357,19 @@ private struct ActivityMetricBarChart: View {
                 }
                 .chartYScale(domain: yDomain)
                 .chartXAxis {
-                    AxisMarks(values: .automatic(desiredCount: period == .year ? 6 : 5)) { _ in
-                        AxisGridLine()
-                        AxisValueLabel(format: xAxisFormat, centered: false)
-                            .font(.system(size: 10))
+                    if period == .year {
+                        // Daily bars, weekly date labels (Charts thins overlapping labels).
+                        AxisMarks(values: .stride(by: .weekOfYear)) { _ in
+                            AxisGridLine()
+                            AxisValueLabel(format: .dateTime.month(.defaultDigits).day(), centered: false)
+                                .font(.system(size: 10))
+                        }
+                    } else {
+                        AxisMarks(values: .automatic(desiredCount: 5)) { _ in
+                            AxisGridLine()
+                            AxisValueLabel(format: xAxisFormat, centered: false)
+                                .font(.system(size: 10))
+                        }
                     }
                 }
                 .chartYAxis {
