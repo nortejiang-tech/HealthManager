@@ -135,6 +135,6 @@ SwiftUI View 不再直接拼装父子表写入。当前只有 SQLite/GRDB 一个
 
 用户已确认该边界，本 ADR 已从 Proposed 改为 Accepted，表示该决策获准实施。
 
-当前实现验证状态：PENDING。STAGE-001 PASS 后，在本 ADR 中补记“实现已验证”及证据；实施验证不是接受决策的前置条件，避免形成循环依赖。
+当前实现验证状态：VERIFIED。STAGE-001 已证明旧库从 v4 升级无损、v5 约束与外键级联有效，并通过 117 个全量单元测试及 Simulator 构建。实施验证不是接受决策的前置条件，避免形成循环依赖。
 
 如果实施证据表明 schema 需要破坏性修改，停止后续 STAGE，将本 ADR 标为 Superseded 或重新 Proposed；不得直接改写已发布的 v5 迁移。

@@ -4,7 +4,7 @@ import GRDB
 /// GRDB migrations. **Never** edit an applied migration in-place; add a new one.
 enum Migrations {
 
-    static func run(on pool: DatabasePool) throws {
+    static func makeMigrator() -> DatabaseMigrator {
         var migrator = DatabaseMigrator()
 
         // MARK: v1 — initial schema (12 PRD tables + 2 auxiliary)
@@ -285,6 +285,36 @@ enum Migrations {
             }
         }
 
-        try migrator.migrate(pool)
+        migrator.registerMigration("v5_meal_items") { db in
+            try db.create(table: "meal_items") { t in
+                t.autoIncrementedPrimaryKey("id")
+                t.column("meal_id", .integer).notNull().references("meal_records", onDelete: .cascade)
+                t.column("sort_order", .integer).notNull().check(sql: "sort_order >= 0")
+                t.column("name", .text).notNull().check(sql: "TRIM(name) != ''")
+                t.column("grams", .double).check(sql: "grams IS NULL OR grams > 0")
+                t.column("preparation_state", .text).notNull()
+                    .check(sql: "preparation_state IN ('unknown', 'raw', 'cooked')")
+                t.column("calories_kcal", .double).check(sql: "calories_kcal IS NULL OR calories_kcal >= 0")
+                t.column("protein_g", .double).check(sql: "protein_g IS NULL OR protein_g >= 0")
+                t.column("fat_g", .double).check(sql: "fat_g IS NULL OR fat_g >= 0")
+                t.column("carbs_g", .double).check(sql: "carbs_g IS NULL OR carbs_g >= 0")
+                t.column("provenance_kind", .text).notNull()
+                    .check(sql: "provenance_kind IN ('manual', 'ai_estimate', 'nutrition_database', 'nutrition_label')")
+                t.column("provenance_ref", .text)
+                t.column("provenance_version", .text)
+                t.column("confidence", .text)
+                    .check(sql: "confidence IS NULL OR confidence IN ('low', 'medium', 'high')")
+                t.column("is_user_edited", .boolean).notNull().defaults(to: false)
+                t.column("created_at", .integer).notNull()
+                t.column("updated_at", .integer).notNull()
+            }
+            try db.create(index: "idx_meal_items_meal_sort_order", on: "meal_items", columns: ["meal_id", "sort_order"], unique: true)
+        }
+
+        return migrator
+    }
+
+    static func run(on pool: DatabasePool) throws {
+        try makeMigrator().migrate(pool)
     }
 }

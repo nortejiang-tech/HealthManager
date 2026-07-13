@@ -1,6 +1,6 @@
 # STAGE-001：餐食分项 schema、记录类型与迁移证据
 
-> 状态：READY（ADR-001 已 Accepted）
+> 状态：PASS
 >
 > 执行者：Coder
 >
@@ -117,8 +117,11 @@ Coder 的自报结果只是候选证据；正式 PASS 由主架构师重新检�
 
 > 由主架构师验收后填写；Coder 不编辑本节。
 
-- 状态：PENDING
-- 验收日期：—
-- 验收 commit：未提交
-- 证据：—
-- 残余风险：—
+- 状态：PASS
+- 验收日期：2026-07-13
+- 验收 commit：本文件所在 STAGE-001 checkpoint
+- 证据：定向 `MealItemMigrationTests` 5/5；全量 `HealthManagerTests` 117/117；Simulator build succeeded；`git diff --check` 通过
+- 结果包：`Test-HealthManager-2026.07.13_22-53-16-+0800.xcresult`（定向）与 `Test-HealthManager-2026.07.13_22-53-37-+0800.xcresult`（全量）
+- 架构核对：v1-v4 迁移体未改写；v5 纯追加；未知营养值保持 NULL；外键与级联删除在启用 foreign_keys 的真实迁移连接上验证
+- 验收修正：Coder 首稿包含一条必定成功的置信度断言；一次返工后仍以大段字段构造替代重复 SQL，主架构师按授权接管测试 helper 收敛，生产 schema 未重写
+- 残余风险：真机已有数据库升级未执行，进入 STAGE-009/次日真机待验；本阶段未验证 UI、MealStore 与 HealthKit
