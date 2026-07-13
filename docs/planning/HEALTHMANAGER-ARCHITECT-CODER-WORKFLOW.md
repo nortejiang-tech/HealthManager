@@ -102,8 +102,9 @@ HealthManager 后续开发会跨会话、跨模型接力。为了避免便宜模
 | STAGE-001 | 追加 meal_items schema、记录类型和迁移测试 | ADR-001 Accepted | Coder | 中 |
 | STAGE-002 | 建立 MealStore 深模块，原子 load/save/delete 和总量投影 | STAGE-001 PASS | Coder；架构师严审 | 中高 |
 | STAGE-003 | 把 EditableNutritionItem 从 View 抽成可测试的 MealItemDraft | STAGE-002 PASS | Coder | 低中 |
-| STAGE-004 | MealEditView 真正加载/保存分项，保持照片与 HealthKit 语义 | STAGE-003 PASS | Coder；必要时接管 | 高 |
-| STAGE-005A | 最近餐、常用克数、整餐/选中项复制的查询与复制语义 | STAGE-004 PASS | Coder | 中 |
+| STAGE-004A | 建立餐次保存/删除副作用编排 seam 与显式 HealthKit 写入结果 | STAGE-003 PASS | Coder；主架构师严审 | 高 |
+| STAGE-004B | MealEditView 真正加载/保存分项，保持照片与 HealthKit 语义 | STAGE-004A PASS | Coder；必要时接管 | 高 |
+| STAGE-005A | 最近餐、常用克数、整餐/选中项复制的查询与复制语义 | STAGE-004B PASS | Coder | 中 |
 | STAGE-005B | 在饮食界面加入低摩擦复用入口 | STAGE-005A PASS | Coder | 中 |
 | STAGE-006 | 展示手工/AI/数据库/标签来源、置信度和用户修订状态 | STAGE-005B PASS | Coder | 中 |
 | STAGE-007A | 今日/饮食/用药/趋势/更多信息架构原型 | STAGE-006 PASS | 主架构师 + 用户试用 | 产品判断 |
