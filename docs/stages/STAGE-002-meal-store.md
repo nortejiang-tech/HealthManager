@@ -1,6 +1,6 @@
 # STAGE-002：MealStore 原子持久化模块
 
-> 状态：READY（STAGE-001 PASS）
+> 状态：PASS（STAGE-001 PASS）
 >
 > 执行者：Coder；主架构师验收
 >
@@ -86,8 +86,11 @@
 
 > 由主架构师填写。
 
-- 状态：PENDING
-- 验收日期：—
-- 验收 commit：—
-- 证据：—
-- 残余风险：—
+- 状态：PASS
+- 验收日期：2026-07-13
+- 验收 commit：本文件所在 STAGE-002 checkpoint
+- 证据：定向 `MealStoreTests` 8/8；全量 `HealthManagerTests` 125/125；iPhone 17 / iOS 26.5 Simulator build succeeded；diff 范围与空白检查通过
+- 结果包：`/tmp/healthmanager-stage002-targeted-20260713-r2.xcresult`（定向）与 `/tmp/healthmanager-stage002-unit-20260713.xcresult`（全量）
+- 架构核对：UI 可调用 seam 全部走 `DatabaseManager.asyncRead/asyncWrite`；父记录更新、旧分项删除与新分项插入由同一 GRDB write 事务承载；保存返回数据库重新读取的真实 id/外键/顺序；删除仅返回数据库快照并依赖已验证的级联约束
+- 验收修正：Coder 首稿使用同步数据库调用且以占位 meal id 表达新建路径，主架构师退回一次结构性修复；修复后主架构师补充 child `meal_id` 直接断言并独立完成全量门禁
+- 残余风险：尚未接入饮食编辑 UI、照片清理或 HealthKit 写回；真机已有数据库与实际并发交互留待 STAGE-009/次日真机验收
