@@ -15,7 +15,7 @@
 - `Tests/MealPersistenceCoordinatorTests.swift`
 - `UITests/SmokeTests.swift`
 
-先确认分支为 `codex/health-planning-20260713`、历史包含 STAGE-004A checkpoint `28983b9`、当前 HEAD 为本任务书 checkpoint `17d67af` 且工作区干净；不符则停止。
+先确认分支为 `codex/health-planning-20260713`、历史包含 STAGE-004A checkpoint `28983b9`，且其后只有 STAGE-004B 任务书/提示词修正文档 checkpoint、工作区干净；不符则停止。
 
 目标：让编辑页安全加载、保存、重开和删除规范化 meal items，并把未知值、照片 path、保存失败与最新 hkSyncId 保持为真实状态。不要做 STAGE-005 或视觉/导航扩展。
 
