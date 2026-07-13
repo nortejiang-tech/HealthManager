@@ -12,8 +12,10 @@ final class AppEnvironment: ObservableObject {
     static let shared = AppEnvironment()
 
     let database: DatabaseManager
+    let mealStore: MealStore
     let healthKitManager: HealthKitManager
     let syncEngine: SyncEngine
+    let mealPersistenceCoordinator: MealPersistenceCoordinator
     let backgroundScheduler: BackgroundTaskScheduler
     let healthKitObserver: HealthKitObserver
     @Published private(set) var localDataTick: Int = 0
@@ -22,14 +24,21 @@ final class AppEnvironment: ObservableObject {
 
     private init() {
         let database = DatabaseManager.makeDefault()
+        let mealStore = MealStore(databaseManager: database)
         let healthKit = HealthKitManager(database: database)
-        let syncEngine = SyncEngine(database: database, healthKitManager: healthKit)
+        let syncEngine = SyncEngine(database: database, mealStore: mealStore, healthKitManager: healthKit)
+        let coordinator = MealPersistenceCoordinator(
+            mealStore: mealStore,
+            healthKitManager: healthKit
+        )
         let scheduler = BackgroundTaskScheduler(syncEngine: syncEngine)
         let observer = HealthKitObserver(healthKitManager: healthKit, syncEngine: syncEngine)
 
         self.database = database
+        self.mealStore = mealStore
         self.healthKitManager = healthKit
         self.syncEngine = syncEngine
+        self.mealPersistenceCoordinator = coordinator
         self.backgroundScheduler = scheduler
         self.healthKitObserver = observer
     }

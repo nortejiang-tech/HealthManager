@@ -1,6 +1,6 @@
 # STAGE-004A：餐次持久化与外部副作用编排 seam
 
-> 状态：READY（STAGE-003 PASS，checkpoint `1b545a3`）
+> 状态：PASS（2026-07-14，真机 HealthKit 证据为 INCOMPLETE）
 >
 > 执行者：Coder；主架构师验收
 >
@@ -118,8 +118,12 @@ SQLite 是本地事实源。数据库成功后外部清理失败不回滚数据�
 
 > 由主架构师填写。
 
-- 状态：PENDING
-- 验收日期：—
-- 验收 commit：—
-- 证据：—
-- 残余风险：—
+- 状态：PASS（软件与 Simulator 范围）；真实 HealthKit 写入/删除：INCOMPLETE
+- 验收日期：2026-07-14
+- 验收 commit：本文件所在 STAGE-004A checkpoint
+- 证据：定向 `MealStoreTests` 11/11、`MealPersistenceCoordinatorTests` 6/6、`MealNutritionSyncTests` 2/2，共 19/19；全量 `HealthManagerTests` 142/142；iPhone 17 / iOS 26.5 Simulator build succeeded；允许范围、空白检查通过；View 与 SyncEngine 中直接更新 `hk_sync_id` 的 SQL 为零命中
+- 结果包：`/tmp/healthmanager-stage004a-targeted-20260714.xcresult`（定向）与 `/tmp/healthmanager-stage004a-unit-20260714.xcresult`（全量）
+- 架构核对：AppEnvironment、Coordinator 与 SyncEngine 共用同一个 MealStore；保存先完成全部 draft 转换与 SQLite 原子提交，再清理照片、写 HealthKit、按显式 `written` 结果记录 sync id；返回快照反映成功写回后的真实数据库状态；删除先取得数据库 receipt，再执行文件与 HealthKit 后置副作用
+- HealthKit 语义核对：设备不可用、没有获授权且有效的 samples、写入失败均返回 `notWritten`；existing/candidate id 不再构成成功证据；没有候选 samples 时不会先删除既有 HealthKit 数据；只有实际 `HKHealthStore.save` 成功后才返回 `written`
+- 验收修正：Coder 首稿遗漏既有 sync id 保持、Store 失败无外部副作用和返回快照一致性证据，并产生 DietView 缩进污染；一次定向返修后补齐上述合同、`Sendable` outcome 与删除前候选样本门禁，主架构师独立执行全量测试和构建
+- 残余风险：Simulator 不能证明 HealthKit 授权、真实样本落盘、删除与失败恢复，全部保留为 INCOMPLETE；MealEditView 尚未通过 Coordinator 加载/保存 `meal_items`，属于 STAGE-004B；真机既有数据库升级与照片/HealthKit 端到端路径进入 STAGE-009 次日清单

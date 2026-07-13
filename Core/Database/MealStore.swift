@@ -5,6 +5,7 @@ enum MealStoreError: Error, Equatable {
     case mealNotFound(Int64)
     case missingMealIdAfterInsert
     case blankItemName(index: Int)
+    case blankSyncId
 }
 
 final class MealStore: @unchecked Sendable {
@@ -133,6 +134,25 @@ final class MealStore: @unchecked Sendable {
                 .fetchAll(db)
             try MealRecord.deleteOne(db, key: id)
             return Snapshot(meal: meal, items: items)
+        }
+    }
+
+    func saveSyncId(mealId: Int64, syncId: String) async throws -> MealRecord {
+        let trimmed = syncId.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { throw MealStoreError.blankSyncId }
+
+        return try await databaseManager.asyncWrite { db in
+            guard try MealRecord.fetchOne(db, key: mealId) != nil else {
+                throw MealStoreError.mealNotFound(mealId)
+            }
+            try db.execute(
+                sql: "UPDATE meal_records SET hk_sync_id = ? WHERE id = ?",
+                arguments: [trimmed, mealId]
+            )
+            guard let meal = try MealRecord.fetchOne(db, key: mealId) else {
+                throw MealStoreError.mealNotFound(mealId)
+            }
+            return meal
         }
     }
 

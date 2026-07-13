@@ -37,6 +37,11 @@ final class HealthKitManager: ObservableObject {
         }
     }
 
+    enum NutritionWriteResult: Equatable, Sendable {
+        case written(syncID: String)
+        case notWritten
+    }
+
     @Published private(set) var authorizationGate: AuthorizationGate = .unknown
     @Published private(set) var lastAuthorizationError: String?
 
@@ -166,29 +171,36 @@ final class HealthKitManager: ObservableObject {
     }
 
     /// Write (or re-write) one meal's macros to Apple Health. Returns the sync id stamped
-    /// on the samples (caller persists it on the meal), or the existing id / nil on failure.
+    /// on the samples (caller persists it on the meal), or notWritten when the write
+    /// does not complete successfully.
     /// Idempotent: if `existingSyncId` is set, its previously-written samples are deleted first.
     func syncMealNutrition(
         eatenAt: Int64,
         calories: Double?, protein: Double?, fat: Double?, carbs: Double?,
         name: String?,
         existingSyncId: String?
-    ) async -> String? {
-        guard isAvailable else { return existingSyncId }
+    ) async -> NutritionWriteResult {
+        guard isAvailable else { return .notWritten }
         await ensureNutritionWriteAuthorization()
 
-        if let old = existingSyncId {
-            await deleteNutritionSamples(syncId: old)
-        }
-
         let date = Date(timeIntervalSince1970: TimeInterval(eatenAt))
-        let syncId = existingSyncId ?? UUID().uuidString
         let pairs: [(HKQuantityTypeIdentifier, Double?)] = [
             (.dietaryEnergyConsumed, calories),
             (.dietaryProtein, protein),
             (.dietaryFatTotal, fat),
             (.dietaryCarbohydrates, carbs)
         ]
+
+        let trimmedExistingSyncId = existingSyncId?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        let syncId: String
+        if let existing = trimmedExistingSyncId, !existing.isEmpty {
+            syncId = existing
+        } else {
+            syncId = UUID().uuidString
+        }
+
         var samples: [HKQuantitySample] = []
         for (id, value) in pairs {
             guard let value, value > 0,
@@ -208,7 +220,11 @@ final class HealthKitManager: ObservableObject {
             )
             samples.append(sample)
         }
-        guard !samples.isEmpty else { return existingSyncId }
+        guard !samples.isEmpty else { return .notWritten }
+
+        if let existing = trimmedExistingSyncId, !existing.isEmpty {
+            await deleteNutritionSamples(syncId: existing)
+        }
 
         // Preferred: bundle the macros into one `.food` correlation so Apple Health shows
         // them as a single meal. Saving only needs the contained nutrient types authorized
@@ -225,7 +241,7 @@ final class HealthKitManager: ObservableObject {
             )
             do {
                 try await store.save(correlation)
-                return syncId
+                return .written(syncID: syncId)
             } catch {
                 AppLogger.shared.error("Meal correlation write failed, falling back to samples: \(error.localizedDescription)")
                 // Fall through to writing the individual samples below.
@@ -236,10 +252,10 @@ final class HealthKitManager: ObservableObject {
         // Apple Health's nutrition totals, just not grouped as one meal).
         do {
             try await store.save(samples)
-            return syncId
+            return .written(syncID: syncId)
         } catch {
             AppLogger.shared.error("Meal nutrition write failed: \(error.localizedDescription)")
-            return existingSyncId
+            return .notWritten
         }
     }
 

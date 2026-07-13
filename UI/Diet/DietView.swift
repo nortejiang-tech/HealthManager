@@ -851,7 +851,7 @@ struct MealEditView: View {
         // hk_sync_id persistence below fails, the next sync's catch-up re-targets the same
         // Health samples (delete-then-write) instead of creating a duplicate.
         let syncId = record.hkSyncId ?? mealId.map { "meal-\($0)" }
-        let newSyncId = await environment.healthKitManager.syncMealNutrition(
+        let syncResult = await environment.healthKitManager.syncMealNutrition(
             eatenAt: record.eatenAt,
             calories: record.caloriesKcal,
             protein: record.proteinG,
@@ -860,12 +860,9 @@ struct MealEditView: View {
             name: mealName,
             existingSyncId: syncId
         )
-        guard let newSyncId, newSyncId != record.hkSyncId, let id = mealId else { return }
+        guard case .written(let newSyncId) = syncResult, let id = mealId else { return }
         do {
-            try await environment.database.asyncWrite { db in
-                try db.execute(sql: "UPDATE meal_records SET hk_sync_id = ? WHERE id = ?",
-                               arguments: [newSyncId, id])
-            }
+            _ = try await environment.mealStore.saveSyncId(mealId: id, syncId: newSyncId)
         } catch {
             // Not fatal: deterministic id means the next catch-up re-syncs without duplicating.
             AppLogger.shared.error("Persist hk_sync_id failed (will re-sync safely): \(error.localizedDescription)")

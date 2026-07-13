@@ -36,6 +36,7 @@ final class SyncEngine: ObservableObject {
     @Published private(set) var manualSyncPrompt: ManualSyncPrompt?
 
     let database: DatabaseManager
+    let mealStore: MealStore
     let healthKitManager: HealthKitManager
     private(set) lazy var backfillCoordinator = BackfillCoordinator(
         healthKitManager: healthKitManager,
@@ -61,8 +62,9 @@ final class SyncEngine: ObservableObject {
     /// Dashboard observes this to re-fetch the projection tables.
     @Published private(set) var aggregationTick: Int = 0
 
-    init(database: DatabaseManager, healthKitManager: HealthKitManager) {
+    init(database: DatabaseManager, mealStore: MealStore, healthKitManager: HealthKitManager) {
         self.database = database
+        self.mealStore = mealStore
         self.healthKitManager = healthKitManager
     }
 
@@ -303,7 +305,7 @@ final class SyncEngine: ObservableObject {
                 // Deterministic per-meal id: a re-sync of the same meal always deletes-then-
                 // writes the *same* Health samples, so a previously-written-but-not-persisted
                 // meal can't be duplicated here (the prior `hk_sync_id` UPDATE may have failed).
-                let newId = await healthKitManager.syncMealNutrition(
+                let syncResult = await healthKitManager.syncMealNutrition(
                     eatenAt: meal.eatenAt,
                     calories: meal.caloriesKcal,
                     protein: meal.proteinG,
@@ -312,12 +314,16 @@ final class SyncEngine: ObservableObject {
                     name: meal.notes ?? meal.mealType.label,
                     existingSyncId: meal.hkSyncId ?? "meal-\(id)"
                 )
-                if let newId {
-                    try? await database.asyncWrite { db in
-                        try db.execute(sql: "UPDATE meal_records SET hk_sync_id = ? WHERE id = ?",
-                                       arguments: [newId, id])
+                switch syncResult {
+                case .written(let newId):
+                    do {
+                        _ = try await mealStore.saveSyncId(mealId: id, syncId: newId)
+                        synced += 1
+                    } catch {
+                        AppLogger.shared.sync.error("Persist hk_sync_id failed: \(error.localizedDescription)")
                     }
-                    synced += 1
+                case .notWritten:
+                    break
                 }
             }
             if synced > 0 {

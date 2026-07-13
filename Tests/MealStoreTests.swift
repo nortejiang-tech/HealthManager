@@ -245,6 +245,63 @@ final class MealStoreTests: XCTestCase {
         XCTAssertNil(deletedAgain)
     }
 
+    func test_saveSyncIdUpdatesOnlySyncIdWithoutTouchingChildrenOrOtherFields() async throws {
+        let store = makeStore()
+        let seed = try await store.save(
+            meal: makeMeal(
+                mealType: .dinner,
+                eatenAt: 90,
+                caloriesKcal: 10,
+                proteinG: 5,
+                fatG: 3,
+                carbsG: 7,
+                photoPath: "a.jpg,b.jpg",
+                notes: "seed notes",
+                createdAt: 1,
+                hkSyncId: "old-sync"
+            ),
+            items: [
+                .init(name: "A", caloriesKcal: 10, proteinG: 1, fatG: 2, carbsG: 3, provenanceKind: .manual),
+                .init(name: "B", caloriesKcal: 20, proteinG: 2, fatG: 1, carbsG: 2, provenanceKind: .manual)
+            ]
+        )
+        let loadedBefore = try await store.load(id: seed.meal.id!)
+        let before = try XCTUnwrap(loadedBefore)
+        var expectedMeal = before.meal
+        expectedMeal.hkSyncId = "new-sync-id"
+
+        let updated = try await store.saveSyncId(mealId: seed.meal.id!, syncId: "  new-sync-id  ")
+
+        XCTAssertEqual(updated.id, seed.meal.id)
+        XCTAssertEqual(updated, expectedMeal)
+        let loadedAfter = try await store.load(id: seed.meal.id!)
+        let after = try XCTUnwrap(loadedAfter)
+        XCTAssertEqual(after.meal, expectedMeal)
+        XCTAssertEqual(after.items, before.items)
+    }
+
+    func test_saveSyncIdFailsForMissingMealId() async {
+        let store = makeStore()
+        do {
+            _ = try await store.saveSyncId(mealId: 999_999, syncId: "sync-id")
+            XCTFail("expected throw")
+        } catch {
+            XCTAssertEqual(error as? MealStoreError, .mealNotFound(999_999))
+        }
+    }
+
+    func test_saveSyncIdRejectsBlankSyncId() async {
+        let store = makeStore()
+        let seed = try! await store.save(meal: makeMeal(eatenAt: 100, createdAt: 1), items: [])
+
+        do {
+            _ = try await store.saveSyncId(mealId: seed.meal.id!, syncId: "   ")
+            XCTFail("expected throw")
+        } catch {
+            XCTAssertEqual(error as? MealStoreError, .blankSyncId)
+        }
+    }
+
     private func makeStore(now: @escaping @Sendable () -> Int64 = { Int64(Date().timeIntervalSince1970) }) -> MealStore {
         MealStore(databaseManager: DatabaseManager.makeInMemoryForTesting(), now: now)
     }
