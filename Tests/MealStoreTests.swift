@@ -162,6 +162,66 @@ final class MealStoreTests: XCTestCase {
         XCTAssertTrue(edited.items.allSatisfy { $0.id != nil })
     }
 
+    func test_updateKeepsExistingHkSyncIdFromDatabaseRow() async throws {
+        let store = makeStore(now: { 300 })
+        let seed = try await store.save(
+            meal: makeMeal(
+                eatenAt: 41,
+                caloriesKcal: 100,
+                proteinG: 20,
+                fatG: 30,
+                carbsG: 40,
+                createdAt: 2,
+                hkSyncId: "sync-old"
+            ),
+            items: [.init(name: "Seed", caloriesKcal: 100, provenanceKind: .manual, createdAt: 100)]
+        )
+        let staleSnapshot = try await store.load(id: seed.meal.id!)
+        let stale = try XCTUnwrap(staleSnapshot)
+        let staleItems = stale.items.map {
+            MealStore.ItemInput(
+                name: $0.name,
+                grams: $0.grams,
+                preparationState: $0.preparationState,
+                caloriesKcal: $0.caloriesKcal,
+                proteinG: $0.proteinG,
+                fatG: $0.fatG,
+                carbsG: $0.carbsG,
+                provenanceKind: $0.provenanceKind,
+                provenanceRef: $0.provenanceRef,
+                provenanceVersion: $0.provenanceVersion,
+                confidence: $0.confidence,
+                isUserEdited: $0.isUserEdited,
+                createdAt: $0.createdAt
+            )
+        }
+        _ = try await store.saveSyncId(mealId: seed.meal.id!, syncId: "sync-new")
+
+        var updatedMeal = seed.meal
+        updatedMeal.eatenAt = 42
+        updatedMeal.notes = "reloaded"
+        updatedMeal.caloriesKcal = 250
+        let updatedItems = staleItems + [
+            MealStore.ItemInput(
+                name: "Fresh",
+                caloriesKcal: 50,
+                proteinG: 1,
+                fatG: 2,
+                carbsG: 3,
+                provenanceKind: .manual
+            )
+        ]
+
+        let saved = try await store.save(meal: updatedMeal, items: updatedItems)
+
+        XCTAssertEqual(saved.meal.hkSyncId, "sync-new")
+        XCTAssertEqual(saved.meal.eatenAt, 42)
+        XCTAssertEqual(saved.meal.notes, "reloaded")
+        XCTAssertEqual(saved.meal.caloriesKcal, 150)
+        XCTAssertEqual(saved.items.count, 2)
+        XCTAssertEqual(saved.items.last?.name, "Fresh")
+    }
+
     func test_updateReplacesChildrenInSingleTransaction_andRollsBackOnInvalidChild() async throws {
         let store = makeStore(now: { 600 })
 

@@ -89,9 +89,10 @@ final class MealStore: @unchecked Sendable {
 
             var persistedMeal = projectedMeal
             if let existingId = persistedMeal.id {
-                guard (try MealRecord.fetchOne(db, key: existingId)) != nil else {
+                guard let existing = try MealRecord.fetchOne(db, key: existingId) else {
                     throw MealStoreError.mealNotFound(existingId)
                 }
+                persistedMeal.hkSyncId = existing.hkSyncId
                 mealId = existingId
                 try persistedMeal.update(db)
             } else {
@@ -160,18 +161,23 @@ final class MealStore: @unchecked Sendable {
         guard !items.isEmpty else { return meal }
 
         var projectedMeal = meal
-        projectedMeal.caloriesKcal = mealAggregate(items: items) { $0.caloriesKcal }
-        projectedMeal.proteinG = mealAggregate(items: items) { $0.proteinG }
-        projectedMeal.fatG = mealAggregate(items: items) { $0.fatG }
-        projectedMeal.carbsG = mealAggregate(items: items) { $0.carbsG }
-        return projectedMeal
-    }
+        let projected = MealNutritionProjection.project(
+            items.map {
+                MealNutritionValues(
+                    caloriesKcal: $0.caloriesKcal,
+                    proteinG: $0.proteinG,
+                    fatG: $0.fatG,
+                    carbsG: $0.carbsG
+                )
+            }
+        )
 
-    private func mealAggregate(items: [ItemInput], _ value: (ItemInput) -> Double?) -> Double? {
-        if items.contains(where: { value($0) == nil }) {
-            return nil
-        }
-        return items.compactMap(value).reduce(0, +)
+        guard let projected else { return meal }
+        projectedMeal.caloriesKcal = projected.caloriesKcal
+        projectedMeal.proteinG = projected.proteinG
+        projectedMeal.fatG = projected.fatG
+        projectedMeal.carbsG = projected.carbsG
+        return projectedMeal
     }
 
     private func prepareItems(

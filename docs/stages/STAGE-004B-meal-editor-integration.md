@@ -1,6 +1,6 @@
 # STAGE-004B：餐食分项编辑器真实持久化接入
 
-> 状态：READY（STAGE-004A PASS，checkpoint `28983b9`）
+> 状态：PASS（2026-07-14；真实 HealthKit 与真机照片路径证据为 INCOMPLETE）
 >
 > 执行者：Coder；主架构师验收
 >
@@ -154,8 +154,14 @@
 
 > 由主架构师填写。
 
-- 状态：PENDING
-- 验收日期：—
-- 验收 commit：—
-- 证据：—
-- 残余风险：—
+- 状态：PASS（软件与 Simulator 范围）；真实 HealthKit 授权、写入与删除：INCOMPLETE
+- 验收日期：2026-07-14
+- 验收 commit：本文件所在 STAGE-004B checkpoint
+- 定向证据：`MealNutritionProjectionTests` 8/8、`MealEditorDraftTests` 10/10、`MealStoreTests` 12/12、`MealPersistenceCoordinatorTests` 7/7，共 37/37；结果包 `/tmp/healthmanager-stage004b-final2-targeted-20260714.xcresult`
+- 全量证据：`HealthManagerTests` 162/162，结果包 `/tmp/healthmanager-stage004b-final2-full-unit-20260714.xcresult`；全部 UI tests 3/3（餐食持久化 2/2、原有 smoke 1/1），结果包 `/tmp/healthmanager-stage004b-final2-full-ui-20260714.xcresult`；独立 iPhone 17 / iOS 26.5 Simulator build succeeded，结果包 `/tmp/healthmanager-stage004b-final2-build-20260714.xcresult`
+- 行为核对：已有餐次先由 `MealStore.load` 取得权威 snapshot；保存只经 Coordinator；成功后恰好通知一次并关闭，失败保留页面与草稿并显示中文字段错误；删除只经数据库 receipt 驱动的 Coordinator；手工分项已由 UI 自动化证明保存、重开与最终清理
+- 数据核对：父级汇总和 Store 共用 `MealNutritionProjection`；未知值保持 nil/“—”，合法 0 与小数保留；legacy 零分项记录保持父级汇总；缺失中间照片不改变 path 顺序；取消清理集合只含本会话新照片；Store 的真实 `saveSyncId` 交错测试证明陈旧编辑不会覆盖数据库最新 id，Coordinator writer 也收到该最新 id
+- HealthKit 核对：授权请求前使用共享 `MealNutritionTotals.hasWritableValue` 门禁；全 nil/0/非有限输入不会触发请求；单个 sample 仍须有限且大于 0；未新增“删除成功”假语义，也未清空既有 id
+- 静态核对：`DietView` 中 `MealRecord.insert/update/deleteOne`、直接 `database.asyncWrite`、`syncNutritionToHealth`、`syncMealNutrition` 与 `display*` 零命中；仅两处 `removeIfManaged`，均由 session-created 状态或其纯值路径集合门禁；`git diff --check` 通过；Simulator 中 `uitest-*` 遗留记录为 0
+- 验收修正：Coder 首稿虽编译且定向单测通过，但保存任务被自身 `isSaving` 拦截、首次 AI 无法启动、未知营养仍显示为 0、父文本覆盖分项投影、并发与照片测试不真实且 UI 2/2 失败；唯一一次集中返修后核心路径转绿。主架构师仍发现进度反馈、中文校验错误、小数展示、删除最后分项后的父汇总承接，以及 legacy/nil/完整元数据证据不足，按约定接管收口，并在最终代码上独立执行定向、全量单测、全量 UI 与 build
+- 残余风险：Simulator 不能证明真实 HealthKit 授权弹窗、样本落盘、更新与删除，也不能代替真机 PhotosPicker/相机文件生命周期和既有用户数据库升级后的端到端编辑；“已同步餐次清空全部营养后可确认删除旧样本”仍无真实删除结果。上述项目全部保留为 INCOMPLETE，进入 STAGE-009 次日真机清单

@@ -181,6 +181,15 @@ final class HealthKitManager: ObservableObject {
         existingSyncId: String?
     ) async -> NutritionWriteResult {
         guard isAvailable else { return .notWritten }
+        let totals = MealNutritionTotals(
+            caloriesKcal: calories,
+            proteinG: protein,
+            fatG: fat,
+            carbsG: carbs
+        )
+        let hasWritableValue = totals.hasWritableValue
+        guard hasWritableValue else { return .notWritten }
+
         await ensureNutritionWriteAuthorization()
 
         let date = Date(timeIntervalSince1970: TimeInterval(eatenAt))
@@ -203,7 +212,7 @@ final class HealthKitManager: ObservableObject {
 
         var samples: [HKQuantitySample] = []
         for (id, value) in pairs {
-            guard let value, value > 0,
+            guard let value, value.isFinite, value > 0,
                   let type = HKQuantityType.quantityType(forIdentifier: id) else { continue }
             // Skip types the user declined to share — saving them would throw.
             guard store.authorizationStatus(for: type) == .sharingAuthorized else { continue }

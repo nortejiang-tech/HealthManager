@@ -72,6 +72,50 @@ final class MealPersistenceCoordinatorTests: XCTestCase {
         XCTAssertEqual(saved?.meal.hkSyncId, "hk-written")
     }
 
+    func test_saveReadsLatestSyncIdWhenConcurrentUpdateThenPersistsIfNotWritten() async throws {
+        let store = makeStore()
+        let seed = try await store.save(
+            meal: makeMeal(
+                mealType: .lunch,
+                eatenAt: 1_500,
+                photoPath: "kept.jpg",
+                createdAt: 10,
+                caloriesKcal: 11,
+                hkSyncId: "sync-old"
+            ),
+            items: []
+        )
+        _ = try await store.saveSyncId(mealId: seed.meal.id!, syncId: "sync-new")
+
+        var writerIds: [String?] = []
+        let coordinator = MealPersistenceCoordinator(
+            mealStore: store,
+            writeNutritionToHealth: { meal in
+                writerIds.append(meal.hkSyncId)
+                return .notWritten
+            },
+            removePhotoIfManaged: { _ in XCTFail("should not remove any photo") },
+            deleteHealthKitSamples: { _ in XCTFail("should not delete hk sample") }
+        )
+
+        let updatedMeal = makeMeal(
+            id: seed.meal.id,
+            mealType: .lunch,
+            eatenAt: 1_600,
+            photoPath: "kept.jpg",
+            createdAt: 11,
+            caloriesKcal: 20,
+            hkSyncId: "stale-sync-id"
+        )
+
+        let result = try await coordinator.save(meal: updatedMeal, drafts: [], originalPhotoPaths: ["kept.jpg"])
+
+        XCTAssertEqual(writerIds, ["sync-new"])
+        XCTAssertEqual(result.meal.hkSyncId, "sync-new")
+        let saved = try await store.load(id: seed.meal.id!)
+        XCTAssertEqual(saved?.meal.hkSyncId, "sync-new")
+    }
+
     func test_saveLeavesPhotoAndIdStateConsistentWhenHealthKitNotWritten() async throws {
         let store = makeStore()
         let seed = try await store.save(
@@ -297,8 +341,8 @@ final class MealPersistenceCoordinatorTests: XCTestCase {
         eatenAt: Int64,
         photoPath: String? = nil,
         createdAt: Int64,
-        hkSyncId: String? = nil,
-        caloriesKcal: Double? = nil
+        caloriesKcal: Double? = nil,
+        hkSyncId: String? = nil
     ) -> MealRecord {
         MealRecord(
             id: id,
