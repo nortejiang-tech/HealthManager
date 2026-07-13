@@ -1,6 +1,6 @@
 # STAGE-003：可测试的餐食分项草稿模型
 
-> 状态：READY（STAGE-002 PASS，checkpoint `66ee696`）
+> 状态：PASS（STAGE-002 PASS，checkpoint `66ee696`）
 >
 > 执行者：Coder；主架构师验收
 >
@@ -101,8 +101,11 @@
 
 > 由主架构师填写。
 
-- 状态：PENDING
-- 验收日期：—
-- 验收 commit：—
-- 证据：—
-- 残余风险：—
+- 状态：PASS
+- 验收日期：2026-07-13
+- 验收 commit：本文件所在 STAGE-003 checkpoint
+- 证据：定向 `MealItemDraftTests` 8/8 与 `NutritionItemDedupTests` 5/5，共 13/13；全量 `HealthManagerTests` 133/133；iPhone 17 / iOS 26.5 Simulator build succeeded；diff 范围与空白检查通过
+- 结果包：`/tmp/healthmanager-stage003-targeted-20260713.xcresult`（定向）与 `/tmp/healthmanager-stage003-unit-20260713.xcresult`（全量）
+- 架构核对：AI、数据库快照和手工草稿经单一类型映射到 `MealStore.ItemInput`；nil 不再默认成 100g/0；模型名与合法 confidence 可追溯；非手工候选的修订标记为粘性事实；内部构造器已隐藏
+- 验收修正：Coder 首稿把 `isUserEdited` 实现为可回退的当前差异计算，主架构师退回一次精确修复；修复核心语义后，主架构师按接管门槛补齐构造封装、手工 Store 映射、空模型名和空格修改证据
+- 残余风险：本阶段仍未从数据库加载或保存分项；UI 为兼容显示会把未知指标渲染为 0，占位展示与保存错误反馈须在 STAGE-004 接入 Store 时处理；照片、HealthKit 与真机未验证

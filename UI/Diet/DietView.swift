@@ -213,7 +213,7 @@ struct MealEditView: View {
     /// Editable copy of `nutritionEstimate.items`. Each row shows name + grams; macros
     /// scale proportionally to the per-item baseline when the user edits grams. Totals
     /// auto-sync into the caloriesKcal/proteinG/fatG/carbsG fields below.
-    @State private var nutritionItems: [EditableNutritionItem] = []
+    @State private var nutritionItems: [MealItemDraft] = []
 
     init(editing: MealRecord? = nil) {
         self.editing = editing
@@ -476,6 +476,13 @@ struct MealEditView: View {
         return trimmed.isEmpty ? "" : "text:\(trimmed.hashValue)"
     }
 
+    private func analysisModelName(forText: Bool) -> String {
+        if forText {
+            return LLMConfig.textModel.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        return LLMConfig.visionModel.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
     private func photoKey(for path: String) -> String { "photo:\(path)" }
 
     // MARK: - Concurrent analysis pipeline
@@ -492,13 +499,27 @@ struct MealEditView: View {
         var jobs: [AnalysisJob] = []
         let textTrimmed = foodDescription.trimmingCharacters(in: .whitespacesAndNewlines)
         if !textTrimmed.isEmpty, !analyzedInputKeys.contains(textInputKey()) {
-            jobs.append(AnalysisJob(kind: .text(textTrimmed), key: textInputKey(), label: "文字描述"))
+            jobs.append(
+                AnalysisJob(
+                    kind: .text(textTrimmed),
+                    key: textInputKey(),
+                    label: "文字描述",
+                    analysisModelName: analysisModelName(forText: true)
+                )
+            )
         }
         for (idx, img) in previewImages.enumerated() {
             guard savedPhotoPaths.indices.contains(idx) else { continue }
             let key = photoKey(for: savedPhotoPaths[idx])
             if !analyzedInputKeys.contains(key) {
-                jobs.append(AnalysisJob(kind: .image(img), key: key, label: "照片"))
+                jobs.append(
+                    AnalysisJob(
+                        kind: .image(img),
+                        key: key,
+                        label: "照片",
+                        analysisModelName: analysisModelName(forText: false)
+                    )
+                )
             }
         }
         guard !jobs.isEmpty else { return }
@@ -543,7 +564,7 @@ struct MealEditView: View {
         }
 
         // Fold results back in input order so item ordering is deterministic.
-        var addedItems: [EditableNutritionItem] = []
+        var addedItems: [MealItemDraft] = []
         var errors: [String] = []
         var newlyAnalyzedKeys: [String] = []
         var lastEstimate: MealNutritionAnalyzer.Estimate?
@@ -555,7 +576,15 @@ struct MealEditView: View {
                     let why = (est.note?.isEmpty == false) ? "（\(est.note!)）" : ""
                     errors.append("\(job.label)未识别出食物\(why)")
                 } else {
-                    addedItems.append(contentsOf: est.items.map(EditableNutritionItem.init(from:)))
+                    addedItems.append(
+                        contentsOf: est.items.map {
+                            MealItemDraft.fromAiEstimate(
+                                item: $0,
+                                batchConfidence: est.confidence,
+                                modelName: job.analysisModelName
+                            )
+                        }
+                    )
                     newlyAnalyzedKeys.append(job.key)
                     lastEstimate = est
                 }
@@ -599,8 +628,8 @@ struct MealEditView: View {
     /// Append only items whose normalized name isn't already present — across the existing
     /// list and within this batch — so overlapping text+photo inputs don't double-list a dish
     /// (e.g. "米饭" appearing in both the text description and a photo).
-    private func appendDedupedItems(_ newItems: [EditableNutritionItem]) {
-        nutritionItems.append(contentsOf: EditableNutritionItem.deduped(newItems, against: nutritionItems))
+    private func appendDedupedItems(_ newItems: [MealItemDraft]) {
+        nutritionItems.append(contentsOf: MealItemDraft.deduped(newItems, against: nutritionItems))
     }
 
     // MARK: - Photo intake (camera / picker)
@@ -638,10 +667,10 @@ struct MealEditView: View {
     /// Items are the source of truth whenever they're non-empty.
     private func syncTotalsFromItems() {
         guard !nutritionItems.isEmpty else { return }
-        let totalK = nutritionItems.map(\.calories).reduce(0, +)
-        let totalP = nutritionItems.map(\.protein).reduce(0, +)
-        let totalF = nutritionItems.map(\.fat).reduce(0, +)
-        let totalC = nutritionItems.map(\.carbs).reduce(0, +)
+        let totalK = nutritionItems.map(\.displayCalories).reduce(0, +)
+        let totalP = nutritionItems.map(\.displayProtein).reduce(0, +)
+        let totalF = nutritionItems.map(\.displayFat).reduce(0, +)
+        let totalC = nutritionItems.map(\.displayCarbs).reduce(0, +)
         calories = totalK > 0 ? String(Int(totalK.rounded())) : ""
         protein = totalP > 0 ? String(Int(totalP.rounded())) : ""
         fat = totalF > 0 ? String(Int(totalF.rounded())) : ""
@@ -670,7 +699,7 @@ struct MealEditView: View {
                 }
 
                 Button {
-                    nutritionItems.append(.empty())
+                    nutritionItems.append(.manualEmpty())
                 } label: {
                     Label("添加菜品", systemImage: "plus.circle")
                 }
@@ -703,7 +732,7 @@ struct MealEditView: View {
     }
 
     @ViewBuilder
-    private func nutritionItemRow(_ item: Binding<EditableNutritionItem>) -> some View {
+    private func nutritionItemRow(_ item: Binding<MealItemDraft>) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 8) {
                 Image(systemName: "fork.knife.circle.fill").foregroundStyle(.tint)
@@ -721,14 +750,14 @@ struct MealEditView: View {
                     .background(Color.secondary.opacity(0.1), in: RoundedRectangle(cornerRadius: 6))
                 Text("g").font(.callout).foregroundStyle(.secondary)
                 Spacer()
-                Text("\(Int(item.wrappedValue.calories.rounded())) kcal")
+                Text("\(Int(item.wrappedValue.displayCalories.rounded())) kcal")
                     .font(.callout.monospacedDigit())
                     .foregroundStyle(.tint)
             }
             HStack(spacing: 10) {
-                macroBadge("P", grams: item.wrappedValue.protein)
-                macroBadge("F", grams: item.wrappedValue.fat)
-                macroBadge("C", grams: item.wrappedValue.carbs)
+                macroBadge("P", grams: item.wrappedValue.displayProtein)
+                macroBadge("F", grams: item.wrappedValue.displayFat)
+                macroBadge("C", grams: item.wrappedValue.displayCarbs)
             }
             .font(.caption.monospacedDigit())
             .foregroundStyle(.secondary)
@@ -748,10 +777,10 @@ struct MealEditView: View {
 
     @ViewBuilder
     private var nutritionTotalsRow: some View {
-        let totalK = nutritionItems.map(\.calories).reduce(0, +)
-        let totalP = nutritionItems.map(\.protein).reduce(0, +)
-        let totalF = nutritionItems.map(\.fat).reduce(0, +)
-        let totalC = nutritionItems.map(\.carbs).reduce(0, +)
+        let totalK = nutritionItems.map(\.displayCalories).reduce(0, +)
+        let totalP = nutritionItems.map(\.displayProtein).reduce(0, +)
+        let totalF = nutritionItems.map(\.displayFat).reduce(0, +)
+        let totalC = nutritionItems.map(\.displayCarbs).reduce(0, +)
         HStack {
             Text("合计").font(.body.bold())
             Spacer()
@@ -873,80 +902,5 @@ private struct AnalysisJob: @unchecked Sendable {
     let kind: Kind
     let key: String
     let label: String
-}
-
-/// One row in the AI-nutrition section. `gramsText` is what the user types; `baseline*`
-/// is the model's original estimate against `baselineGrams`. Computed macros scale
-/// linearly with the gramsText-to-baseline ratio so editing grams immediately reflects
-/// in the totals. `baselineGrams == 0` (e.g. user added an empty row) → all macros 0.
-struct EditableNutritionItem: Identifiable, Equatable {
-    let id: UUID = UUID()
-    var name: String
-    var gramsText: String
-    /// The grams reported by the model when this row was created. Source of truth for
-    /// the scaling ratio. Never mutated after init.
-    let baselineGrams: Double
-    let baselineCalories: Double
-    let baselineProtein: Double
-    let baselineFat: Double
-    let baselineCarbs: Double
-
-    var grams: Double { Double(gramsText) ?? 0 }
-
-    private var ratio: Double {
-        guard baselineGrams > 0 else { return 0 }
-        return grams / baselineGrams
-    }
-
-    var calories: Double { baselineCalories * ratio }
-    var protein: Double { baselineProtein * ratio }
-    var fat: Double { baselineFat * ratio }
-    var carbs: Double { baselineCarbs * ratio }
-
-    init(from item: MealNutritionAnalyzer.Item) {
-        let g = item.grams ?? 100
-        self.name = item.name
-        self.gramsText = String(Int(g.rounded()))
-        self.baselineGrams = g
-        self.baselineCalories = item.calories_kcal ?? 0
-        self.baselineProtein = item.protein_g ?? 0
-        self.baselineFat = item.fat_g ?? 0
-        self.baselineCarbs = item.carbs_g ?? 0
-    }
-
-    /// Empty row the user added by tapping "+ 添加菜品". No baseline macros — the user
-    /// can fill the name + grams, then re-estimate to ask the LLM to populate macros.
-    static func empty() -> EditableNutritionItem {
-        var item = EditableNutritionItem(from: MealNutritionAnalyzer.Item(
-            name: "", grams: 100,
-            calories_kcal: 0, protein_g: 0, fat_g: 0, carbs_g: 0
-        ))
-        item.name = ""
-        return item
-    }
-
-    /// Conservative name key for dedup: trim, drop spaces, lowercase (for ASCII brand names).
-    /// Deliberately does NOT strip qualifiers like「（无酱）」so genuinely distinct dishes
-    /// aren't wrongly merged — only truly identical names collapse.
-    static func normalizedName(_ s: String) -> String {
-        s.trimmingCharacters(in: .whitespacesAndNewlines)
-            .replacingOccurrences(of: " ", with: "")
-            .replacingOccurrences(of: "\u{3000}", with: "")   // full-width space
-            .lowercased()
-    }
-
-    /// Filter `incoming` to the items whose normalized name is not already present in
-    /// `existing` and not repeated earlier within `incoming`. Empty-named items are dropped.
-    /// Pure + order-preserving so it's unit-testable and deterministic.
-    static func deduped(_ incoming: [EditableNutritionItem],
-                        against existing: [EditableNutritionItem]) -> [EditableNutritionItem] {
-        var seen = Set(existing.map { normalizedName($0.name) })
-        var out: [EditableNutritionItem] = []
-        for item in incoming {
-            let key = normalizedName(item.name)
-            guard !key.isEmpty else { continue }
-            if seen.insert(key).inserted { out.append(item) }
-        }
-        return out
-    }
+    let analysisModelName: String
 }
