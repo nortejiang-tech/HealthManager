@@ -15,8 +15,8 @@
 ### A. 开始前必须做
 
 1. 先运行 `git status --short` 和 `git rev-parse --short HEAD`。
-2. 预期功能代码基线为 `main` / `8c03941`；`docs/` 是主架构师未跟踪产物，必须原样保留。
-3. 如果发现 `docs/` 之外已有源代码改动，立即停止，不覆盖、不恢复、不猜测归属；把文件列表报告给用户。
+2. 预期执行分支为 `codex/health-planning-20260713`，功能代码基线为 `main@8c03941`；`docs/` 是主架构师已提交产物，必须原样保留。
+3. 如果发现任何未提交改动，立即停止，不覆盖、不恢复、不猜测归属；把文件列表报告给用户。
 4. 完整阅读：
    - `AGENTS.md`（如果存在）
    - `docs/adr/ADR-001-normalized-meal-item-snapshots.md`
@@ -25,7 +25,7 @@
    - `Core/Database/DatabaseManager.swift`
    - `Core/Database/Models/MealRecord.swift`
    - `project.yml`
-5. ADR-001 必须已被用户接受；如果状态仍是 Proposed 且用户没有明确说“接受 ADR-001 / 开始 STAGE-001”，停止并请求确认。
+5. 确认 ADR-001 状态为 Accepted；如果不是，停止并报告。
 
 ### B. 唯一目标
 

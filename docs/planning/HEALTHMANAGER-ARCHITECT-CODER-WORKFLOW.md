@@ -165,3 +165,15 @@ HealthManager 后续开发会跨会话、跨模型接力。为了避免便宜模
 - Coder 不得使用 reset --hard、checkout --、clean 或删除未跟踪 docs。
 - STAGE 的正式结果由主架构师回填；Coder 最终消息只是执行证据。
 - 一轮跨多个 STAGE 的工作结束时，主架构师生成 HANDOFF，集中记录验证矩阵、架构现状与技术债。
+
+## 9. 2026-07-13 夜间连续执行授权
+
+用户已回复“全部按建议执行”，本轮追加以下临时授权：
+
+- ADR-001 Accepted。
+- STAGE-007 采用“今日 / 饮食 / 用药 / 趋势 / 更多”五栏方向；不删除现有能力，来源、同步中心、设置与诊断入口收纳至“更多”。
+- 优先通过 Codex CLI 指定 `gpt-5.3-codex-spark` 承担 Coder；不可用或额度耗尽时可切换到当前账户可用的较低成本模型。
+- Coder 一次针对性返工仍不达标，或遇到迁移、HealthKit 幂等、并发恢复等高风险点时，主架构师可直接接管，不再等待用户确认。
+- 每个正式 PASS 阶段可在 `codex/health-planning-20260713` 创建 checkpoint commit 并 push。
+- 今晚禁止合并 `main`、打 tag 或发布正式版本。
+- STAGE-009 完成软件、迁移、全量测试和 Simulator 验证；真机验证如未执行必须标为 INCOMPLETE，并进入次日 HANDOFF。
