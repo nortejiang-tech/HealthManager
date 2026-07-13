@@ -11,7 +11,7 @@
 - `Core/Database/Models/MealItemRecord.swift`
 - `Tests/MealItemMigrationTests.swift`
 
-先确认分支为 `codex/health-planning-20260713`、HEAD 为 STAGE-001 checkpoint `d469db8`、工作区干净；否则停止。
+先确认分支为 `codex/health-planning-20260713`、提交历史包含 STAGE-001 checkpoint `d469db8`、工作区干净；允许其后只有主架构师的规划提交，否则停止。
 
 目标：按 STAGE 文档建立具体 `MealStore`，只有 `load/save/delete` seam；不创建 protocol，不接 UI/HealthKit/照片。
 
