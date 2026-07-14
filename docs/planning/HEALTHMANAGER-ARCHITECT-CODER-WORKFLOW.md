@@ -167,7 +167,7 @@ HealthManager 后续开发会跨会话、跨模型接力。为了避免便宜模
 
 历史注记：STAGE-007B PASS 后，当时必须先基于 accepted diff 编写并审查 STAGE-007C 任务书与 Coder 提示词；该步骤现已完成。
 
-当前没有可直接执行的新提示词。唯一下一任务是 STAGE-009 的真实 iPhone 验收；只有真机证据暴露边界清楚的缺陷后，主架构师才建立独立修复 STAGE 与自包含 Coder 提示词。
+下一任务是 STAGE-009 的真实 iPhone 验收。已存在可直接执行的标准提示词：`docs/coder-prompts/STAGE-009-item4-7-real-device-checklist.md`；仅在真机暴露新的修复边界后，主架构师才建立独立修复 STAGE 与自包含 Coder 提示词。
 
 ## 8. Git 与文档纪律
 
