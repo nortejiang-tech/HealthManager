@@ -44,6 +44,8 @@
 - `reports/photo-paths.csv`
 - `reports/photo-files.txt`
 - `reports/sync-active.txt`（`0`）
+- `reports/device-list.txt`
+- `reports/device-apps.txt`（当前 App 明细：`com.norte.HealthManager` v0.2.5 build 7）
 
 ## 关键可核对数字
 
