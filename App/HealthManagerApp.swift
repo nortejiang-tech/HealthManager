@@ -34,6 +34,7 @@ struct HealthManagerApp: App {
             // Auto incremental sync on every foreground entry. Skip if the user hasn't
             // completed onboarding (no point firing HK queries that will all auth-deny).
             // `runIncremental` itself drops calls when isBusy, so rapid app-switching is safe.
+            guard environment.isSyncStartupReady else { return }
             let gate = environment.healthKitManager.authorizationGate
             guard gate == .granted || gate == .partiallyGranted else { return }
             Task { await environment.syncEngine.runIncremental(trigger: .timer) }

@@ -19,6 +19,7 @@ final class AppEnvironment: ObservableObject {
     let backgroundScheduler: BackgroundTaskScheduler
     let healthKitObserver: HealthKitObserver
     @Published private(set) var localDataTick: Int = 0
+    @Published private(set) var isSyncStartupReady: Bool = false
     private let aggregateProjectionVersionKey = "aggregates.projectionVersion"
     private let currentAggregateProjectionVersion = 4
 
@@ -26,7 +27,12 @@ final class AppEnvironment: ObservableObject {
         let database = DatabaseManager.makeDefault()
         let mealStore = MealStore(databaseManager: database)
         let healthKit = HealthKitManager(database: database)
-        let syncEngine = SyncEngine(database: database, mealStore: mealStore, healthKitManager: healthKit)
+        let syncEngine = SyncEngine(
+            database: database,
+            mealStore: mealStore,
+            healthKitManager: healthKit,
+            requiresStartupRecovery: true
+        )
         let coordinator = MealPersistenceCoordinator(
             mealStore: mealStore,
             healthKitManager: healthKit
@@ -45,8 +51,37 @@ final class AppEnvironment: ObservableObject {
 
     /// Called once at app launch. Side effects only — no UI work here.
     func bootstrap() {
+        guard !isSyncStartupReady else { return }
         AppLogger.shared.info("AppEnvironment bootstrap; dbPath=\(database.databasePath)")
-        backgroundScheduler.registerLaunchHandlers()
+
+        // Every permitted BGTask identifier must have exactly one launch handler registered
+        // before app launch completes. Registration is safe before recovery because the
+        // scheduler and SyncEngine both keep execution closed until recovery succeeds.
+        guard backgroundScheduler.registerLaunchHandlers() else {
+            isSyncStartupReady = false
+            AppLogger.shared.sync.error(
+                "Sync startup blocked: one or more BGTask launch handlers failed to register"
+            )
+            return
+        }
+
+        do {
+            let recovery = try SyncJobRecovery(database: database).recoverInterruptedWork()
+            syncEngine.markStartupRecoveryReady()
+            backgroundScheduler.enableAutomaticSyncAfterRecovery()
+            isSyncStartupReady = true
+            if recovery.recoveredJobCount > 0 || recovery.recoveredBackfillReportCount > 0 {
+                AppLogger.shared.sync.warning(
+                    "Recovered interrupted work: jobs=\(recovery.recoveredJobCount, privacy: .public), backfillReports=\(recovery.recoveredBackfillReportCount, privacy: .public)"
+                )
+            }
+        } catch {
+            isSyncStartupReady = false
+            AppLogger.shared.sync.error(
+                "Sync startup recovery failed; automatic sync remains disabled: \(error.localizedDescription, privacy: .public)"
+            )
+            return
+        }
         // Schedule the first BG slots so the system has something queued even if the user
         // never opens the Sync Center.
         backgroundScheduler.scheduleIncrementalIfNeeded()
@@ -78,6 +113,7 @@ final class AppEnvironment: ObservableObject {
 
     /// Called by `RootView` whenever the authorization gate changes. Idempotent.
     func onAuthorizationChange() {
+        guard isSyncStartupReady else { return }
         switch healthKitManager.authorizationGate {
         case .granted, .partiallyGranted:
             healthKitObserver.start()

@@ -34,6 +34,7 @@ final class SyncEngine: ObservableObject {
     @Published private(set) var isBusy: Bool = false
     @Published private(set) var progressDescription: String = ""
     @Published private(set) var manualSyncPrompt: ManualSyncPrompt?
+    private(set) var isStartupRecoveryReady: Bool
 
     let database: DatabaseManager
     let mealStore: MealStore
@@ -62,15 +63,26 @@ final class SyncEngine: ObservableObject {
     /// Dashboard observes this to re-fetch the projection tables.
     @Published private(set) var aggregationTick: Int = 0
 
-    init(database: DatabaseManager, mealStore: MealStore, healthKitManager: HealthKitManager) {
+    init(
+        database: DatabaseManager,
+        mealStore: MealStore,
+        healthKitManager: HealthKitManager,
+        requiresStartupRecovery: Bool
+    ) {
         self.database = database
         self.mealStore = mealStore
         self.healthKitManager = healthKitManager
+        self.isStartupRecoveryReady = !requiresStartupRecovery
+    }
+
+    func markStartupRecoveryReady() {
+        isStartupRecoveryReady = true
     }
 
     // MARK: - Backfill (F-001A)
 
     func runBackfill(days: Int = 30, trigger: SyncJob.Trigger = .user) async {
+        guard requireStartupRecoveryReady(operation: "历史回补") else { return }
         guard !isBusy else { return }
         isBusy = true
         defer { isBusy = false }
@@ -109,6 +121,7 @@ final class SyncEngine: ObservableObject {
     // MARK: - Incremental (F-001)
 
     func runIncremental(trigger: SyncJob.Trigger = .timer) async {
+        guard requireStartupRecoveryReady(operation: "增量同步") else { return }
         // Single-flight: observer / BG task / timer can all converge here in quick succession.
         // Dropping concurrent calls is safe — whoever wins picks up everything new since the
         // last anchor on the next pass.
@@ -159,6 +172,7 @@ final class SyncEngine: ObservableObject {
     /// Two-pass sync framed by a user-initiated prompt: pull → ask user to open the external
     /// app → pull again. Wakes up automatically when `scenePhase` returns to `.active`.
     func runManualSync(trigger: SyncJob.Trigger = .user) async {
+        guard requireStartupRecoveryReady(operation: "手动同步") else { return }
         guard !isBusy else {
             AppLogger.shared.sync.info("runManualSync skipped: busy")
             return
@@ -248,6 +262,7 @@ final class SyncEngine: ObservableObject {
     /// Daily data-quality reconciliation. Independent of `isBusy` because it is read-only
     /// over raw / coverage tables; safe to run alongside backfill / incremental sync.
     func runReconcile(windowDays: Int? = nil, trigger: SyncJob.Trigger = .timer) async {
+        guard requireStartupRecoveryReady(operation: "数据对账") else { return }
         guard !isReconciling else {
             AppLogger.shared.sync.info("runReconcile skipped: already reconciling")
             return
@@ -285,6 +300,7 @@ final class SyncEngine: ObservableObject {
     ///   permission sheet); `false` for background/launch passes (silent — only writes when
     ///   permission is already granted).
     func pushMealNutritionToHealth(requestAuthIfNeeded: Bool) async {
+        guard requireStartupRecoveryReady(operation: "饮食营养同步") else { return }
         guard healthKitManager.isAvailable else { return }
         if requestAuthIfNeeded {
             _ = await healthKitManager.requestNutritionWriteAuthorization()
@@ -343,7 +359,20 @@ final class SyncEngine: ObservableObject {
     /// (e.g. user upgraded from a build that didn't run `DailyAggregator`). Bumps
     /// `aggregationTick` so observers re-fetch.
     func runCatchUpAggregation(windowDays: Int) async {
+        guard requireStartupRecoveryReady(operation: "聚合刷新") else { return }
         await rebuildDailyProjections(daysBack: windowDays)
+    }
+
+    @discardableResult
+    private func requireStartupRecoveryReady(operation: String) -> Bool {
+        guard isStartupRecoveryReady else {
+            progressDescription = "同步启动恢复未完成，\(operation)已停用；请重新启动 App 后重试。"
+            AppLogger.shared.sync.error(
+                "\(operation, privacy: .public) blocked: startup recovery incomplete"
+            )
+            return false
+        }
+        return true
     }
 
     private func rebuildDailyProjections(daysBack: Int) async {

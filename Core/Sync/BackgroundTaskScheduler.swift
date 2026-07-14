@@ -4,35 +4,73 @@ import UIKit
 
 /// BGTask wiring. The actual incremental work is delegated to `SyncEngine.runIncremental`.
 /// Round 1 only registers + reschedules; the worker body fills in during Round 3.
+@MainActor
 final class BackgroundTaskScheduler {
 
     static let incrementalIdentifier = "com.norte.HealthManager.bgsync"
     static let reconcileIdentifier = "com.norte.HealthManager.bgreconcile"
 
     private let syncEngine: SyncEngine
+    private var launchHandlerRegistrationResult: Bool?
+    private var isAutomaticSyncReady = false
 
     init(syncEngine: SyncEngine) {
         self.syncEngine = syncEngine
     }
 
     /// Call from App init (before scene becomes active).
-    func registerLaunchHandlers() {
-        BGTaskScheduler.shared.register(
+    @discardableResult
+    func registerLaunchHandlers() -> Bool {
+        if let launchHandlerRegistrationResult {
+            return launchHandlerRegistrationResult
+        }
+
+        let incrementalRegistered = BGTaskScheduler.shared.register(
             forTaskWithIdentifier: Self.incrementalIdentifier,
             using: nil
         ) { [weak self] task in
-            self?.handleIncremental(task: task as! BGAppRefreshTask)
+            Task { @MainActor [weak self] in
+                guard let self, let refreshTask = task as? BGAppRefreshTask else {
+                    task.setTaskCompleted(success: false)
+                    return
+                }
+                self.handleIncremental(task: refreshTask)
+            }
         }
-        BGTaskScheduler.shared.register(
+        let reconcileRegistered = BGTaskScheduler.shared.register(
             forTaskWithIdentifier: Self.reconcileIdentifier,
             using: nil
         ) { [weak self] task in
-            self?.handleReconcile(task: task as! BGProcessingTask)
+            Task { @MainActor [weak self] in
+                guard let self, let processingTask = task as? BGProcessingTask else {
+                    task.setTaskCompleted(success: false)
+                    return
+                }
+                self.handleReconcile(task: processingTask)
+            }
         }
-        AppLogger.shared.bg.info("BGTaskScheduler handlers registered")
+        let succeeded = incrementalRegistered && reconcileRegistered
+        launchHandlerRegistrationResult = succeeded
+        if succeeded {
+            AppLogger.shared.bg.info("BGTaskScheduler handlers registered")
+        } else {
+            AppLogger.shared.bg.error(
+                "BGTaskScheduler handler registration incomplete: incremental=\(incrementalRegistered, privacy: .public), reconcile=\(reconcileRegistered, privacy: .public)"
+            )
+        }
+        return succeeded
+    }
+
+    /// Opens automatic scheduling and execution only after durable startup recovery succeeds.
+    func enableAutomaticSyncAfterRecovery() {
+        isAutomaticSyncReady = true
     }
 
     func scheduleIncrementalIfNeeded() {
+        guard isAutomaticSyncReady else {
+            AppLogger.shared.bg.warning("Incremental BG scheduling blocked: startup recovery incomplete")
+            return
+        }
         let request = BGAppRefreshTaskRequest(identifier: Self.incrementalIdentifier)
         request.earliestBeginDate = Date(timeIntervalSinceNow: 60 * 60)  // ≥ 1h
         do {
@@ -44,6 +82,10 @@ final class BackgroundTaskScheduler {
     }
 
     func scheduleReconcileIfNeeded() {
+        guard isAutomaticSyncReady else {
+            AppLogger.shared.bg.warning("Reconcile BG scheduling blocked: startup recovery incomplete")
+            return
+        }
         let request = BGProcessingTaskRequest(identifier: Self.reconcileIdentifier)
         request.requiresNetworkConnectivity = false
         request.requiresExternalPower = false
@@ -59,6 +101,11 @@ final class BackgroundTaskScheduler {
     // MARK: - Handlers
 
     private func handleIncremental(task: BGAppRefreshTask) {
+        guard isAutomaticSyncReady else {
+            AppLogger.shared.bg.error("Incremental BG task rejected: startup recovery incomplete")
+            task.setTaskCompleted(success: false)
+            return
+        }
         scheduleIncrementalIfNeeded() // always reschedule next slot first
 
         let work = Task { @MainActor in
@@ -78,6 +125,11 @@ final class BackgroundTaskScheduler {
     }
 
     private func handleReconcile(task: BGProcessingTask) {
+        guard isAutomaticSyncReady else {
+            AppLogger.shared.bg.error("Reconcile BG task rejected: startup recovery incomplete")
+            task.setTaskCompleted(success: false)
+            return
+        }
         scheduleReconcileIfNeeded()
 
         let work = Task { @MainActor in
