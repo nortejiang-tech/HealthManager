@@ -93,8 +93,8 @@
    - **2026-07-15：PASS**（单独恢复点）详见 `docs/stages/STAGE-009R2-healthkit-nutrition-clear-recovery.md`，结果包见 `/tmp/healthmanager-stage009r2-device-delete-test-meal-ui-20260715-attempt02.xcresult`。
 4. PhotosPicker / 相机导入、替换、保存、取消、删除后的真实文件生命周期。**PASS（2026-07-15）**：详见 `docs/stages/STAGE-009-item45-real-device-review-20260715.md`；相机与 PhotosPicker 各 1/1 真机通过，attempt09 前后照片文件、`meal_records.photo_path`、餐次总数均无净变化，一次性 marker 为 0。
 5. VoiceOver 读序与操作、最大 Dynamic Type、餐食证据 44pt 点击区和 sheet 可用性。**INCOMPLETE（2026-07-15）**：最大 Dynamic Type 与 accessibility audit 1/1 通过，已修复 More 文本裁切；VoiceOver/44pt 专项尚未形成证据。
-6. Apple Watch、iPhone 与第三方 sleepAnalysis 的跨午夜、inBed/asleep、详细阶段重叠和来源组合。**INCOMPLETE（2026-07-15）**：已取得 5 个跨午夜 DB 窗口与睡眠详情页真机截图，但尚未完成逐窗口来源/阶段 UI 对照。
-7. 后台 observer / 增量同步在真实 HealthKit 样本变化时的行为。**INCOMPLETE（2026-07-15）**：未完成 Health App 外部样本新增/删除触发的 observer 前后因果证据。
+6. Apple Watch、iPhone 与第三方 sleepAnalysis 的跨午夜、inBed/asleep、详细阶段重叠和来源组合。**INCOMPLETE（2026-07-15）**：已取得 5 个跨午夜 DB 窗口、逐窗口映射报告与睡眠详情页真机截图；其中 3 个窗口早于当前 7 日 UI 区间，尚未完成 5 个窗口全部同屏逐项对照。
+7. 后台 observer / 增量同步在真实 HealthKit 样本变化时的行为。**INCOMPLETE（2026-07-15）**：真实设备 probe 被本机 macOS 锁屏导致的登录钥匙串 `errSecInternalComponent` 阻断，未获得 Health App 外部样本新增/删除触发前后因果证据。
 
 item4-7 的执行标准与证据格式详见：
 - `docs/stages/STAGE-009-item4-7-real-device-checklist.md`
@@ -103,6 +103,7 @@ item4-7 的执行标准与证据格式详见：
 - item4-7 标准化收口快照：`/tmp/healthmanager-stage009-item45-device-20260715-attempt09`。
 - item4 前后差分：照片文件 `133 -> 133`、照片引用 `63 -> 63`、餐次 `114 -> 114`、一次性 marker `0`、`integrity_check=ok`。
 - item6 快照报告：`reports/item6-cross-midnight-windows.txt`；睡眠 UI xcresult：`/tmp/healthmanager-stage009-item6-sleep-20260715.xcresult`。
+- item6 逐窗口映射：`reports/item6-window-ui-crosscheck.csv`，周视图显示值与 DB 汇总值四舍五入一致。
 - item5 Dynamic Type xcresult：`/tmp/healthmanager-stage009-item5-ax-fixed2-20260715.xcresult`。
 
 本轮已授权“软件与 Simulator 完成、真机次日执行”，因此允许最终写：**软件/Simulator PASS，真机 INCOMPLETE**。但整体发布就绪仍为 INCOMPLETE；不得 merge、tag 或 release。

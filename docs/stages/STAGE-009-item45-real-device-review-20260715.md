@@ -29,12 +29,13 @@
 
 - 真机睡眠详情 UI：`/tmp/healthmanager-stage009-item6-sleep-20260715.xcresult`，1/1 passed；截图导出目录 `/tmp/healthmanager-stage009-item6-attachments`。截图显示睡眠周视图、7 月 8 日—7 月 15 日区间、平均 5.1 小时及柱状图。
 - 同一轮清理后 DB 快照的 5 个跨午夜窗口见 `/tmp/healthmanager-stage009-item45-device-20260715-attempt09/reports/item6-cross-midnight-windows.txt`，包含 2026-07-13、07-09、07-03、06-28 等跨午夜样本；总 sleepAnalysis 行数 16,897。
-- 当前证据能证明真实数据已进入数据库且详情页可展示，但尚未完成每个窗口与 Apple Watch/iPhone/第三方来源、inBed/asleep 及阶段重叠的逐项 UI 对照，保留 INCOMPLETE。
+- 新增逐窗口与汇总映射报告 `/tmp/healthmanager-stage009-item45-device-20260715-attempt09/reports/item6-window-ui-crosscheck.csv`：按 `start_at` 归属日连接 `activity_metrics_daily`，明确区分 `inBed` / `asleepDeep` / `asleepREM` / `asleepCore`，并核对周视图 `平均 5.1h / 最高 6.0h / 最低 3.6h` 与 DB 的 `5.12h / 6.04h / 3.58h`（显示层四舍五入一致）。
+- 当前已证明跨午夜归属、inBed 不计入 Asleep 汇总、来源和阶段字段可解释；但周视图只覆盖最近 7 天，5 个抽检窗口中有 3 个早于该 UI 区间，尚未完成“5 个窗口全部在 UI 中逐项可见”的同屏对照，保留 INCOMPLETE。
 
 #### Item7：后台 observer / 增量同步 — INCOMPLETE
 
 - 本轮快照的 `active_sync_jobs=0`、`failed_sync_jobs=249`，并保留了完整 DB/WAL/SHM；但没有在 Health App 中新增/删除真实样本后，记录 observer 触发前后 job 与 backfill 的因果链。
-- 因此不能把已有的启动/手动同步收敛结果外推为真实 observer PASS。
+- 追加的真实设备 probe 因本机 macOS 当前锁屏导致登录钥匙串不可用，Xcode 在安装测试前以 `errSecInternalComponent` 失败；未产生 HealthKit marker，也未篡改设备数据。故不能把已有的启动/手动同步收敛结果外推为真实 observer PASS。
 
 ### 已有证据扫描
 
