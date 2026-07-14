@@ -1,6 +1,6 @@
 # STAGE-009：v0.3 软件验收门与次日真机交接
 
-> 状态：IN_PROGRESS（迁移预检 PASS；最终门等待 STAGE-007D PASS）
+> 状态：SOFTWARE_SIMULATOR_PASS（2026-07-14；真机与发布就绪仍为 INCOMPLETE）
 >
 > 执行者：主架构师；本阶段不直接交给 Coder
 
@@ -18,11 +18,11 @@
 | STAGE-001～006 | PASS | 不重写既有结果；最终全量回归覆盖 |
 | STAGE-007A | ACCEPTED（方案 1） | 保持产品与证据边界 |
 | STAGE-007B | PASS | 保持共享可信饮食/缺口证据合同；最终全量回归覆盖 |
-| STAGE-007C | NOT STARTED | Today evidence snapshot/loader PASS |
-| STAGE-007D | NOT STARTED | 方案 1 时间线与五栏导航 PASS |
+| STAGE-007C | PASS（实现 `7df218f`；文档 `a76d958`） | Today evidence snapshot/loader 已验收 |
+| STAGE-007D | PASS（`2e3b038`） | 方案 1 时间线、五栏导航与 raw visual audit 已验收 |
 | STAGE-008 | PASS，checkpoint `ff67ca1` | 睡眠真机数据仍为 INCOMPLETE |
 
-STAGE-007D 未完成前，本阶段只能记录 PRELIMINARY/PASS 预检，不能宣称 v0.3 软件最终 PASS。
+最终软件候选为 `2e3b038c4d5722d507874feaea90002fc2379e66`。STAGE-009 后续只修改验收、交接与下一任务文档，不再改变被测产品代码。
 
 ## 3. 迁移与实际数据库门
 
@@ -41,6 +41,13 @@ STAGE-007D 未完成前，本阶段只能记录 PRELIMINARY/PASS 预检，不能
 
 这些结果只证明 `ff67ca1` 预检；STAGE-007D 后仍需在最终 HEAD 重跑最终门。
 
+2026-07-14 最终证据：
+
+- `MealItemMigrationTests` + `SourceOriginMigrationTests`：6/6，0 failed / 0 skipped，`/tmp/healthmanager-stage009-final-migrations-20260714-attempt01.xcresult`。
+- 最终 UI 后的真实 iPhone 17 Simulator 主库审计：`/tmp/healthmanager-stage009-final-db-audit-20260714.txt`。
+- 主库 migration 严格为 v1～v5，`integrity_check=ok`，FK 违规 0，active sync job 0。
+- `meal_records / meal_items / orphan / duplicate order group = 0 / 0 / 0 / 0`；全部 UI marker、medication plan/log、alert、raw sample、summary 也为 0；没有通过清库得到结果。
+
 ## 4. 最终自动化与构建门
 
 最终 HEAD 使用新的、不复用既有目录的 xcresult：
@@ -53,6 +60,13 @@ STAGE-007D 未完成前，本阶段只能记录 PRELIMINARY/PASS 预检，不能
 
 如 UI 运行遇到 LLDB/Simulator 启动异常，必须保留原始结果，区分工具失败与断言失败；没有完整 xcresult 就不得写 PASS。
 
+最终门结果：
+
+- 全量 `HealthManagerTests`：242/242，0 failed / 0 skipped，`/tmp/healthmanager-stage009-final-unit-20260714-attempt01.xcresult`。
+- 全量 `HealthManagerUITests`：6/6，0 failed / 0 skipped，`/tmp/healthmanager-stage009-final-ui-20260714-attempt01.xcresult`。
+- 独立冷构建：使用独立 DerivedData 从头解析 GRDB 6.29.3，iPhone 17 / iOS 26.5，status `succeeded`，0 error / 0 warning / 0 analyzer warning，`/tmp/healthmanager-stage009-final-build-20260714-attempt01.xcresult`。
+- `xcresulttool` 已逐项读取上述计数；UI 运行出现 Xcode `no debugger version` 与系统 accessibility bundle 重复类提示，但没有断言失败或缺失 xcresult，不把工具提示误记为产品缺陷。
+
 ## 5. Simulator 交互与视觉门
 
 - 最终五栏导航与用户选定的“今日”方案一致；现有饮食、用药、趋势、来源、同步、设置、报告与诊断入口都可达。
@@ -61,9 +75,17 @@ STAGE-007D 未完成前，本阶段只能记录 PRELIMINARY/PASS 预检，不能
 - 不把原型中的示例数字或不存在的“食物数据库”当成已交付能力。
 - 清理只删除测试自己创建的唯一 marker；不得删除用户或 Simulator 既有记录。
 
+最终交互与视觉证据：
+
+- UI attachments 导出目录：`/tmp/healthmanager-stage009-final-ui-attachments-20260714/`，包含 Today、More、Dashboard、饮食/用药编辑器、分项证据展开、常用克数、整餐与选中分项复用共 12 张原始 attachment。
+- 已目视复核 Today、More、分项证据展开、整餐复用与选中分项复用；没有裁切、黑屏或丢失五栏。原始大图在缩放预览前保持不变。
+- Today 的参考对照、Dynamic Type 和 accessibility raw audit 继续引用 `design-qa.md` 与 `/tmp/healthmanager-stage007d-visual-audit-accepted-20260714/`；不把空验收库的“暂无”状态外推为用户健康事实。
+
 ## 6. 真机清单与状态规则
 
 以下项目必须在真实 iPhone 上逐项记录 PASS / FAIL / INCOMPLETE。未执行只能写 INCOMPLETE，不得由 Simulator 推断：
+
+覆盖安装前还有一个不可跳过的安全硬门：必须记录近期备份成功状态，并确认恢复凭据/路径可用；同时确认候选配置的 Bundle ID 为 `com.norte.HealthManager`、签名 Team 为 `K8RVJSC4NU`，且候选签名的 `application-identifier` 前缀与设备上既有 App 一致，能够形成同一覆盖升级身份。任一项不能证明时，在安装前停止并将真机门保持 INCOMPLETE，不能用卸载重装绕过。
 
 1. 既有用户数据库升级后，餐次、分项、照片路径、备注、`hk_sync_id` 和其他健康数据无损。
 2. HealthKit 授权页、真实餐次营养样本写入、编辑更新和删除。
@@ -85,16 +107,20 @@ STAGE-007D 未完成前，本阶段只能记录 PRELIMINARY/PASS 预检，不能
 - v0.3 HANDOFF：只引用 ADR、STAGE、commit 与结果包，不复制已有长文；包含建议技能、次日真机顺序和失败时的停止条件。
 - `git status` 必须干净，本地 HEAD 与 upstream 相同。
 
+Durable handoff：`docs/handoffs/V0.3-SOFTWARE-SIMULATOR-HANDOFF-20260714.md`。另按 handoff skill 在 `/tmp/healthmanager-v0.3-next-session-handoff-20260714.md` 保存一个只引用 durable artifacts 的短入口。
+
 ## 8. Coder 边界
 
 STAGE-009 不生成“让 Coder 跑一遍看看”的实现提示词。主架构师负责读取真实结果并作发布门判断。若任何必需项失败，再根据失败证据生成独立修复 STAGE 与 Coder 提示词；高风险迁移、HealthKit 幂等或跨进程恢复问题由主架构师接管。
 
 ## 9. 正式结果
 
-- 软件 / Simulator：PENDING
-- 真机：INCOMPLETE（尚未执行）
+- 软件 / Simulator：PASS
+- 真机：INCOMPLETE（尚未执行；七项清单均不得由 Simulator 外推）
 - 发布就绪：INCOMPLETE
-- 最终 commit：—
-- 全量证据：—
-- 视觉与数据库证据：—
-- 残余风险：等待 STAGE-007D 与次日真机
+- 被测产品 commit：`2e3b038c4d5722d507874feaea90002fc2379e66`
+- 验收文档 checkpoint：本文件所在 commit
+- 全量证据：migration 6/6、unit 242/242、UI 6/6、独立 build 0 error / 0 warning；结果包见第 3、4 节。
+- 视觉与数据库证据：UI attachments、STAGE-007D raw audit、`/tmp/healthmanager-stage009-final-db-audit-20260714.txt`；真实验收库 v1～v5、integrity ok、FK 0、测试/用户内容表 0。
+- 残余风险：真实既有数据库升级、HealthKit 写删、照片文件生命周期、VoiceOver、最大字号、真实 sleepAnalysis 来源组合和后台 observer 仍为 INCOMPLETE。
+- Git 边界：本轮不 merge `main`、不打 tag、不创建 GitHub Release、不发布正式版本。

@@ -165,7 +165,9 @@ HealthManager 后续开发会跨会话、跨模型接力。为了避免便宜模
 
 - [STAGE-007B 可信饮食与热量缺口数据合同](../coder-prompts/STAGE-007B-trustworthy-diet-energy-contract.md)
 
-当前没有可直接执行的新提示词。主架构师必须先基于 STAGE-007B accepted diff 编写并审查 STAGE-007C 任务书与 Coder 提示词。
+历史注记：STAGE-007B PASS 后，当时必须先基于 accepted diff 编写并审查 STAGE-007C 任务书与 Coder 提示词；该步骤现已完成。
+
+当前没有可直接执行的新提示词。唯一下一任务是 STAGE-009 的真实 iPhone 验收；只有真机证据暴露边界清楚的缺陷后，主架构师才建立独立修复 STAGE 与自包含 Coder 提示词。
 
 ## 8. Git 与文档纪律
 
@@ -195,3 +197,13 @@ HealthManager 后续开发会跨会话、跨模型接力。为了避免便宜模
 - STAGE-007A 已由用户接受主架构师推荐的方案 1「按时间展开的健康证据线」；见 `docs/stages/STAGE-007A-today-information-architecture-selection.md`。原型的信息层级获准，但无法由现有数据证明的精确时间、具体来源或“必须完成某餐”不进入产品。
 - STAGE-007B 双轴审查最终 PASS；下一步是只设计并实现 STAGE-007C 的 Today evidence snapshot/loader，仍不提前接入五栏导航或视觉页面。低成本 Coder 在本阶段未产生实现 diff，主架构师已按升级规则接管并完成验收。
 - STAGE-009 已建立任务书并完成迁移预检；软件最终门等待 STAGE-007D，真机未执行项逐项保持 INCOMPLETE。本轮继续禁止 merge、tag 与 release。
+
+### 最终 checkpoint 补记
+
+以下补记只更新当前状态，不改写上面的过程快照：
+
+- STAGE-007C 已 PASS：Today evidence snapshot/loader 实现 checkpoint 为 `7df218f`，验收文档 checkpoint 为 `a76d958`。
+- STAGE-007D 已 PASS 并推送 `2e3b038`：交付方案 1「按时间展开的健康证据线」、五栏导航、Today 时间语义与 raw visual/accessibility audit；上文“下一步是 STAGE-007C”的描述仅保留为当时快照。
+- STAGE-009 软件 / Simulator 门已 PASS：最终候选 `2e3b038` 上 migration 6/6、unit 242/242、UI 6/6、独立冷构建 0 error / 0 warning；真实 Simulator 主库 v1～v5、`integrity_check=ok`、FK 违规 0、UI marker 0。
+- 真机七项验收与发布就绪继续为 INCOMPLETE；不得由 Simulator 外推，也不 merge `main`、不打 tag、不创建 GitHub Release、不正式发布。
+- 唯一下一任务与停止条件见 `NEXT_TASK.md`；跨会话入口见 `docs/handoffs/V0.3-SOFTWARE-SIMULATOR-HANDOFF-20260714.md`。当前没有可直接交给 Coder 的提示词；只有真机发现边界清楚的缺陷后，才由主架构师建立独立修复 STAGE 与自包含提示词。
