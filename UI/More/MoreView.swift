@@ -8,28 +8,28 @@ struct MoreView: View {
                     NavigationLink {
                         SourcesView()
                     } label: {
-                        Label("数据来源", systemImage: "antenna.radiowaves.left.and.right")
+                        rowLabel("数据来源", systemImage: "antenna.radiowaves.left.and.right")
                     }
                     .accessibilityIdentifier("more-sources")
 
                     NavigationLink {
                         SyncCenterView()
                     } label: {
-                        Label("同步中心", systemImage: "arrow.triangle.2.circlepath")
+                        rowLabel("同步中心", systemImage: "arrow.triangle.2.circlepath")
                     }
                     .accessibilityIdentifier("more-sync-center")
 
                     NavigationLink {
                         DataQualityDetailView()
                     } label: {
-                        Label("数据质量", systemImage: "waveform.badge.exclamationmark")
+                        rowLabel("数据质量", systemImage: "waveform.badge.exclamationmark")
                     }
                     .accessibilityIdentifier("more-data-quality")
 
                     NavigationLink {
                         AlertsView()
                     } label: {
-                        Label("告警", systemImage: "exclamationmark.triangle")
+                        rowLabel("告警", systemImage: "exclamationmark.triangle")
                     }
                     .accessibilityIdentifier("more-alerts")
                 }
@@ -38,14 +38,14 @@ struct MoreView: View {
                     NavigationLink {
                         SummaryView()
                     } label: {
-                        Label("日报 / 周报", systemImage: "newspaper")
+                        rowLabel("日报 / 周报", systemImage: "newspaper")
                     }
                     .accessibilityIdentifier("more-summary")
 
                     NavigationLink {
                         WorkoutsView()
                     } label: {
-                        Label("运动记录", systemImage: "figure.run")
+                        rowLabel("运动记录", systemImage: "figure.run")
                     }
                     .accessibilityIdentifier("more-workouts")
                 }
@@ -54,13 +54,23 @@ struct MoreView: View {
                     NavigationLink {
                         SettingsView()
                     } label: {
-                        Label("设置", systemImage: "gearshape")
+                        rowLabel("设置", systemImage: "gearshape")
                     }
                     .accessibilityIdentifier("more-settings")
                 }
             }
             .navigationTitle("更多")
             .accessibilityIdentifier("more-screen")
+        }
+    }
+
+    private func rowLabel(_ title: String, systemImage: String) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: systemImage)
+                .frame(width: 24)
+            Text(title)
+                .lineLimit(nil)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 }

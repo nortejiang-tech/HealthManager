@@ -1,11 +1,40 @@
 # STAGE-009 Item4-7 真机复核记录（2026-07-15）
 
-> 用途：记录到目前为止的真机证据扫描与下一步执行边界。未执行项保持 INCOMPLETE，不替代真实验证。
+> 用途：记录 STAGE-009 item4-7 的真机证据与严格判定。未执行项保持 INCOMPLETE，不替代真实验证。
 
 ## 当前判定
 
-- 基线：分支 `codex/health-planning-20260713`、commit `2e3b038c4d5722d507874feaea90002fc2379e66`
-- 结论：`item4~7` 仍为 **INCOMPLETE**。
+- 基线：分支 `codex/health-planning-20260713`、commit `7c5e561`（本轮验收修复后工作树另有 `UI/More/MoreView.swift` 变更）。
+- 结论：`item4=PASS`；`item5=INCOMPLETE`（Dynamic Type 审计 PASS，但未执行 VoiceOver 录屏/44pt 专项）；`item6=INCOMPLETE`（已有 5 个跨午夜窗口与睡眠详情页截图，但尚未完成逐窗口来源/阶段对照）；`item7=INCOMPLETE`（未完成 Health App 外部样本新增/删除触发）。
+
+### 本轮真机执行结果（2026-07-15）
+
+设备：`NortePro的iPhone` / iPhone Air / iOS 26.5.2 (23F84)，UDID `00008150-001204800152401C`。
+
+#### Item4：照片生命周期 — PASS
+
+- 相机全生命周期真机 UI：`/tmp/healthmanager-stage009-item4-camera-20260715.xcresult`，1/1 passed。覆盖拍照保存、再次拍照后取消、移除已保存照片、保存并删除一次性餐次。
+- PhotosPicker 全生命周期真机 UI：`/tmp/healthmanager-stage009-item4-picker-20260715.xcresult`，1/1 passed。覆盖相册选择保存、再次选择后取消、移除已保存照片、删除一次性餐次。
+- 清理后的安装容器快照：`/tmp/healthmanager-stage009-item45-device-20260715-attempt09`。
+- `reports/item4-diff-summary.txt` 机器差分：照片文件 `133 -> 133`（delta 0）、`meal_records.photo_path` 引用 `63 -> 63`（delta 0）、餐次 `114 -> 114`（delta 0）、一次性 marker `0`、`PRAGMA integrity_check=ok`。
+- 该结论只覆盖本轮动作创建的临时对象；没有修改用户既有餐次。
+
+#### Item5：Dynamic Type / 无障碍 — INCOMPLETE
+
+- 最大 Dynamic Type + hit region / sufficient description / dynamic type / text clipped 审计：`/tmp/healthmanager-stage009-item5-ax-fixed2-20260715.xcresult`，1/1 passed；截图导出目录 `/tmp/healthmanager-stage009-item5-attachments`。
+- 审计曾真实发现“数据质量”列表项文本裁切；已将 More 列表标签改为可垂直扩展的自定义行布局并复跑通过。该修复位于 `UI/More/MoreView.swift`。
+- 仍未执行 VoiceOver 开关后的读序/口述证据，也未单独录制 44pt 命中区与 sheet 可用性，因此不能把 item5 标成 PASS。
+
+#### Item6：睡眠跨午夜与来源 — INCOMPLETE
+
+- 真机睡眠详情 UI：`/tmp/healthmanager-stage009-item6-sleep-20260715.xcresult`，1/1 passed；截图导出目录 `/tmp/healthmanager-stage009-item6-attachments`。截图显示睡眠周视图、7 月 8 日—7 月 15 日区间、平均 5.1 小时及柱状图。
+- 同一轮清理后 DB 快照的 5 个跨午夜窗口见 `/tmp/healthmanager-stage009-item45-device-20260715-attempt09/reports/item6-cross-midnight-windows.txt`，包含 2026-07-13、07-09、07-03、06-28 等跨午夜样本；总 sleepAnalysis 行数 16,897。
+- 当前证据能证明真实数据已进入数据库且详情页可展示，但尚未完成每个窗口与 Apple Watch/iPhone/第三方来源、inBed/asleep 及阶段重叠的逐项 UI 对照，保留 INCOMPLETE。
+
+#### Item7：后台 observer / 增量同步 — INCOMPLETE
+
+- 本轮快照的 `active_sync_jobs=0`、`failed_sync_jobs=249`，并保留了完整 DB/WAL/SHM；但没有在 Health App 中新增/删除真实样本后，记录 observer 触发前后 job 与 backfill 的因果链。
+- 因此不能把已有的启动/手动同步收敛结果外推为真实 observer PASS。
 
 ### 已有证据扫描
 
@@ -79,20 +108,11 @@
 - `failed_backfill_reports=0`
 - `sleep_cross_midnight_rows=0`（该次 SQL 聚焦 `HKCategoryTypeIdentifierSleepAnalysis`）
 
-## 缺失项（当前无法闭环 PASS）
+## 尚未闭环的项目
 
-1. **Item4（照片生命周期）**
-   - 没有与“导入/替换/取消/保存/删除”动作对应的 `before/after` 照片路径差分与时间戳日志。
-   - 目录中虽有 `photo` 清单，但缺少“动作序列->DB 变更->文件变更”的因果链。
-
-2. **Item5（VO / Dynamic Type / 44pt）**
-   - 未看到 VoiceOver 读序、最大字号或 44pt 命中截图/录像。
-
-3. **Item6（sleepAnalysis 真实性）**
-   - 有 SQL 摘要（跨午夜样本与来源聚合），但缺少 5 个跨午夜窗口与 UI 对照截图。
-
-4. **Item7（observer 增量）**
-   - 有 sync_jobs 最终收敛样本，但缺少由“真实样本新增/删除”触发前后对照日志与截图。
+- **Item5** 还缺 VoiceOver 读序、44pt 命中区和 sheet 可用性专项证据。
+- **Item6** 还缺 5 个跨午夜窗口的逐窗口来源/状态/阶段与 UI 对照。
+- **Item7** 还缺 Health App 外部样本变化触发 observer 的前后证据。
 
 ## 下一步行动（请按此执行）
 

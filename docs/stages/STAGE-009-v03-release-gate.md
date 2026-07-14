@@ -1,6 +1,6 @@
 # STAGE-009：v0.3 软件验收门与次日真机交接
 
-> 状态：SOFTWARE_SIMULATOR_PASS（2026-07-15；真机与发布就绪仍为 INCOMPLETE）
+> 状态：SOFTWARE_SIMULATOR_PASS；真机 item4 PASS，item5-7 仍 INCOMPLETE（2026-07-15；整体发布就绪仍为 INCOMPLETE）
 >
 > 执行者：主架构师；本阶段不直接交给 Coder
 
@@ -8,7 +8,7 @@
 
 在最终 v0.3 候选 HEAD 上，证明追加迁移、全部自动化测试、Simulator 交互、数据库副作用和独立构建满足已接受的 STAGE/ADR；把 Simulator 无法证明的真实 HealthKit、照片、可访问性和睡眠数据项目逐项标为 INCOMPLETE，并形成下一会话无需重放聊天即可执行的 HANDOFF。
 
-本阶段是验收门，不增加产品能力。若发现代码缺陷，先将本阶段标为 FAIL，并另开有唯一目标、允许范围和 Coder 提示词的修复阶段；不得在验收文档中顺手改产品代码。
+本阶段是验收门，不扩展产品范围。若发现代码缺陷，必须保留原始失败证据并在唯一目标的修复范围内处理；本轮 Dynamic Type 真机审计发现并修复了 More 列表的文本裁切，修复后已重新执行真机审计。
 
 ## 2. 前置状态
 
@@ -91,18 +91,19 @@
 2. HealthKit 授权页、真实餐次营养样本写入、编辑更新和删除。
 3. 已同步餐次清空全部营养后，旧 HealthKit 样本的真实删除结果与失败反馈。
    - **2026-07-15：PASS**（单独恢复点）详见 `docs/stages/STAGE-009R2-healthkit-nutrition-clear-recovery.md`，结果包见 `/tmp/healthmanager-stage009r2-device-delete-test-meal-ui-20260715-attempt02.xcresult`。
-4. PhotosPicker / 相机导入、替换、保存、取消、删除后的真实文件生命周期。
-5. VoiceOver 读序与操作、最大 Dynamic Type、餐食证据 44pt 点击区和 sheet 可用性。
-6. Apple Watch、iPhone 与第三方 sleepAnalysis 的跨午夜、inBed/asleep、详细阶段重叠和来源组合。
-7. 后台 observer / 增量同步在真实 HealthKit 样本变化时的行为。
+4. PhotosPicker / 相机导入、替换、保存、取消、删除后的真实文件生命周期。**PASS（2026-07-15）**：详见 `docs/stages/STAGE-009-item45-real-device-review-20260715.md`；相机与 PhotosPicker 各 1/1 真机通过，attempt09 前后照片文件、`meal_records.photo_path`、餐次总数均无净变化，一次性 marker 为 0。
+5. VoiceOver 读序与操作、最大 Dynamic Type、餐食证据 44pt 点击区和 sheet 可用性。**INCOMPLETE（2026-07-15）**：最大 Dynamic Type 与 accessibility audit 1/1 通过，已修复 More 文本裁切；VoiceOver/44pt 专项尚未形成证据。
+6. Apple Watch、iPhone 与第三方 sleepAnalysis 的跨午夜、inBed/asleep、详细阶段重叠和来源组合。**INCOMPLETE（2026-07-15）**：已取得 5 个跨午夜 DB 窗口与睡眠详情页真机截图，但尚未完成逐窗口来源/阶段 UI 对照。
+7. 后台 observer / 增量同步在真实 HealthKit 样本变化时的行为。**INCOMPLETE（2026-07-15）**：未完成 Health App 外部样本新增/删除触发的 observer 前后因果证据。
 
 item4-7 的执行标准与证据格式详见：
 - `docs/stages/STAGE-009-item4-7-real-device-checklist.md`
 
 补充（2026-07-15）：
-- 已完成一轮 `...-043014` 机器快照，当前 DB 与文件计数可继续作为基线：
-  - `meal_records_count=114`，`meal_records_with_photo_ref=63`，`mealphotos_files=133`，`unreferenced_files=0`，`active_sync_jobs` 当前快照为 1。
-- 该快照不替代任何 item4/5/6/7 的 PASS 判定：仍缺少人工操作序列与对应截图/录像。
+- item4-7 标准化收口快照：`/tmp/healthmanager-stage009-item45-device-20260715-attempt09`。
+- item4 前后差分：照片文件 `133 -> 133`、照片引用 `63 -> 63`、餐次 `114 -> 114`、一次性 marker `0`、`integrity_check=ok`。
+- item6 快照报告：`reports/item6-cross-midnight-windows.txt`；睡眠 UI xcresult：`/tmp/healthmanager-stage009-item6-sleep-20260715.xcresult`。
+- item5 Dynamic Type xcresult：`/tmp/healthmanager-stage009-item5-ax-fixed2-20260715.xcresult`。
 
 本轮已授权“软件与 Simulator 完成、真机次日执行”，因此允许最终写：**软件/Simulator PASS，真机 INCOMPLETE**。但整体发布就绪仍为 INCOMPLETE；不得 merge、tag 或 release。
 
@@ -125,11 +126,11 @@ STAGE-009 不生成“让 Coder 跑一遍看看”的实现提示词。主架构
 ## 9. 正式结果
 
 - 软件 / Simulator：PASS
-- 真机：INCOMPLETE（`item3`（HealthKit 清空营养）真实门已验证 PASS；`item4-7` 待执行）
+- 真机：INCOMPLETE（`item3` HealthKit 清空营养 PASS；`item4` PASS；`item5-7` INCOMPLETE）
 - 发布就绪：INCOMPLETE
-- 被测产品 commit：`2e3b038c4d5722d507874feaea90002fc2379e66`
+- 被测产品 commit：`74d29f6`（More 动态字号裁切修复 + 本轮真机验收记录）
 - 验收文档 checkpoint：本文件所在 commit
 - 全量证据：migration 6/6、unit 242/242、UI 6/6、独立 build 0 error / 0 warning；结果包见第 3、4 节。
 - 视觉与数据库证据：UI attachments、STAGE-007D raw audit、`/tmp/healthmanager-stage009-final-db-audit-20260714.txt`；真实验收库 v1～v5、integrity ok、FK 0、测试/用户内容表 0。
-- 残余风险：真实既有数据库升级、照片文件生命周期、VoiceOver、最大字号、真实 sleepAnalysis 来源组合和后台 observer 仍为 INCOMPLETE；HealthKit 写删第 3 项已在 `STAGE-009R2` PASS。
+- 残余风险：VoiceOver/44pt 专项、sleepAnalysis 逐窗口来源与阶段对照、HealthKit 外部样本变化触发的后台 observer 仍为 INCOMPLETE；照片文件生命周期与最大 Dynamic Type 审计已在真机证据中通过；HealthKit 写删第 3 项已在 `STAGE-009R2` PASS。
 - Git 边界：本轮不 merge `main`、不打 tag、不创建 GitHub Release、不发布正式版本。
