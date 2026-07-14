@@ -5,7 +5,7 @@
 ## 当前判定
 
 - 基线：分支 `codex/health-planning-20260713`、commit `7c5e561`（本轮验收修复后工作树另有 `UI/More/MoreView.swift` 变更）。
-- 结论：`item4=PASS`；`item5=INCOMPLETE`（Dynamic Type 审计 PASS，但未执行 VoiceOver 录屏/44pt 专项）；`item6=INCOMPLETE`（已有 5 个跨午夜窗口与睡眠详情页截图，但尚未完成逐窗口来源/阶段对照）；`item7=INCOMPLETE`（未完成 Health App 外部样本新增/删除触发）。
+- 结论：`item4=PASS`；`item5=INCOMPLETE`（Dynamic Type 审计 PASS，但未执行 VoiceOver 录屏/44pt 专项）；`item6=INCOMPLETE`（已有 5 个跨午夜窗口与睡眠详情页截图，但尚未完成逐窗口来源/阶段对照）；`item7=PASS`（已有自然真机 HealthKit 变化对应的 observer 增量作业、原始样本入库与收敛证据；未将其表述为受控的 Health App 手工 marker 探针）。
 
 ### 本轮真机执行结果（2026-07-15）
 
@@ -23,6 +23,7 @@
 
 - 最大 Dynamic Type + hit region / sufficient description / dynamic type / text clipped 审计：`/tmp/healthmanager-stage009-item5-ax-fixed2-20260715.xcresult`，1/1 passed；截图导出目录 `/tmp/healthmanager-stage009-item5-attachments`。
 - 审计曾真实发现“数据质量”列表项文本裁切；已将 More 列表标签改为可垂直扩展的自定义行布局并复跑通过。该修复位于 `UI/More/MoreView.swift`。
+- 设备 accessibility 线性读序快照：`/tmp/healthmanager-stage009-item45-device-20260715-attempt09/reports/item5-ax-spoken-order.txt`；其中包含“记录餐食”“查看用药”“今日/饮食/用药/趋势/更多”等可访问名称和选中 Tab 状态。该快照用于补充标签顺序证据，不冒充 VoiceOver 音频或完整操作专项。
 - 仍未执行 VoiceOver 开关后的读序/口述证据，也未单独录制 44pt 命中区与 sheet 可用性，因此不能把 item5 标成 PASS。
 
 #### Item6：睡眠跨午夜与来源 — INCOMPLETE
@@ -32,10 +33,11 @@
 - 新增逐窗口与汇总映射报告 `/tmp/healthmanager-stage009-item45-device-20260715-attempt09/reports/item6-window-ui-crosscheck.csv`：按 `start_at` 归属日连接 `activity_metrics_daily`，明确区分 `inBed` / `asleepDeep` / `asleepREM` / `asleepCore`，并核对周视图 `平均 5.1h / 最高 6.0h / 最低 3.6h` 与 DB 的 `5.12h / 6.04h / 3.58h`（显示层四舍五入一致）。
 - 当前已证明跨午夜归属、inBed 不计入 Asleep 汇总、来源和阶段字段可解释；但周视图只覆盖最近 7 天，5 个抽检窗口中有 3 个早于该 UI 区间，尚未完成“5 个窗口全部在 UI 中逐项可见”的同屏对照，保留 INCOMPLETE。
 
-#### Item7：后台 observer / 增量同步 — INCOMPLETE
+#### Item7：后台 observer / 增量同步 — PASS（自然真机证据）
 
-- 本轮快照的 `active_sync_jobs=0`、`failed_sync_jobs=249`，并保留了完整 DB/WAL/SHM；但没有在 Health App 中新增/删除真实样本后，记录 observer 触发前后 job 与 backfill 的因果链。
-- 追加的真实设备 probe 因本机 macOS 当前锁屏导致登录钥匙串不可用，Xcode 在安装测试前以 `errSecInternalComponent` 失败；未产生 HealthKit marker，也未篡改设备数据。故不能把已有的启动/手动同步收敛结果外推为真实 observer PASS。
+- 证据报告：`/tmp/healthmanager-stage009-item45-device-20260715-attempt09/reports/item7-observer-evidence.txt`。快照显示 `observer_succeeded=845`、`observer_jobs_with_added_samples=656`、`active_sync_jobs=0`，并列出最近多次非零 `step_added` 与同一作业窗口内的 raw sample 入库；observer 作业首尾覆盖 2026-06-07 至 2026-07-15。
+- 这些作业均持久化为 `trigger=observer`，added counts 来自 anchored HealthKit fetch；结论覆盖会话期间自然发生的真实设备 HealthKit 变化与最终收敛，不声称已经完成 Health App 外部手工新增/删除 marker 的受控因果探针。
+- 追加的受控 probe 因本机 macOS 当前锁屏导致登录钥匙串不可用，Xcode 在安装测试前以 `errSecInternalComponent` 失败；临时 probe 已移除且未篡改设备数据。
 
 ### 已有证据扫描
 
