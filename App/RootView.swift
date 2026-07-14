@@ -25,18 +25,42 @@ struct RootView: View {
 }
 
 struct MainTabView: View {
+    enum MainTab: Hashable {
+        case today
+        case diet
+        case medication
+        case trends
+        case more
+    }
+
+    @State private var selection: MainTab = .today
+
     var body: some View {
-        TabView {
-            DashboardView()
-                .tabItem { Label("仪表盘", systemImage: "heart.text.square") }
+        TabView(selection: $selection) {
+            TodayView { destination in
+                switch destination {
+                case .diet:
+                    selection = .diet
+                case .medication:
+                    selection = .medication
+                case .trends:
+                    selection = .trends
+                }
+            }
+            .tabItem { Label("今日", systemImage: "calendar") }
+            .tag(MainTab.today)
             DietView()
                 .tabItem { Label("饮食", systemImage: "fork.knife") }
+                .tag(MainTab.diet)
             MedicationView()
                 .tabItem { Label("用药", systemImage: "pills") }
-            NavigationStack { SourcesView() }
-                .tabItem { Label("来源", systemImage: "antenna.radiowaves.left.and.right") }
-            SyncCenterView()
-                .tabItem { Label("同步中心", systemImage: "arrow.triangle.2.circlepath") }
+                .tag(MainTab.medication)
+            DashboardView()
+                .tabItem { Label("趋势", systemImage: "chart.bar.fill") }
+                .tag(MainTab.trends)
+            MoreView()
+                .tabItem { Label("更多", systemImage: "ellipsis") }
+                .tag(MainTab.more)
         }
     }
 }

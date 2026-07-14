@@ -15,12 +15,39 @@ final class SmokeTests: XCTestCase {
         app.launchArguments = ["-HM_DEBUG_BYPASS_ONBOARDING"]
         app.launch()
 
-        // Dashboard — title "摘要"
         XCTAssertTrue(
-            app.staticTexts["摘要"].waitForExistence(timeout: 10),
-            "Dashboard title 摘要 missing — onboarding bypass failed?"
+            anyDescendant(in: app, matching: "today-screen").waitForExistence(timeout: 20),
+            "Today screen marker missing — onboarding bypass or tab mounting failed."
         )
-        attachScreenshot(named: "01-dashboard")
+        XCTAssertTrue(
+            anyDescendant(in: app, matching: "today-summary-sleep").waitForExistence(timeout: 12),
+            "Today loaded summary: today-summary-sleep missing."
+        )
+        XCTAssertTrue(
+            anyDescendant(in: app, matching: "today-timeline").waitForExistence(timeout: 12),
+            "Today loaded summary: today-timeline missing."
+        )
+        XCTAssertTrue(
+            anyDescendant(in: app, matching: "today-source-coverage").waitForExistence(timeout: 12),
+            "Today loaded summary: today-source-coverage missing."
+        )
+        XCTAssertFalse(
+            anyDescendant(in: app, matching: "today-load-error").exists,
+            "Today load error should not appear after loaded assertions."
+        )
+        if descendants(in: app, matching: "today-timeline-").count == 0 {
+            XCTAssertTrue(app.staticTexts["今天还没有餐食或用药记录"].waitForExistence(timeout: 3))
+        }
+        attachScreenshot(named: "01-today")
+
+        XCTAssertTrue(app.tabBars.buttons["今日"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.tabBars.buttons["饮食"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.tabBars.buttons["用药"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.tabBars.buttons["趋势"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.tabBars.buttons["更多"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.tabBars.buttons["仪表盘"].exists)
+        XCTAssertFalse(app.tabBars.buttons["来源"].exists)
+        XCTAssertFalse(app.tabBars.buttons["同步中心"].exists)
 
         // Tab 2: 饮食
         app.tabBars.buttons["饮食"].tap()
@@ -44,27 +71,50 @@ final class SmokeTests: XCTestCase {
         attachScreenshot(named: "03b-med-edit")
         app.navigationBars["添加用药计划"].buttons["取消"].tap()
 
-        // Tab 4: 来源
-        app.tabBars.buttons["来源"].tap()
-        XCTAssertTrue(app.navigationBars["数据来源"].waitForExistence(timeout: 5))
-        attachScreenshot(named: "04-sources")
+        // Tab 4: 趋势
+        app.tabBars.buttons["趋势"].tap()
+        XCTAssertTrue(app.navigationBars["摘要"].waitForExistence(timeout: 8))
+        attachScreenshot(named: "04-dashboard")
 
-        // Tab 5: 同步中心
-        app.tabBars.buttons["同步中心"].tap()
-        // Sync center hosts a NavigationStack-less header in some builds, so query loosely.
+        // Tab 5: 更多
+        app.tabBars.buttons["更多"].tap()
         XCTAssertTrue(
-            app.staticTexts["同步中心"].waitForExistence(timeout: 5)
-            || app.navigationBars["同步中心"].waitForExistence(timeout: 1)
+            anyDescendant(in: app, matching: "more-screen").waitForExistence(timeout: 8),
+            "More root marker missing."
         )
-        attachScreenshot(named: "05-sync")
+        attachScreenshot(named: "05-more")
 
-        // Settings via gear icon
-        let gear = app.buttons.matching(identifier: "gearshape").firstMatch
-        if gear.exists {
-            gear.tap()
-            XCTAssertTrue(app.navigationBars["设置"].waitForExistence(timeout: 5))
-            attachScreenshot(named: "06-settings")
-        }
+        // More -> 数据来源
+        anyDescendant(in: app, matching: "more-sources").tap()
+        XCTAssertTrue(app.navigationBars["数据来源"].waitForExistence(timeout: 5))
+        tapMoreBackButton(in: app, destinationTitle: "数据来源")
+        XCTAssertTrue(anyDescendant(in: app, matching: "more-screen").waitForExistence(timeout: 8))
+
+        // More -> 同步中心
+        anyDescendant(in: app, matching: "more-sync-center").tap()
+        XCTAssertTrue(app.navigationBars["同步中心"].waitForExistence(timeout: 5))
+        tapMoreBackButton(in: app, destinationTitle: "同步中心")
+        XCTAssertTrue(anyDescendant(in: app, matching: "more-screen").waitForExistence(timeout: 8))
+
+        // More -> 设置
+        anyDescendant(in: app, matching: "more-settings").tap()
+        XCTAssertTrue(app.navigationBars["设置"].waitForExistence(timeout: 5))
+        tapMoreBackButton(in: app, destinationTitle: "设置")
+        XCTAssertTrue(anyDescendant(in: app, matching: "more-screen").waitForExistence(timeout: 8))
+    }
+
+    private func tapMoreBackButton(in app: XCUIApplication, destinationTitle: String) {
+        let backButton = app.navigationBars[destinationTitle].buttons["更多"]
+        XCTAssertTrue(backButton.waitForExistence(timeout: 5), "\(destinationTitle) is missing its More back button.")
+        backButton.tap()
+    }
+
+    private func anyDescendant(in app: XCUIApplication, matching identifier: String) -> XCUIElement {
+        app.descendants(matching: .any).matching(identifier: identifier).firstMatch
+    }
+
+    private func descendants(in app: XCUIApplication, matching identifierPrefix: String) -> XCUIElementQuery {
+        app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@", identifierPrefix))
     }
 
     private func attachScreenshot(named name: String) {
