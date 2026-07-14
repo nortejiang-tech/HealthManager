@@ -1,6 +1,6 @@
 # STAGE-005A：餐食历史复用语义内核
 
-> 状态：READY（STAGE-004B PASS，checkpoint `ccbfb15`）
+> 状态：PASS（软件与 Simulator 范围；STAGE-004B checkpoint `ccbfb15`）
 >
 > 执行者：Coder；主架构师验收
 >
@@ -129,8 +129,13 @@
 
 > 由主架构师填写。
 
-- 状态：PENDING
-- 验收日期：—
-- 验收 commit：—
-- 证据：—
-- 残余风险：—
+- 状态：PASS（软件与 Simulator 范围）
+- 验收日期：2026-07-14
+- 验收 commit：本文件所在 STAGE-005A checkpoint
+- 定向证据：`MealReuseTests` 10/10、`MealStoreTests` 12/12、`NutritionItemDedupTests` 6/6，共 28/28；结果包 `/tmp/healthmanager-stage005a-architect-targeted-final-20260714.xcresult`
+- 全量证据：`HealthManagerTests` 173/173；结果包 `/tmp/healthmanager-stage005a-full-unit-20260714.xcresult`；独立 iPhone 17 / iOS 26.5 Simulator build succeeded，结果包 `/tmp/healthmanager-stage005a-build-20260714.xcresult`
+- 行为核对：最近餐先排除再限量，父级按 `eaten_at DESC, id DESC`、children 按 `sort_order`；常用克数只统计完全相同的有限正数，并按次数、最近时间、克数稳定排序；整餐与选中分项复制均只生成未保存草稿，按来源 `sort_order` 保留完整营养与来源事实，清空父级身份、照片、备注及 HealthKit id，错误路径不读取时钟
+- 数据与副作用核对：新增持久化前后测试直接比较数据库父餐数量、原 snapshot 与 `hkSyncId`，查询及 make-copy 前后完全不变；legacy 零分项父级小数、合法 0 与 nil 均保留；有分项时父汇总只经共享 `MealNutritionProjection` 计算，任一未知指标继续为 nil
+- 静态核对：`recentSnapshots` 在同一 `asyncRead` 中执行一次父查询和至多一次批量 child 查询；`commonGramSuggestions` 在同一 `asyncRead` 中执行一次 item 查询和一次批量父查询；两者均无循环查询。新增三个入口没有 `asyncWrite`、`save`、照片、HealthKit 或通知调用；名称规范化只有 `MealItemIdentity.canonicalName` 一个规则源；`git diff --check` 通过，范围仅含本阶段白名单文件与本验收结果
+- 验收修正：Coder 初稿和唯一一次集中修复完成了主体实现并使其自报定向测试通过，但主架构师复核仍发现缺少“查询与复制不改变持久化数量、内容和同步 id”的合同证据，遂按约定接管补齐；首次补测因在 `XCTUnwrap` autoclosure 内直接 `await` 编译失败，拆分异步读取与 unwrap 后在最终代码上独立重跑定向、全量单测与 build，全部通过
+- 残余风险：本阶段未接 UI，因而不证明入口、选择交互、编辑确认与最终保存；这些属于 STAGE-005B。查询当前按个人本地数据库规模批量读取候选 item 后在内存执行 canonical 比较，避免了 schema/迁移扩张，但若未来数据规模显著增长，应以真实 profile 决定是否增加可索引规范化字段。真实 HealthKit、PhotosPicker/相机和既有真机数据库仍按总计划保留为 INCOMPLETE

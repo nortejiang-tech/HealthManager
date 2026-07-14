@@ -126,6 +126,147 @@ final class MealStore: @unchecked Sendable {
         }
     }
 
+    func recentSnapshots(limit: Int, excludingMealId: Int64?) async throws -> [Snapshot] {
+        guard limit > 0 else { return [] }
+        let cappedLimit = min(limit, 50)
+
+        return try await databaseManager.asyncRead { db in
+            var mealsRequest = MealRecord.all()
+            if let excludingMealId {
+                mealsRequest = mealsRequest.filter(Column("id") != excludingMealId)
+            }
+            mealsRequest = mealsRequest
+                .order(Column("eaten_at").desc, Column("id").desc)
+                .limit(cappedLimit)
+
+            let meals = try mealsRequest.fetchAll(db)
+            let mealIds = meals.compactMap(\.id)
+
+            let mealItems: [MealItemRecord]
+            if mealIds.isEmpty {
+                mealItems = []
+            } else {
+                mealItems = try MealItemRecord
+                    .filter(mealIds.contains(Column("meal_id")))
+                    .order(Column("meal_id"), Column("sort_order"))
+                    .fetchAll(db)
+            }
+
+            let itemsByMealId = Dictionary(grouping: mealItems, by: \.mealId)
+            return meals.map { meal in
+                Snapshot(
+                    meal: meal,
+                    items: itemsByMealId[meal.id ?? -1] ?? []
+                )
+            }
+        }
+    }
+
+    func commonGramSuggestions(
+        forName rawName: String,
+        preparationState: MealItemRecord.PreparationState?,
+        limit: Int
+    ) async throws -> [CommonGramSuggestion] {
+        let normalized = MealItemIdentity.canonicalName(rawName)
+        guard !normalized.isEmpty else { return [] }
+        guard limit > 0 else { return [] }
+
+        let cappedLimit = min(limit, 10)
+        return try await databaseManager.asyncRead { db in
+            var itemRequest = MealItemRecord.all()
+            if let preparationState {
+                itemRequest = itemRequest.filter(Column("preparation_state") == preparationState.rawValue)
+            }
+            let candidates = try itemRequest.fetchAll(db)
+            let mealIds = Array(Set(candidates.map(\.mealId)))
+            let meals = try MealRecord
+                .filter(mealIds.contains(Column("id")))
+                .fetchAll(db)
+            let lastUsedByMealId: [Int64: Int64] = Dictionary(uniqueKeysWithValues: meals.compactMap {
+                guard let mealId = $0.id else { return nil }
+                return (mealId, $0.eatenAt)
+            })
+
+            var aggregates: [Double: (useCount: Int, lastUsedAt: Int64)] = [:]
+            for item in candidates {
+                guard let grams = item.grams, grams > 0, grams.isFinite else { continue }
+                guard let lastUsedAt = lastUsedByMealId[item.mealId] else { continue }
+                guard MealItemIdentity.canonicalName(item.name) == normalized else { continue }
+
+                if let entry = aggregates[grams] {
+                    aggregates[grams] = (useCount: entry.useCount + 1, lastUsedAt: max(entry.lastUsedAt, lastUsedAt))
+                } else {
+                    aggregates[grams] = (useCount: 1, lastUsedAt: lastUsedAt)
+                }
+            }
+
+            let suggestions = aggregates
+                .map { grams, aggregate in
+                    CommonGramSuggestion(
+                        grams: grams,
+                        useCount: aggregate.useCount,
+                        lastUsedAt: aggregate.lastUsedAt
+                    )
+                }
+                .sorted {
+                    if $0.useCount != $1.useCount { return $0.useCount > $1.useCount }
+                    if $0.lastUsedAt != $1.lastUsedAt { return $0.lastUsedAt > $1.lastUsedAt }
+                    return $0.grams < $1.grams
+                }
+            return Array(suggestions.prefix(cappedLimit))
+        }
+    }
+
+    func makeCopyDraft(
+        from snapshot: Snapshot,
+        selection: CopySelection,
+        targetMealType: MealRecord.MealType,
+        eatenAt: Int64
+    ) throws -> CopyDraft {
+        let meal = snapshot.meal
+        let sortedItems = snapshot.items.sorted {
+            $0.sortOrder < $1.sortOrder
+        }
+
+        switch selection {
+        case .wholeMeal:
+            let copiedItems = sortedItems.map(copyInput)
+            let timestamp = now()
+            let copiedMeal = copyMeal(
+                from: meal,
+                targetMealType: targetMealType,
+                eatenAt: eatenAt,
+                copiedAt: timestamp,
+                items: copiedItems
+            )
+            return CopyDraft(meal: copiedMeal, items: copiedItems)
+        case .itemIds(let selectedItemIds):
+            guard !selectedItemIds.isEmpty else { throw ReuseError.emptySelection }
+
+            let sourceIds = Set(snapshot.items.compactMap(\.id))
+            let missing = selectedItemIds.subtracting(sourceIds)
+            if !missing.isEmpty {
+                throw ReuseError.missingItemIds(Array(missing).sorted())
+            }
+
+            let selectedItems = sortedItems.filter { item in
+                guard let itemId = item.id else { return false }
+                return selectedItemIds.contains(itemId)
+            }
+
+            let timestamp = now()
+            let copiedItems = selectedItems.map(copyInput)
+            let copiedMeal = copyMeal(
+                from: meal,
+                targetMealType: targetMealType,
+                eatenAt: eatenAt,
+                copiedAt: timestamp,
+                items: copiedItems
+            )
+            return CopyDraft(meal: copiedMeal, items: copiedItems)
+        }
+    }
+
     func delete(id: Int64) async throws -> Snapshot? {
         try await databaseManager.asyncWrite { db in
             guard let meal = try MealRecord.fetchOne(db, key: id) else { return nil }
@@ -178,6 +319,61 @@ final class MealStore: @unchecked Sendable {
         projectedMeal.fatG = projected.fatG
         projectedMeal.carbsG = projected.carbsG
         return projectedMeal
+    }
+
+    private func copyInput(_ item: MealItemRecord) -> ItemInput {
+        ItemInput(
+            name: item.name,
+            grams: item.grams,
+            preparationState: item.preparationState,
+            caloriesKcal: item.caloriesKcal,
+            proteinG: item.proteinG,
+            fatG: item.fatG,
+            carbsG: item.carbsG,
+            provenanceKind: item.provenanceKind,
+            provenanceRef: item.provenanceRef,
+            provenanceVersion: item.provenanceVersion,
+            confidence: item.confidence,
+            isUserEdited: item.isUserEdited,
+            createdAt: nil
+        )
+    }
+
+    private func copyMeal(
+        from meal: MealRecord,
+        targetMealType: MealRecord.MealType,
+        eatenAt: Int64,
+        copiedAt: Int64,
+        items: [ItemInput]
+    ) -> MealRecord {
+        var copiedMeal = meal
+        copiedMeal.id = nil
+        copiedMeal.mealType = targetMealType
+        copiedMeal.eatenAt = eatenAt
+        copiedMeal.photoPath = nil
+        copiedMeal.notes = nil
+        copiedMeal.hkSyncId = nil
+        copiedMeal.createdAt = copiedAt
+
+        if items.isEmpty {
+            return copiedMeal
+        }
+
+        let projected = MealNutritionProjection.project(
+            items.map {
+                MealNutritionValues(
+                    caloriesKcal: $0.caloriesKcal,
+                    proteinG: $0.proteinG,
+                    fatG: $0.fatG,
+                    carbsG: $0.carbsG
+                )
+            }
+        )
+        copiedMeal.caloriesKcal = projected?.caloriesKcal
+        copiedMeal.proteinG = projected?.proteinG
+        copiedMeal.fatG = projected?.fatG
+        copiedMeal.carbsG = projected?.carbsG
+        return copiedMeal
     }
 
     private func prepareItems(

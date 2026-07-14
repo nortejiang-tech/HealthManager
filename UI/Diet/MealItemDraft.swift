@@ -183,12 +183,9 @@ struct MealItemDraft: Identifiable, Equatable {
     var displayFat: Double { fat ?? 0 }
     var displayCarbs: Double { carbs ?? 0 }
 
-    /// Conservative dedup key: trim, drop spaces, lowercase ASCII.
+    /// Conservative dedup key delegated to shared meal-item identity normalization.
     static func normalizedName(_ value: String) -> String {
-        value.trimmingCharacters(in: .whitespacesAndNewlines)
-            .replacingOccurrences(of: " ", with: "")
-            .replacingOccurrences(of: "\u{3000}", with: "")
-            .lowercased()
+        MealItemIdentity.canonicalName(value)
     }
 
     /// Filter `incoming` to names not already present in `existing`, including same-name

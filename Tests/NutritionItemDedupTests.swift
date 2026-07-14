@@ -29,11 +29,25 @@ final class NutritionItemDedupTests: XCTestCase {
         XCTAssertEqual(fresh.map(\.name), ["煎蛋", "吐司"], "second 煎蛋 within the batch is dropped")
     }
 
-    func test_normalizationIgnoresSpacesAndCase() {
+    func test_normalizationAlignsWithMealItemIdentityCanonicalRuleAcrossUnicodeWhitespace() {
+        let pairs: [(String, String)] = [
+            (" Egg Sandwich ", "eggsandwich"),
+            ("\nEgg\u{00A0}Sandwich\t", "eggsandwich"),
+            ("Egg\u{2003}Sandwich", "eggsandwich"),
+            ("Egg\u{3000}Sandwich", "eggsandwich"),
+            ("\n\tEgg\u{2001}Sandwich\u{2002}\n", "eggsandwich")
+        ]
+        for (value, expected) in pairs {
+            XCTAssertEqual(MealItemIdentity.canonicalName(value), expected)
+            XCTAssertEqual(MealItemDraft.normalizedName(value), expected)
+        }
+    }
+
+    func test_normalizationFiltersDedupByCanonicalRule() {
         let existing = [item("Egg Sandwich")]
-        let incoming = [item("eggsandwich"), item("EGG SANDWICH "), item("培根")]
+        let incoming = [item("eggsandwich"), item("EGG  SANDWICH"), item("培根")]
         let fresh = MealItemDraft.deduped(incoming, against: existing)
-        XCTAssertEqual(fresh.map(\.name), ["培根"], "case/space variants collapse to the existing one")
+        XCTAssertEqual(fresh.map(\.name), ["培根"], "case and whitespace variants collapse to the existing one")
     }
 
     func test_qualifiersKeepDistinctDishes() {
