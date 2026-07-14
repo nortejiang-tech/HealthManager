@@ -298,6 +298,22 @@ final class MealStore: @unchecked Sendable {
         }
     }
 
+    func clearSyncId(mealId: Int64) async throws -> MealRecord {
+        try await databaseManager.asyncWrite { db in
+            guard try MealRecord.fetchOne(db, key: mealId) != nil else {
+                throw MealStoreError.mealNotFound(mealId)
+            }
+            try db.execute(
+                sql: "UPDATE meal_records SET hk_sync_id = NULL WHERE id = ?",
+                arguments: [mealId]
+            )
+            guard let meal = try MealRecord.fetchOne(db, key: mealId) else {
+                throw MealStoreError.mealNotFound(mealId)
+            }
+            return meal
+        }
+    }
+
     private func projectedMeal(meal: MealRecord, items: [ItemInput]) -> MealRecord {
         guard !items.isEmpty else { return meal }
 

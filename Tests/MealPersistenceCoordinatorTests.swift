@@ -4,6 +4,133 @@ import XCTest
 
 final class MealPersistenceCoordinatorTests: XCTestCase {
 
+    func test_saveClearingAllNutritionDeletesOldSamplesAndClearsPersistedSyncId() async throws {
+        let store = makeStore()
+        let seed = try await store.save(
+            meal: makeMeal(
+                mealType: .dinner,
+                eatenAt: 900,
+                createdAt: 9,
+                caloriesKcal: 450,
+                hkSyncId: "sync-to-delete"
+            ),
+            items: []
+        )
+        var deletedSyncIds: [String] = []
+        let coordinator = MealPersistenceCoordinator(
+            mealStore: store,
+            writeNutritionToHealth: { _ in
+                XCTFail("clearing all nutrition must not invoke the writer")
+                return .notWritten
+            },
+            removePhotoIfManaged: { _ in XCTFail("no photo changed") },
+            deleteHealthKitSamples: { syncId in
+                deletedSyncIds.append(syncId)
+                return .deleted(sampleCount: 4)
+            }
+        )
+        var clearedMeal = seed.meal
+        clearedMeal.caloriesKcal = nil
+        clearedMeal.proteinG = nil
+        clearedMeal.fatG = nil
+        clearedMeal.carbsG = nil
+
+        let result = try await coordinator.save(
+            meal: clearedMeal,
+            drafts: [],
+            originalPhotoPaths: []
+        )
+
+        XCTAssertEqual(deletedSyncIds, ["sync-to-delete"])
+        XCTAssertNil(result.meal.hkSyncId)
+        let persisted = try await store.load(id: seed.meal.id!)
+        XCTAssertNil(persisted?.meal.hkSyncId)
+        XCTAssertNil(persisted?.meal.caloriesKcal)
+    }
+
+    func test_saveClearingAllNutritionKeepsSyncIdAndThrowsVisibleErrorWhenDeletionFails() async throws {
+        let store = makeStore()
+        let seed = try await store.save(
+            meal: makeMeal(
+                mealType: .dinner,
+                eatenAt: 901,
+                createdAt: 9,
+                caloriesKcal: 500,
+                hkSyncId: "sync-retry"
+            ),
+            items: []
+        )
+        var writerCallCount = 0
+        let coordinator = MealPersistenceCoordinator(
+            mealStore: store,
+            writeNutritionToHealth: { _ in
+                writerCallCount += 1
+                return .notWritten
+            },
+            removePhotoIfManaged: { _ in XCTFail("no photo changed") },
+            deleteHealthKitSamples: { syncId in
+                XCTAssertEqual(syncId, "sync-retry")
+                return .failed(
+                    message: "膳食蛋白质：写入授权已撤销",
+                    deletedSampleCount: 2
+                )
+            }
+        )
+        var clearedMeal = seed.meal
+        clearedMeal.caloriesKcal = nil
+
+        do {
+            _ = try await coordinator.save(
+                meal: clearedMeal,
+                drafts: [],
+                originalPhotoPaths: []
+            )
+            XCTFail("expected visible deletion failure")
+        } catch {
+            XCTAssertEqual(
+                error as? MealPersistenceError,
+                .nutritionDeletionFailed(details: "膳食蛋白质：写入授权已撤销")
+            )
+            XCTAssertTrue(error.localizedDescription.contains("旧营养样本未能全部删除"))
+            XCTAssertTrue(error.localizedDescription.contains("Apple 健康权限"))
+        }
+
+        XCTAssertEqual(writerCallCount, 0)
+        let persisted = try await store.load(id: seed.meal.id!)
+        XCTAssertEqual(persisted?.meal.hkSyncId, "sync-retry")
+        XCTAssertNil(persisted?.meal.caloriesKcal)
+    }
+
+    func test_saveEmptyNutritionWithoutSyncIdSkipsHealthKitWriterAndDeleter() async throws {
+        let store = makeStore()
+        let coordinator = MealPersistenceCoordinator(
+            mealStore: store,
+            writeNutritionToHealth: { _ in
+                XCTFail("empty nutrition must not invoke the writer")
+                return .notWritten
+            },
+            removePhotoIfManaged: { _ in XCTFail("no photo changed") },
+            deleteHealthKitSamples: { _ in
+                XCTFail("there is no sync id to delete")
+                return .deleted(sampleCount: 0)
+            }
+        )
+
+        let result = try await coordinator.save(
+            meal: makeMeal(
+                mealType: .snack,
+                eatenAt: 902,
+                createdAt: 9
+            ),
+            drafts: [],
+            originalPhotoPaths: []
+        )
+
+        XCTAssertNotNil(result.meal.id)
+        XCTAssertNil(result.meal.hkSyncId)
+        XCTAssertNil(result.meal.caloriesKcal)
+    }
+
     func test_saveWritesToHealthUsingStoreProjectionAndPersistsSyncIdWhenWritten() async throws {
         let store = makeStore()
         let seed = try await store.save(
@@ -50,7 +177,7 @@ final class MealPersistenceCoordinatorTests: XCTestCase {
                 return .written(syncID: "hk-written")
             },
             removePhotoIfManaged: { removedPhotos.append($0) },
-            deleteHealthKitSamples: { _ in }
+            deleteHealthKitSamples: { _ in .deleted(sampleCount: 0) }
         )
 
         var toSave = seed.meal
@@ -95,7 +222,10 @@ final class MealPersistenceCoordinatorTests: XCTestCase {
                 return .notWritten
             },
             removePhotoIfManaged: { _ in XCTFail("should not remove any photo") },
-            deleteHealthKitSamples: { _ in XCTFail("should not delete hk sample") }
+            deleteHealthKitSamples: { _ in
+                XCTFail("should not delete hk sample")
+                return .deleted(sampleCount: 0)
+            }
         )
 
         let updatedMeal = makeMeal(
@@ -124,6 +254,7 @@ final class MealPersistenceCoordinatorTests: XCTestCase {
                 eatenAt: 2_000,
                 photoPath: "keep.jpg,delete-me.jpg",
                 createdAt: 20,
+                caloriesKcal: 100,
                 hkSyncId: "existing-sync"
             ),
             items: []
@@ -141,6 +272,7 @@ final class MealPersistenceCoordinatorTests: XCTestCase {
             removePhotoIfManaged: { removedPhotos.append($0) },
             deleteHealthKitSamples: { _ in
                 XCTFail("delete should not be called from save")
+                return .deleted(sampleCount: 0)
             }
         )
 
@@ -194,6 +326,7 @@ final class MealPersistenceCoordinatorTests: XCTestCase {
             removePhotoIfManaged: { removedPhotos.append($0) },
             deleteHealthKitSamples: { syncId in
                 deletedSyncIds.append(syncId)
+                return .deleted(sampleCount: 0)
             }
         )
 
@@ -251,6 +384,7 @@ final class MealPersistenceCoordinatorTests: XCTestCase {
             removePhotoIfManaged: { removed.append($0) },
             deleteHealthKitSamples: { _ in
                 XCTFail("healthkit should not be called on validation failure")
+                return .deleted(sampleCount: 0)
             }
         )
 
@@ -298,6 +432,7 @@ final class MealPersistenceCoordinatorTests: XCTestCase {
             removePhotoIfManaged: { removedPhotos.append($0) },
             deleteHealthKitSamples: { syncId in
                 deletedSyncIds.append(syncId)
+                return .deleted(sampleCount: 4)
             }
         )
 
@@ -322,6 +457,7 @@ final class MealPersistenceCoordinatorTests: XCTestCase {
             removePhotoIfManaged: { removedPhotos.append($0) },
             deleteHealthKitSamples: { syncId in
                 deletedSyncIds.append(syncId)
+                return .deleted(sampleCount: 0)
             }
         )
 

@@ -42,6 +42,16 @@ final class HealthKitManager: ObservableObject {
         case notWritten
     }
 
+    enum NutritionDeletionResult: Equatable, Sendable {
+        case deleted(sampleCount: Int)
+        case failed(message: String, deletedSampleCount: Int)
+
+        var allowsReplacementWrite: Bool {
+            if case .deleted = self { return true }
+            return false
+        }
+    }
+
     @Published private(set) var authorizationGate: AuthorizationGate = .unknown
     @Published private(set) var lastAuthorizationError: String?
 
@@ -232,7 +242,8 @@ final class HealthKitManager: ObservableObject {
         guard !samples.isEmpty else { return .notWritten }
 
         if let existing = trimmedExistingSyncId, !existing.isEmpty {
-            await deleteNutritionSamples(syncId: existing)
+            let deletionResult = await deleteNutritionSamples(syncId: existing)
+            guard deletionResult.allowsReplacementWrite else { return .notWritten }
         }
 
         // Preferred: bundle the macros into one `.food` correlation so Apple Health shows
@@ -272,20 +283,38 @@ final class HealthKitManager: ObservableObject {
     /// Removing the member samples empties any food correlation they belonged to, so the
     /// meal entry clears too — we can't target the correlation type directly because its
     /// share authorization can't be requested.
-    func deleteNutritionSamples(syncId: String) async {
-        guard isAvailable else { return }
+    func deleteNutritionSamples(syncId: String) async -> NutritionDeletionResult {
+        guard isAvailable else {
+            return .failed(
+                message: HKError.healthDataUnavailable.localizedDescription,
+                deletedSampleCount: 0
+            )
+        }
         let predicate = HKQuery.predicateForObjects(withMetadataKey: Self.mealSyncIdKey, allowedValues: [syncId])
+        var deletedSampleCount = 0
+        var failures: [String] = []
         for type in HealthKitTypeCatalog.nutritionWriteSampleTypes {
-            guard store.authorizationStatus(for: type) == .sharingAuthorized else { continue }
-            await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
-                store.deleteObjects(of: type, predicate: predicate) { _, _, error in
-                    if let error {
-                        AppLogger.shared.error("Meal nutrition delete failed: \(error.localizedDescription)")
+            let outcome: (deletedCount: Int, failure: String?) = await withCheckedContinuation { continuation in
+                store.deleteObjects(of: type, predicate: predicate) { success, count, error in
+                    if success {
+                        continuation.resume(returning: (count, nil))
+                    } else {
+                        let detail = error?.localizedDescription ?? "未知错误"
+                        continuation.resume(returning: (0, "\(type.identifier)：\(detail)"))
                     }
-                    cont.resume()
                 }
             }
+            deletedSampleCount += outcome.deletedCount
+            if let failure = outcome.failure {
+                failures.append(failure)
+            }
         }
+        if !failures.isEmpty {
+            let message = failures.joined(separator: "；")
+            AppLogger.shared.error("Meal nutrition delete failed: \(message)")
+            return .failed(message: message, deletedSampleCount: deletedSampleCount)
+        }
+        return .deleted(sampleCount: deletedSampleCount)
     }
 
     // MARK: - Query primitives

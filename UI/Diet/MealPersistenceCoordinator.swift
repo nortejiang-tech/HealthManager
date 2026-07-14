@@ -1,9 +1,20 @@
 import Foundation
 
+enum MealPersistenceError: Error, Equatable, LocalizedError {
+    case nutritionDeletionFailed(details: String)
+
+    var errorDescription: String? {
+        switch self {
+        case .nutritionDeletionFailed(let details):
+            return "Apple 健康中的旧营养样本未能全部删除。请检查 Apple 健康权限后重试。详情：\(details)"
+        }
+    }
+}
+
 final class MealPersistenceCoordinator {
     typealias NutritionWriter = (MealRecord) async -> HealthKitManager.NutritionWriteResult
     typealias PhotoRemover = (String) -> Void
-    typealias NutritionDeletion = (String) async -> Void
+    typealias NutritionDeletion = (String) async -> HealthKitManager.NutritionDeletionResult
 
     private let mealStore: MealStore
     private let writeNutritionToHealth: NutritionWriter
@@ -59,6 +70,25 @@ final class MealPersistenceCoordinator {
             removePhotoIfManaged(old)
         }
 
+        let totals = MealNutritionTotals(
+            caloriesKcal: saved.meal.caloriesKcal,
+            proteinG: saved.meal.proteinG,
+            fatG: saved.meal.fatG,
+            carbsG: saved.meal.carbsG
+        )
+        if !totals.hasWritableValue {
+            guard let syncId = saved.meal.hkSyncId, let id = saved.meal.id else {
+                return saved
+            }
+            switch await deleteHealthKitSamples(syncId) {
+            case .deleted:
+                let clearedMeal = try await mealStore.clearSyncId(mealId: id)
+                return MealStore.Snapshot(meal: clearedMeal, items: saved.items)
+            case .failed(let message, _):
+                throw MealPersistenceError.nutritionDeletionFailed(details: message)
+            }
+        }
+
         let writeResult = await writeNutritionToHealth(saved.meal)
         guard case .written(let syncId) = writeResult else { return saved }
         guard let id = saved.meal.id else { return saved }
@@ -81,7 +111,7 @@ final class MealPersistenceCoordinator {
         }
 
         if let hkSyncId = snapshot.meal.hkSyncId {
-            await deleteHealthKitSamples(hkSyncId)
+            _ = await deleteHealthKitSamples(hkSyncId)
         }
     }
 }

@@ -340,6 +340,57 @@ final class MealStoreTests: XCTestCase {
         XCTAssertEqual(after.items, before.items)
     }
 
+    func test_clearSyncIdUpdatesOnlySyncIdWithoutTouchingMealOrItems() async throws {
+        let store = makeStore()
+        let seed = try await store.save(
+            meal: makeMeal(
+                mealType: .dinner,
+                eatenAt: 91,
+                caloriesKcal: 30,
+                proteinG: 5,
+                fatG: 6,
+                carbsG: 7,
+                photoPath: "kept-a.jpg,kept-b.jpg",
+                notes: "keep every other field",
+                createdAt: 2,
+                hkSyncId: "sync-to-clear"
+            ),
+            items: [
+                .init(
+                    name: "Kept item",
+                    caloriesKcal: 30,
+                    proteinG: 5,
+                    fatG: 6,
+                    carbsG: 7,
+                    provenanceKind: .manual
+                )
+            ]
+        )
+        let loadedBefore = try await store.load(id: seed.meal.id!)
+        let before = try XCTUnwrap(loadedBefore)
+        var expectedMeal = before.meal
+        expectedMeal.hkSyncId = nil
+
+        let cleared = try await store.clearSyncId(mealId: seed.meal.id!)
+
+        XCTAssertEqual(cleared, expectedMeal)
+        let loadedAfter = try await store.load(id: seed.meal.id!)
+        let after = try XCTUnwrap(loadedAfter)
+        XCTAssertEqual(after.meal, expectedMeal)
+        XCTAssertEqual(after.items, before.items)
+    }
+
+    func test_clearSyncIdFailsForMissingMealId() async {
+        let store = makeStore()
+
+        do {
+            _ = try await store.clearSyncId(mealId: 999_999)
+            XCTFail("expected throw")
+        } catch {
+            XCTAssertEqual(error as? MealStoreError, .mealNotFound(999_999))
+        }
+    }
+
     func test_saveSyncIdFailsForMissingMealId() async {
         let store = makeStore()
         do {

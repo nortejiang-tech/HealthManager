@@ -64,4 +64,17 @@ final class MealNutritionSyncTests: XCTestCase {
         try insertMeal(hkSyncId: nil)                       // no macros
         XCTAssertTrue(try selectUnsyncedWithMacros().isEmpty)
     }
+
+    func test_deletionResult_allowsReplacementWriteOnlyAfterCompleteDeletion() {
+        XCTAssertTrue(
+            HealthKitManager.NutritionDeletionResult
+                .deleted(sampleCount: 0)
+                .allowsReplacementWrite
+        )
+        XCTAssertFalse(
+            HealthKitManager.NutritionDeletionResult
+                .failed(message: "dietaryProtein: authorization denied", deletedSampleCount: 2)
+                .allowsReplacementWrite
+        )
+    }
 }
