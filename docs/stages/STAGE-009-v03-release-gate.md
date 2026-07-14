@@ -128,7 +128,7 @@ STAGE-009 不生成“让 Coder 跑一遍看看”的实现提示词。主架构
 - 软件 / Simulator：PASS
 - 真机：INCOMPLETE（`item3` HealthKit 清空营养 PASS；`item4` PASS；`item5-7` INCOMPLETE）
 - 发布就绪：INCOMPLETE
-- 被测产品 commit：`74d29f6`（More 动态字号裁切修复 + 本轮真机验收记录）
+- 被测产品 commit：当前分支 HEAD（More 动态字号裁切修复 + 本轮真机验收记录）
 - 验收文档 checkpoint：本文件所在 commit
 - 全量证据：migration 6/6、unit 242/242、UI 6/6、独立 build 0 error / 0 warning；结果包见第 3、4 节。
 - 视觉与数据库证据：UI attachments、STAGE-007D raw audit、`/tmp/healthmanager-stage009-final-db-audit-20260714.txt`；真实验收库 v1～v5、integrity ok、FK 0、测试/用户内容表 0。
