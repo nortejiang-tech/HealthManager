@@ -91,11 +91,13 @@ struct MetricDetailView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 if inspectedDate == nil {
-                    let trendSeries = visiblePoints.compactMap { p -> DatedDouble? in
-                        guard let v = p.value else { return nil }
-                        return DatedDouble(date: p.date, value: v)
+                    if canShowTrend {
+                        let trendSeries = visiblePoints.compactMap { p -> DatedDouble? in
+                            guard let v = p.value else { return nil }
+                            return DatedDouble(date: p.date, value: v)
+                        }
+                        TrendChip(series: trendSeries, lowerIsBetter: lowerIsBetter, theme: config.theme)
                     }
-                    TrendChip(series: trendSeries, lowerIsBetter: lowerIsBetter, theme: config.theme)
                 } else {
                     Button {
                         inspectedDate = nil
@@ -121,6 +123,15 @@ struct MetricDetailView: View {
             Text(inspectedDateLabel ?? periodRangeLabel)
                 .font(.caption2)
                 .foregroundStyle(.secondary)
+        }
+    }
+
+    private var canShowTrend: Bool {
+        switch config.source {
+        case .diet, .deficit:
+            return visiblePoints.allSatisfy { $0.value != nil }
+        case .tableColumn:
+            return true
         }
     }
 
@@ -352,9 +363,14 @@ struct MetricDetailView: View {
                         Text("热量缺口")
                             .font(.callout.weight(.semibold))
                         Spacer()
-                        Text(String(format: "%+.0f kcal", b.deficit))
+                        Text(b.deficit.map { String(format: "%+.0f kcal", $0) } ?? "—")
                             .font(.callout.weight(.semibold).monospacedDigit())
-                            .foregroundStyle(b.deficit >= 0 ? config.theme.primary : .red)
+                            .foregroundStyle((b.deficit ?? 0) >= 0 ? config.theme.primary : .red)
+                    }
+                    if let reason = b.missingReason {
+                        Text(reason)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
                     }
                 }
             } else if inspectedDate != nil, deficitBreakdown == nil {
@@ -740,7 +756,7 @@ struct MetricDetailConfig {
         theme: .diet,
         chartStyle: .bar,
         summary: .average,
-        footnote: "按日合计的 meal_records.calories_kcal。",
+        footnote: "按日合计 meal_records.calories_kcal；仅在当日所有餐次热量均有效时纳入图表。",
         format: { String(format: "%.0f", $0) }
     )
 
@@ -751,7 +767,7 @@ struct MetricDetailConfig {
         theme: .deficit,
         chartStyle: .bar,
         summary: .average,
-        footnote: "缺口 = 活动能量 + 基础代谢 − 摄入 · 正值代表赤字。",
+        footnote: "缺口 = 活动能量 + 基础代谢 − 摄入；三项记录完整有效时才计算，正值代表赤字。",
         format: { String(format: "%+.0f", $0) }
     )
 }

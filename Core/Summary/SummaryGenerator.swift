@@ -10,6 +10,9 @@ import GRDB
 /// run on the actor's executor and don't block the caller's actor (e.g. MainActor).
 actor SummaryGenerator {
 
+    static let nutritionEvidenceContractKey = "nutritionEvidenceContractVersion"
+    static let nutritionEvidenceContractVersion = 1
+
     let database: DatabaseManager
 
     init(database: DatabaseManager) {
@@ -59,6 +62,27 @@ actor SummaryGenerator {
         return summary
     }
 
+    /// Loads an already-generated daily summary. Legacy rows are rebuilt against the
+    /// current evidence contract, but a missing row stays missing so passive reads do
+    /// not acquire a hidden write side effect.
+    func currentDaily(for date: String = todayKey()) throws -> DailySummary? {
+        guard let existing = try database.read({ db in
+            try DailySummary.fetchOne(db, key: date)
+        }) else {
+            return nil
+        }
+        if Self.hasCurrentNutritionContract(existing.keyFindingsJson) {
+            return existing
+        }
+        return try generateDaily(for: date)
+    }
+
+    /// Rebuilds and persists the deterministic daily summary used as LLM input. This
+    /// intentionally invalidates any previously stored LLM commentary before networking.
+    func rebuildDailyForLLM(for date: String) throws -> String? {
+        try generateDaily(for: date).summaryText
+    }
+
     private func buildDailyReport(for date: String) throws -> Generated {
         let (dayStart, dayEnd) = epochRange(for: date)
 
@@ -90,17 +114,13 @@ actor SummaryGenerator {
             )
             let activeEnergyDedup = activeEnergy > 0 ? activeEnergy : nil
 
-            let mealRow = try Row.fetchOne(db, sql: """
-                SELECT
-                    COUNT(*) AS c,
-                    COALESCE(SUM(calories_kcal), 0) AS cal,
-                    COALESCE(SUM(protein_g), 0) AS pro
-                FROM meal_records
-                WHERE eaten_at BETWEEN ? AND ?
-                """, arguments: [dayStart, dayEnd])
-            let mealCount: Int = mealRow?["c"] ?? 0
-            let caloriesIn: Double = mealRow?["cal"] ?? 0
-            let proteinIn: Double = mealRow?["pro"] ?? 0
+            let localDay = Date(timeIntervalSince1970: TimeInterval(dayStart))
+            let mealNutrition = try MealNutritionEvidenceQuery.load(
+                db: db,
+                fromLocalDay: localDay,
+                throughLocalDay: localDay,
+                calendar: .current
+            )
 
             let medCount = try Int.fetchOne(db, sql: """
                 SELECT COUNT(*) FROM medication_logs
@@ -113,9 +133,7 @@ actor SummaryGenerator {
                 perType: perType,
                 stepsDedup: stepsDedup,
                 activeEnergyDedup: activeEnergyDedup,
-                mealCount: mealCount,
-                caloriesIn: caloriesIn,
-                proteinIn: proteinIn,
+                mealNutrition: mealNutrition,
                 medTakenCount: medCount,
                 quality: quality
             )
@@ -128,16 +146,16 @@ actor SummaryGenerator {
         let perType: [String: (count: Int, avg: Double, sum: Double)]
         let stepsDedup: Double?
         let activeEnergyDedup: Double?
-        let mealCount: Int
-        let caloriesIn: Double
-        let proteinIn: Double
+        let mealNutrition: MealNutritionEvidenceWindow
         let medTakenCount: Int
         let quality: DataQualityDaily?
     }
 
     private func renderDaily(date: String, stats: DailyStats) -> Generated {
         var lines: [String] = []
-        var findings: [String: AnyHashable] = [:]
+        var findings: [String: AnyHashable] = [
+            Self.nutritionEvidenceContractKey: Self.nutritionEvidenceContractVersion
+        ]
 
         lines.append("【\(date) 日报】")
 
@@ -162,11 +180,24 @@ actor SummaryGenerator {
             findings["weightKg"] = weight
         }
 
-        if stats.mealCount > 0 {
-            lines.append(String(format: "• 饮食：%d 餐 / 摄入 %.0f kcal / 蛋白 %.0f g",
-                                stats.mealCount, stats.caloriesIn, stats.proteinIn))
-            findings["mealCount"] = stats.mealCount
-            findings["caloriesIn"] = Int(stats.caloriesIn)
+        if stats.mealNutrition.mealCount > 0 {
+            var parts = ["\(stats.mealNutrition.mealCount) 餐"]
+            if let calories = stats.mealNutrition.totals?.caloriesKcal {
+                parts.append(String(format: "摄入 %.0f kcal", calories))
+                findings["caloriesIn"] = calories
+            } else {
+                parts.append("热量记录不完整")
+                findings["caloriesInStatus"] = "incomplete"
+            }
+            if let protein = stats.mealNutrition.totals?.proteinG {
+                parts.append(String(format: "蛋白 %.0f g", protein))
+                findings["proteinIn"] = protein
+            } else {
+                parts.append("蛋白质记录不完整")
+                findings["proteinInStatus"] = "incomplete"
+            }
+            lines.append("• 饮食：" + parts.joined(separator: " / "))
+            findings["mealCount"] = stats.mealNutrition.mealCount
         }
         if stats.medTakenCount > 0 {
             lines.append("• 用药：当日服用 \(stats.medTakenCount) 次")
@@ -212,6 +243,26 @@ actor SummaryGenerator {
         return summary
     }
 
+    /// Weekly counterpart to `currentDaily`: validates persisted rows without creating
+    /// a report merely because the summary screen was opened or refreshed.
+    func currentWeekly(weekStart: String = currentWeekStartKey()) throws -> WeeklySummary? {
+        guard let existing = try database.read({ db in
+            try WeeklySummary.fetchOne(db, key: weekStart)
+        }) else {
+            return nil
+        }
+        if Self.hasCurrentNutritionContract(existing.findingsJson) {
+            return existing
+        }
+        return try generateWeekly(weekStart: weekStart)
+    }
+
+    /// Weekly counterpart to `rebuildDailyForLLM`; it writes the fresh deterministic
+    /// summary and clears previously persisted LLM commentary.
+    func rebuildWeeklyForLLM(weekStart: String) throws -> String? {
+        try generateWeekly(weekStart: weekStart).summaryText
+    }
+
     private func buildWeeklyReport(weekStart: String) throws -> Generated {
         guard let (s, e) = weekRange(weekStart: weekStart) else {
             return Generated(text: "无效的周起始日期。", findings: [:], qualityScore: nil)
@@ -225,8 +276,7 @@ actor SummaryGenerator {
             var minWeight: Double = .infinity
             var maxWeight: Double = -.infinity
             var weightSamples: Int = 0
-            var mealCount: Int = 0
-            var caloriesIn: Double = 0
+            var mealNutrition: MealNutritionEvidenceWindow = .empty
             var medTaken: Int = 0
             var avgCompleteness: Double = 0
             var completenessDays: Int = 0
@@ -286,12 +336,14 @@ actor SummaryGenerator {
                 }
             }
 
-            let mealRow = try Row.fetchOne(db, sql: """
-                SELECT COUNT(*) AS c, COALESCE(SUM(calories_kcal), 0) AS cal
-                FROM meal_records WHERE eaten_at BETWEEN ? AND ?
-                """, arguments: [s, e])
-            a.mealCount = mealRow?["c"] ?? 0
-            a.caloriesIn = mealRow?["cal"] ?? 0
+            let startDay = Date(timeIntervalSince1970: TimeInterval(s))
+            let finalDay = Calendar.current.date(byAdding: .day, value: 6, to: startDay) ?? startDay
+            a.mealNutrition = try MealNutritionEvidenceQuery.load(
+                db: db,
+                fromLocalDay: startDay,
+                throughLocalDay: finalDay,
+                calendar: .current
+            )
 
             a.medTaken = try Int.fetchOne(db, sql: """
                 SELECT COUNT(*) FROM medication_logs
@@ -313,7 +365,9 @@ actor SummaryGenerator {
         }
 
         var lines: [String] = []
-        var findings: [String: AnyHashable] = [:]
+        var findings: [String: AnyHashable] = [
+            Self.nutritionEvidenceContractKey: Self.nutritionEvidenceContractVersion
+        ]
 
         lines.append("【\(weekStart) 起的一周】")
         lines.append("• 步数累计：\(Int(agg.stepsTotal)) 步（日均 \(Int(agg.stepsTotal / 7))）")
@@ -331,8 +385,17 @@ actor SummaryGenerator {
             findings["weightMin"] = agg.minWeight
             findings["weightMax"] = agg.maxWeight
         }
-        if agg.mealCount > 0 {
-            lines.append(String(format: "• 饮食：%d 餐 / 摄入 %.0f kcal", agg.mealCount, agg.caloriesIn))
+        if agg.mealNutrition.mealCount > 0 {
+            var parts = ["\(agg.mealNutrition.mealCount) 餐"]
+            if let calories = agg.mealNutrition.totals?.caloriesKcal {
+                parts.append(String(format: "摄入 %.0f kcal", calories))
+                findings["caloriesIn"] = calories
+            } else {
+                parts.append("热量记录不完整")
+                findings["caloriesInStatus"] = "incomplete"
+            }
+            lines.append("• 饮食：" + parts.joined(separator: " / "))
+            findings["mealCount"] = agg.mealNutrition.mealCount
         }
         if agg.medTaken > 0 {
             lines.append("• 用药：服用 \(agg.medTaken) 次")
@@ -356,16 +419,15 @@ actor SummaryGenerator {
     /// Calls the configured LLM with the deterministic summary text as user content,
     /// writes the response back into `daily_summaries.llm_text` (and model/timestamp).
     /// Returns the LLM commentary or throws.
-    /// No-op (returns nil) if LLM not configured or disabled.
+    /// The deterministic summary is always rebuilt and persisted first. If LLM access is
+    /// disabled or unavailable, returns nil after that local invalidation without a request.
     @discardableResult
     func augmentDailyWithLLM(for date: String) async throws -> String? {
-        guard LLMConfig.enabled, let client = LLMClient(fromConfig: true) else { return nil }
-
-        // Read the existing summary text — that's what gets sent to the LLM (privacy-bounded).
-        let baseText: String? = try database.read { db in
-            try DailySummary.fetchOne(db, key: date)?.summaryText
-        }
+        // Rebuild locally first so stale deterministic text or LLM commentary can never
+        // survive an augmentation attempt, even when networking is disabled/unavailable.
+        let baseText = try rebuildDailyForLLM(for: date)
         guard let baseText, !baseText.isEmpty else { return nil }
+        guard LLMConfig.enabled, let client = LLMClient(fromConfig: true) else { return nil }
 
         let commentary = try await client.complete(
             systemPrompt: LLMClient.summarySystemPrompt,
@@ -386,12 +448,9 @@ actor SummaryGenerator {
     /// Same as `augmentDailyWithLLM` but for the weekly summary.
     @discardableResult
     func augmentWeeklyWithLLM(weekStart: String) async throws -> String? {
-        guard LLMConfig.enabled, let client = LLMClient(fromConfig: true) else { return nil }
-
-        let baseText: String? = try database.read { db in
-            try WeeklySummary.fetchOne(db, key: weekStart)?.summaryText
-        }
+        let baseText = try rebuildWeeklyForLLM(weekStart: weekStart)
         guard let baseText, !baseText.isEmpty else { return nil }
+        guard LLMConfig.enabled, let client = LLMClient(fromConfig: true) else { return nil }
 
         let commentary = try await client.complete(
             systemPrompt: LLMClient.summarySystemPrompt,
@@ -419,6 +478,16 @@ actor SummaryGenerator {
     private func decodeStringArray(_ json: String) -> [String]? {
         guard let data = json.data(using: .utf8) else { return nil }
         return try? JSONSerialization.jsonObject(with: data) as? [String]
+    }
+
+    private static func hasCurrentNutritionContract(_ json: String?) -> Bool {
+        guard let data = json?.data(using: .utf8),
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let version = object[nutritionEvidenceContractKey] as? NSNumber
+        else {
+            return false
+        }
+        return version.intValue == nutritionEvidenceContractVersion
     }
 
     private func epochRange(for date: String) -> (Int64, Int64) {

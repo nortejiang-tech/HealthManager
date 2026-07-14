@@ -141,26 +141,35 @@ struct BodyCardData: Sendable, Equatable {
 }
 
 struct DietCardData: Sendable, Equatable {
-    var todayCalories: Double = 0
-    var todayProtein: Double = 0
-    var todayFat: Double = 0
-    var todayCarbs: Double = 0
+    var totals: MealNutritionTotals?
     var meals: [MealRow] = []
     var last7Days: [DatedDouble] = []
+    var hasIncompleteCalorieDays = false
+
+    var todayCalories: Double? { totals?.caloriesKcal }
+    var todayProtein: Double? { totals?.proteinG }
+    var todayFat: Double? { totals?.fatG }
+    var todayCarbs: Double? { totals?.carbsG }
 
     struct MealRow: Sendable, Equatable, Identifiable {
         let id: Int64
         let mealType: String
-        let kcal: Double
+        let kcal: Double?
         let eatenAt: Date
     }
 }
 
 struct DeficitCardData: Sendable, Equatable {
-    var todayDeficit: Double?
-    var todayBurned: Double?
-    var todayIntake: Double?
+    var energy = EnergyBalanceEvidence(
+        activeKcal: nil,
+        basalKcal: nil,
+        intake: .noMeals
+    )
     var last7Days: [DatedDouble] = []
+
+    var todayDeficit: Double? { energy.deficitKcal }
+    var todayBurned: Double? { energy.burnedKcal }
+    var todayIntake: Double? { energy.intakeKcal }
 }
 
 struct DatedDouble: Sendable, Equatable, Identifiable {
@@ -272,65 +281,56 @@ struct DashboardLoader {
                 db, column: "weight_kg", table: "body_metrics_daily",
                 fromKey: last30Key, toKey: today)
 
-            // -- diet (today's meals + macro totals from meal_records) --
+            // -- diet (today's meals + conservative nutrition evidence) --
+            let nutritionWindow = try MealNutritionEvidenceQuery.load(
+                db: db,
+                fromLocalDay: last7Cutoff,
+                throughLocalDay: todayStart,
+                calendar: cal
+            )
+            let todayNutrition = nutritionWindow.days.first {
+                cal.isDate($0.date, inSameDayAs: todayStart)
+            }
+            snap.diet.totals = todayNutrition?.totals
+            snap.diet.hasIncompleteCalorieDays = nutritionWindow.days.contains {
+                $0.calories == .incomplete
+            }
+            snap.diet.last7Days = nutritionWindow.days.compactMap { day in
+                guard case let .complete(value) = day.calories else { return nil }
+                return DatedDouble(date: day.date, value: value)
+            }
+
+            let todayEnd = cal.date(byAdding: .day, value: 1, to: todayStart) ?? todayStart
             let todayDayStart = Int64(todayStart.timeIntervalSince1970)
-            let todayDayEnd = todayDayStart + 86_400
+            let todayDayEnd = Int64(todayEnd.timeIntervalSince1970)
             let mealRows = try Row.fetchAll(db, sql: """
-                SELECT id, meal_type, calories_kcal, protein_g, fat_g, carbs_g, eaten_at
+                SELECT id, meal_type, calories_kcal, eaten_at
                 FROM meal_records
                 WHERE eaten_at >= ? AND eaten_at < ?
                 ORDER BY eaten_at ASC
                 """, arguments: [todayDayStart, todayDayEnd])
             for r in mealRows {
-                let kcal: Double = r["calories_kcal"] ?? 0
-                let p: Double = r["protein_g"] ?? 0
-                let f: Double = r["fat_g"] ?? 0
-                let c: Double = r["carbs_g"] ?? 0
-                snap.diet.todayCalories += kcal
-                snap.diet.todayProtein += p
-                snap.diet.todayFat += f
-                snap.diet.todayCarbs += c
                 let eaten: Int64 = r["eaten_at"] ?? todayDayStart
                 snap.diet.meals.append(.init(
                     id: r["id"] ?? 0,
                     mealType: Self.localizedMealType(r["meal_type"] ?? ""),
-                    kcal: kcal,
+                    kcal: MealNutritionProjection.validatedValue(r["calories_kcal"]),
                     eatenAt: Date(timeIntervalSince1970: TimeInterval(eaten))
                 ))
             }
 
-            // -- diet 7d series (per-day total kcal) --
-            let dietStart = Int64(last7Cutoff.timeIntervalSince1970)
-            let dietEnd = todayDayEnd
-            let dietRows = try Row.fetchAll(db, sql: """
-                SELECT strftime('%Y-%m-%d', datetime(eaten_at, 'unixepoch', 'localtime')) AS d,
-                       SUM(COALESCE(calories_kcal, 0)) AS kcal
-                FROM meal_records
-                WHERE eaten_at >= ? AND eaten_at < ?
-                GROUP BY d
-                ORDER BY d ASC
-                """, arguments: [dietStart, dietEnd])
-            snap.diet.last7Days = dietRows.compactMap { r in
-                guard let s: String = r["d"], let d = Self.dateKey.date(from: s) else { return nil }
-                return DatedDouble(date: d, value: r["kcal"] ?? 0)
-            }
-
             // -- deficit (active + basal − intake) for today + last 7 --
-            if let actRow = try Row.fetchOne(db, sql: """
+            let actRow = try Row.fetchOne(db, sql: """
                 SELECT active_energy_kcal, basal_energy_kcal
                 FROM activity_metrics_daily WHERE date = ?
-                """, arguments: [today]) {
-                let active: Double? = actRow["active_energy_kcal"]
-                let basal: Double? = actRow["basal_energy_kcal"]
-                let burned: Double? = (active ?? 0) + (basal ?? 0) > 0 ? (active ?? 0) + (basal ?? 0) : nil
-                snap.deficit.todayBurned = burned
-                snap.deficit.todayIntake = snap.diet.todayCalories > 0 ? snap.diet.todayCalories : nil
-                if let b = burned {
-                    snap.deficit.todayDeficit = b - snap.diet.todayCalories
-                }
-            } else if snap.diet.todayCalories > 0 {
-                snap.deficit.todayIntake = snap.diet.todayCalories
-            }
+                """, arguments: [today])
+            let active: Double? = actRow?["active_energy_kcal"]
+            let basal: Double? = actRow?["basal_energy_kcal"]
+            snap.deficit.energy = EnergyBalanceEvidence(
+                activeKcal: active,
+                basalKcal: basal,
+                intake: todayNutrition?.calories ?? .noMeals
+            )
             snap.deficit.last7Days = try Self.deficitSeries(
                 db, fromKey: last7Key, toKey: today)
 
@@ -387,21 +387,17 @@ struct DashboardLoader {
         guard let cutoff = cal.date(byAdding: .day, value: -(historyDays - 1), to: todayStart) else {
             return []
         }
-        let from = Int64(cutoff.timeIntervalSince1970)
-        let toExclusive = Int64(todayStart.timeIntervalSince1970) + 86_400
 
         let raw: [DatedDouble] = try await database.asyncRead { db in
-            let rows = try Row.fetchAll(db, sql: """
-                SELECT strftime('%Y-%m-%d', datetime(eaten_at, 'unixepoch', 'localtime')) AS d,
-                       SUM(COALESCE(calories_kcal, 0)) AS kcal
-                FROM meal_records
-                WHERE eaten_at >= ? AND eaten_at < ?
-                GROUP BY d
-                ORDER BY d ASC
-                """, arguments: [from, toExclusive])
-            return rows.compactMap { row in
-                guard let s: String = row["d"], let d = Self.dateKey.date(from: s) else { return nil }
-                return DatedDouble(date: d, value: row["kcal"] ?? 0)
+            let evidence = try MealNutritionEvidenceQuery.load(
+                db: db,
+                fromLocalDay: cutoff,
+                throughLocalDay: todayStart,
+                calendar: cal
+            )
+            return evidence.days.compactMap { day in
+                guard case let .complete(value) = day.calories else { return nil }
+                return DatedDouble(date: day.date, value: value)
             }
         }
         return Self.fillAndBucket(raw, period: period, aggregation: .sum, daysOverride: historyDays)
@@ -412,11 +408,22 @@ struct DashboardLoader {
     /// All four values are kcal; `deficit` is the same number rendered on the chart.
     struct DeficitBreakdown: Equatable {
         let date: Date
-        let basal: Double?     // basal_energy_kcal (基础代谢)
-        let active: Double?    // active_energy_kcal (活动消耗)
-        let intake: Double?    // SUM(meal_records.calories_kcal) over the local day
-        var deficit: Double {
-            (active ?? 0) + (basal ?? 0) - (intake ?? 0)
+        let energy: EnergyBalanceEvidence
+
+        var basal: Double? { energy.basalKcal }
+        var active: Double? { energy.activeKcal }
+        var intakeEvidence: DietCaloriesEvidence { energy.intake }
+        var intake: Double? { energy.intakeKcal }
+        var deficit: Double? { energy.deficitKcal }
+
+        var missingReason: String? {
+            if active == nil { return "缺少有效活动能量" }
+            if basal == nil { return "缺少有效基础代谢" }
+            switch intakeEvidence {
+            case .noMeals: return "当日没有饮食记录"
+            case .incomplete: return "当日饮食热量记录不完整"
+            case .complete: return deficit == nil ? "热量缺口无法由现有记录计算" : nil
+            }
         }
     }
 
@@ -433,24 +440,25 @@ struct DashboardLoader {
                 FROM activity_metrics_daily
                 WHERE date = ?
                 """, arguments: [key])
-            let intakeRow = try Row.fetchOne(db, sql: """
-                SELECT SUM(COALESCE(calories_kcal, 0)) AS intake
-                FROM meal_records
-                WHERE strftime('%Y-%m-%d', datetime(eaten_at, 'unixepoch', 'localtime')) = ?
-                """, arguments: [key])
-
+            let intake = try MealNutritionEvidenceQuery.load(
+                db: db,
+                fromLocalDay: day,
+                throughLocalDay: day,
+                calendar: cal
+            ).calories
             let basal: Double? = actRow?["basal_energy_kcal"]
             let active: Double? = actRow?["active_energy_kcal"]
-            let intake: Double? = {
-                let v: Double? = intakeRow?["intake"]
-                // SUM with no rows returns NULL → nil; SUM with rows but all-NULL → 0.
-                return (v ?? 0) > 0 ? v : nil
-            }()
-
-            if basal == nil && active == nil && intake == nil {
+            if actRow == nil && intake == .noMeals {
                 return nil
             }
-            return DeficitBreakdown(date: day, basal: basal, active: active, intake: intake)
+            return DeficitBreakdown(
+                date: day,
+                energy: EnergyBalanceEvidence(
+                    activeKcal: active,
+                    basalKcal: basal,
+                    intake: intake
+                )
+            )
         }
     }
 
@@ -561,19 +569,6 @@ struct DashboardLoader {
 
     // MARK: - SQL helpers
 
-    /// Convert a `[fromKey, toKey]` (inclusive, yyyy-MM-dd) window into a half-open epoch
-    /// range `[start-of-fromKey, start-of-(toKey+1day))` for indexed `eaten_at` filters.
-    static func epochBounds(fromKey: String, toKey: String) -> (Int64, Int64) {
-        let cal = Calendar.current
-        guard let fromDate = dateKey.date(from: fromKey),
-              let toDate = dateKey.date(from: toKey) else {
-            return (0, Int64.max)
-        }
-        let start = Int64(cal.startOfDay(for: fromDate).timeIntervalSince1970)
-        let endDay = cal.date(byAdding: .day, value: 1, to: cal.startOfDay(for: toDate)) ?? toDate
-        return (start, Int64(endDay.timeIntervalSince1970))
-    }
-
     static func dailyValues(_ db: Database, column: String, table: String,
                             fromKey: String, toKey: String) throws -> [DatedDouble] {
         // Whitelist table/column to keep this SQL injection-safe (callers are ours only).
@@ -593,36 +588,37 @@ struct DashboardLoader {
 
     static func deficitSeries(_ db: Database, fromKey: String, toKey: String) throws -> [DatedDouble] {
         let rows = try Row.fetchAll(db, sql: """
-            SELECT date,
-                   COALESCE(active_energy_kcal, 0) + COALESCE(basal_energy_kcal, 0) AS burned
+            SELECT date, active_energy_kcal, basal_energy_kcal
             FROM activity_metrics_daily
             WHERE date BETWEEN ? AND ?
             ORDER BY date ASC
             """, arguments: [fromKey, toKey])
-        // Get intake per day from meal_records — bounded to the same window so we hit the
-        // `idx_meal_eaten_at` index instead of scanning/aggregating the whole meal table.
-        let (fromEpoch, toExclusive) = Self.epochBounds(fromKey: fromKey, toKey: toKey)
-        let intakeRows = try Row.fetchAll(db, sql: """
-            SELECT strftime('%Y-%m-%d', datetime(eaten_at, 'unixepoch', 'localtime')) AS date,
-                   SUM(COALESCE(calories_kcal, 0)) AS intake
-            FROM meal_records
-            WHERE eaten_at >= ? AND eaten_at < ?
-            GROUP BY date
-            """, arguments: [fromEpoch, toExclusive])
-        var intakeMap: [String: Double] = [:]
-        for r in intakeRows {
-            if let d: String = r["date"] {
-                intakeMap[d] = r["intake"] ?? 0
-            }
+        let cal = Calendar.current
+        guard let fromDate = dateKey.date(from: fromKey),
+              let toDate = dateKey.date(from: toKey)
+        else {
+            return []
         }
+        let nutrition = try MealNutritionEvidenceQuery.load(
+            db: db,
+            fromLocalDay: fromDate,
+            throughLocalDay: toDate,
+            calendar: cal
+        )
+        let intakeByDay = Dictionary(uniqueKeysWithValues: nutrition.days.map {
+            (cal.startOfDay(for: $0.date), $0.calories)
+        })
+
         var out: [DatedDouble] = []
         for row in rows {
             guard let key: String = row["date"], let d = Self.dateKey.date(from: key) else { continue }
-            let burned: Double = row["burned"] ?? 0
-            let intake = intakeMap[key] ?? 0
-            // Only emit a point when there's meaningful data on either side.
-            if burned > 0 || intake > 0 {
-                out.append(DatedDouble(date: d, value: burned - intake))
+            let energy = EnergyBalanceEvidence(
+                activeKcal: row["active_energy_kcal"],
+                basalKcal: row["basal_energy_kcal"],
+                intake: intakeByDay[cal.startOfDay(for: d)] ?? .noMeals
+            )
+            if let deficit = energy.deficitKcal {
+                out.append(DatedDouble(date: d, value: deficit))
             }
         }
         return out

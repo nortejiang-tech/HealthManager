@@ -1,5 +1,4 @@
 import SwiftUI
-import GRDB
 
 struct SummaryView: View {
     @EnvironmentObject private var environment: AppEnvironment
@@ -151,10 +150,9 @@ struct SummaryView: View {
         do {
             let todayKey = SummaryGenerator.todayKey()
             let weekKey = SummaryGenerator.currentWeekStartKey()
-            let (d, w) = try await environment.database.asyncRead { db -> (DailySummary?, WeeklySummary?) in
-                (try DailySummary.fetchOne(db, key: todayKey),
-                 try WeeklySummary.fetchOne(db, key: weekKey))
-            }
+            let g = generator
+            let d = try await g.currentDaily(for: todayKey)
+            let w = try await g.currentWeekly(weekStart: weekKey)
             await MainActor.run {
                 today = d
                 week = w
@@ -197,6 +195,7 @@ struct SummaryView: View {
             _ = try await generator.augmentDailyWithLLM(for: key)
             await refresh()
         } catch {
+            await refresh()
             await MainActor.run { llmError = "日报 AI 评注失败：\(error.localizedDescription)" }
             AppLogger.shared.error("LLM daily failed: \(error.localizedDescription)")
         }
@@ -213,6 +212,7 @@ struct SummaryView: View {
             _ = try await generator.augmentWeeklyWithLLM(weekStart: key)
             await refresh()
         } catch {
+            await refresh()
             await MainActor.run { llmError = "周报 AI 评注失败：\(error.localizedDescription)" }
             AppLogger.shared.error("LLM weekly failed: \(error.localizedDescription)")
         }

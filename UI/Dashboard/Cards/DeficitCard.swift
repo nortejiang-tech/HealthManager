@@ -20,7 +20,7 @@ struct DeficitCard: View {
                     .foregroundStyle(.secondary)
             } else {
                 CardMetric(value: "—", unit: nil)
-                Text("待 basal 数据补充")
+                Text(missingReason)
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
             }
@@ -38,7 +38,7 @@ struct DeficitCard: View {
             .font(.caption2)
             .labelStyle(.titleAndIcon)
 
-            if data.last7Days.contains(where: { $0.value != 0 }) {
+            if !data.last7Days.isEmpty {
                 Chart(data.last7Days) { d in
                     BarMark(
                         x: .value("日期", d.date, unit: .day),
@@ -61,6 +61,20 @@ struct DeficitCard: View {
                 CardEmptyState(text: "近 7 日无足够数据")
                     .frame(height: 52)
             }
+
+            Text("仅在基础代谢、活动能量和完整饮食摄入齐备时计算")
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+        }
+    }
+
+    private var missingReason: String {
+        if data.energy.activeKcal == nil { return "缺少有效活动能量" }
+        if data.energy.basalKcal == nil { return "缺少有效基础代谢" }
+        switch data.energy.intake {
+        case .noMeals: return "今天还没有饮食记录"
+        case .incomplete: return "今天的饮食热量记录不完整"
+        case .complete: return "现有记录不足以计算热量缺口"
         }
     }
 }

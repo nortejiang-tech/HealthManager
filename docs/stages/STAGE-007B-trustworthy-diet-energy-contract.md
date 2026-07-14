@@ -1,6 +1,6 @@
 # STAGE-007B：可信饮食与热量缺口数据合同
 
-> 状态：READY（STAGE-007A 已选择方案 1；软件实现基线 `ff67ca1`）
+> 状态：PASS（软件与 Simulator 范围；STAGE-007A 已选择方案 1）
 >
 > 执行者：Coder；主架构师独立验收
 
@@ -164,8 +164,16 @@
 
 ## 10. 正式结果
 
-- 状态：PENDING
-- 验收日期：—
-- 验收 commit：—
-- 证据：—
-- 残余风险：—
+- 状态：PASS（软件与 Simulator 范围）
+- 验收日期：2026-07-14
+- 验收 commit：本文件所在 STAGE-007B checkpoint
+- 实现结果：新增 `MealNutritionEvidenceQuery` 深模块，统一半开本地日窗口、逐日排序、四项营养的有限非负校验与保守求和；新增 `DietCaloriesEvidence` 与 `EnergyBalanceEvidence`，由 Diet、Dashboard、活动详情、日报和周报共同消费。合法 0 保留；无餐次、不完整、负值、非有限值与求和溢出不再被改成 0 或用于缺口计算
+- 消费者结果：Dashboard 今日值、近 7 日趋势、周/月/年饮食序列、缺口序列与 breakdown 均遵守共享证据；Diet 主页面和近期餐次把非法值显示为未知，并明确区分加载中、成功空数据和加载失败；Summary 旧合同记录在展示前重建，缺记录的被动读取不再隐式创建总结；LLM augmentation 每次先持久化可信 deterministic summary 并清空旧评注，再判断是否允许联网
+- 真实 TDD 返工证据：针对双轴审查阻断新增测试后，旧实现结果为 32 项中 30 通过、2 失败，结果包 `/tmp/healthmanager-stage007b-review-red-20260714.xcresult`；修复后同组 32/32，结果包 `/tmp/healthmanager-stage007b-review-green-20260714.xcresult`。失败覆盖“被动读取意外创建日报/周报”与“LLM 禁用时未先失效旧评注”，不是事后推断
+- 主架构师定向复验：最终候选上的 `DashboardNutritionEvidenceTests`、`MealNutritionProjectionTests`、`SummaryGeneratorTests`、`DailyAggregatorEnergyTests` 共 47/47，0 failed、0 skipped；结果包 `/tmp/healthmanager-stage007b-architect-targeted-20260714-03.xcresult`
+- 全量证据：最终候选上的 `HealthManagerTests` 218/218，0 failed、0 skipped，结果包 `/tmp/healthmanager-stage007b-architect-full-unit-20260714-01.xcresult`；`HealthManagerUITests` 6/6，0 failed、0 skipped，结果包 `/tmp/healthmanager-stage007b-architect-full-ui-20260714-01.xcresult`。UI 运行期间 Xcode 输出 LLDB version snapshot 工具提示，但 Runner 与 App 持续运行且最终 xcresult 为 PASS
+- 独立构建：iPhone 17 / iOS 26.5 Simulator build succeeded，0 error、0 warning；结果包 `/tmp/healthmanager-stage007b-architect-build-20260714-01.xcresult`
+- 静态与范围证据：生产 Swift 中已无独立 `SUM(calories_kcal)`、`SUM(COALESCE(calories_kcal, 0))` 或 `COALESCE(SUM(calories_kcal), 0)` 摄入事实；餐次证据查询未使用固定 `+86400` 或 inclusive `end-1`；`git diff --check` 通过。schema、migration、MealStore、餐食编辑/复用/证据 UI、HealthKit、同步、DailyAggregator 算法、来源规则、数据质量与 LLM provider/network implementation 均未改变
+- 双轴审查：Spec 轴与 Standards/Scope 轴在最终 staged diff 上均 PASS。审查期间发现并修复了 augmentation guard 顺序、真实负 P/F/C 与非有限/溢出覆盖不足、被动总结读取的隐藏写副作用、LLM rebuild API 的神秘命名/错误注释，以及 DietView 把未加载或失败伪装成无餐次；修复后两轴重新独立复验
+- 执行记录：低成本 Coder 在约 132k tokens 的只读盘点后仍未产生实现 diff，主架构师依据既定升级规则中止该执行并接管；接管后按测试先行完成实现、两轮审查返工、全量验收与文档收口。该 Coder 运行不作为实现质量证据
+- 残余风险：Simulator 与 in-memory GRDB 证明软件合同，不证明真实用户是否完整记录饮食，也不替代真机 HealthKit/照片/后台同步验证；这些项目继续在 STAGE-009 标为 INCOMPLETE。当前没有 schema 约束阻止旧库出现负数或非有限值，安全性来自统一读取 seam；若未来新增读取方，必须继续通过该接口

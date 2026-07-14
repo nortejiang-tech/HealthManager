@@ -112,6 +112,40 @@ final class MealNutritionProjectionTests: XCTestCase {
         XCTAssertEqual(totals?.carbsG, 3)
     }
 
+    func test_projectRejectsNegativeMetricWithoutInvalidatingOtherMetrics() {
+        let totals = MealNutritionProjection.project([
+            MealNutritionValues(caloriesKcal: 120, proteinG: 8, fatG: 4, carbsG: 12),
+            MealNutritionValues(caloriesKcal: -20, proteinG: 2, fatG: 1, carbsG: 3)
+        ])
+
+        XCTAssertNil(totals?.caloriesKcal)
+        XCTAssertEqual(totals?.proteinG, 10)
+        XCTAssertEqual(totals?.fatG, 5)
+        XCTAssertEqual(totals?.carbsG, 15)
+    }
+
+    func test_projectRejectsMetricWhenFiniteInputsOverflow() {
+        let totals = MealNutritionProjection.project([
+            MealNutritionValues(
+                caloriesKcal: Double.greatestFiniteMagnitude,
+                proteinG: 1,
+                fatG: 1,
+                carbsG: 1
+            ),
+            MealNutritionValues(
+                caloriesKcal: Double.greatestFiniteMagnitude,
+                proteinG: 2,
+                fatG: 3,
+                carbsG: 4
+            )
+        ])
+
+        XCTAssertNil(totals?.caloriesKcal)
+        XCTAssertEqual(totals?.proteinG, 3)
+        XCTAssertEqual(totals?.fatG, 4)
+        XCTAssertEqual(totals?.carbsG, 5)
+    }
+
     func test_totalsHasWritableValueRequiresFinitePositiveMetric() {
         let noWritable = MealNutritionTotals(
             caloriesKcal: 0,

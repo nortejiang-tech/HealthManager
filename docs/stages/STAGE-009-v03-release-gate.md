@@ -17,7 +17,7 @@
 | ADR-001 | Accepted / VERIFIED | 保持不变 |
 | STAGE-001～006 | PASS | 不重写既有结果；最终全量回归覆盖 |
 | STAGE-007A | ACCEPTED（方案 1） | 保持产品与证据边界 |
-| STAGE-007B | READY | 可信饮食/缺口合同 PASS |
+| STAGE-007B | PASS | 保持共享可信饮食/缺口证据合同；最终全量回归覆盖 |
 | STAGE-007C | NOT STARTED | Today evidence snapshot/loader PASS |
 | STAGE-007D | NOT STARTED | 方案 1 时间线与五栏导航 PASS |
 | STAGE-008 | PASS，checkpoint `ff67ca1` | 睡眠真机数据仍为 INCOMPLETE |

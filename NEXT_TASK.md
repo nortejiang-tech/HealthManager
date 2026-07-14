@@ -1,16 +1,16 @@
 # NEXT_TASK
 
-> 当前状态（2026-07-14）：分支 `codex/health-planning-20260713` 已完成并推送 STAGE-001～006 与 STAGE-008；当前已验收的软件实现基线为 `ff67ca1`。STAGE-007A 已接受方案 1「按时间展开的健康证据线」。
+> 当前状态（2026-07-14）：分支 `codex/health-planning-20260713` 已完成 STAGE-001～006、STAGE-007A/007B 与 STAGE-008；STAGE-007B checkpoint 包含全局可信饮食/缺口合同。STAGE-007A 已接受方案 1「按时间展开的健康证据线」。
 
-## 当前执行阶段
+## 当前规划阶段
 
-STAGE-007B 先修正 Today 会使用的饮食与热量缺口数据合同：
+STAGE-007B 已 PASS：
 
 - 任务书：`docs/stages/STAGE-007B-trustworthy-diet-energy-contract.md`
-- Coder 提示词：`docs/coder-prompts/STAGE-007B-trustworthy-diet-energy-contract.md`
-- 核心要求：未知营养不变成 0；active、basal、完整 intake 三者齐备才计算缺口；合法 0 仍是已知。
+- 已验收合同：未知营养不变成 0；active、basal、完整 intake 三者齐备才计算缺口；合法 0 仍是已知；未加载/加载失败不伪装成无餐次。
+- 验收基线：unit 218/218、UI 6/6、Simulator build 0 error / 0 warning。
 
-STAGE-007B PASS 后再根据 accepted diff 生成 STAGE-007C Today evidence loader 提示词；STAGE-007C PASS 后才生成 STAGE-007D 时间线与五栏导航提示词。
+下一步由主架构师根据 STAGE-007B accepted diff 编写、双轴审查并提交 STAGE-007C Today evidence snapshot/loader 任务书与 Coder 提示词；当前还没有可交给 Coder 的 STAGE-007C prompt。STAGE-007C PASS 后才生成 STAGE-007D 时间线与五栏导航提示词。
 
 ## 随后的发布门
 

@@ -29,6 +29,11 @@ struct MealNutritionTotals: Equatable, Sendable {
 }
 
 enum MealNutritionProjection {
+    static func validatedValue(_ value: Double?) -> Double? {
+        guard let value, value.isFinite, value >= 0 else { return nil }
+        return value
+    }
+
     static func project(_ values: [MealNutritionValues]) -> MealNutritionTotals? {
         guard !values.isEmpty else { return nil }
 
@@ -45,14 +50,10 @@ enum MealNutritionProjection {
         _ keyPath: KeyPath<MealNutritionValues, Double?>
     ) -> Double? {
         let extracted = values.map { $0[keyPath: keyPath] }
-        guard extracted.allSatisfy(isValidValue) else {
+        guard extracted.allSatisfy({ validatedValue($0) != nil }) else {
             return nil
         }
-        return extracted.compactMap { $0 }.reduce(0, +)
-    }
-
-    private static func isValidValue(_ value: Double?) -> Bool {
-        guard let value else { return false }
-        return value.isFinite
+        let total = extracted.compactMap { $0 }.reduce(0, +)
+        return total.isFinite ? total : nil
     }
 }

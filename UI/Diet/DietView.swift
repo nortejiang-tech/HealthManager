@@ -12,8 +12,15 @@ struct DietView: View {
 
     @State private var meals: [MealRecord] = []
     @State private var activeSheet: DietSheetKind?
-    @State private var todayTotals: Totals = .zero
+    @State private var todayNutrition: MealNutritionEvidenceWindow?
+    @State private var loadState: LoadState = .loading
     @State private var deleteErrorMessage: String?
+
+    private enum LoadState: Equatable {
+        case loading
+        case loaded
+        case failed
+    }
 
     private enum DietSheetKind: Identifiable, Equatable {
         case add
@@ -31,26 +38,44 @@ struct DietView: View {
         }
     }
 
-    struct Totals: Equatable {
-        var calories: Double
-        var protein: Double
-        var fat: Double
-        var carbs: Double
-        static let zero = Totals(calories: 0, protein: 0, fat: 0, carbs: 0)
-    }
-
     var body: some View {
         NavigationStack {
             List {
                 Section("今日合计") {
-                    LabeledContent("热量", value: String(format: "%.0f kcal", todayTotals.calories))
-                    LabeledContent("蛋白质", value: String(format: "%.0f g", todayTotals.protein))
-                    LabeledContent("脂肪", value: String(format: "%.0f g", todayTotals.fat))
-                    LabeledContent("碳水", value: String(format: "%.0f g", todayTotals.carbs))
+                    LabeledContent("热量", value: nutritionLabel(todayNutrition?.totals?.caloriesKcal, unit: "kcal"))
+                    LabeledContent("蛋白质", value: nutritionLabel(todayNutrition?.totals?.proteinG, unit: "g"))
+                    LabeledContent("脂肪", value: nutritionLabel(todayNutrition?.totals?.fatG, unit: "g"))
+                    LabeledContent("碳水", value: nutritionLabel(todayNutrition?.totals?.carbsG, unit: "g"))
+                    switch loadState {
+                    case .loading:
+                        Text("正在加载今日饮食数据…")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    case .failed:
+                        Text("今日饮食数据加载失败，请下拉重试")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    case .loaded:
+                        if todayNutrition?.mealCount == 0 {
+                            Text("今日尚无餐次记录")
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                        } else if let totals = todayNutrition?.totals,
+                                  [totals.caloriesKcal, totals.proteinG, totals.fatG, totals.carbsG]
+                                    .contains(where: { $0 == nil }) {
+                            Text("部分餐次营养信息未完整记录")
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
                 }
 
                 Section("近期餐次") {
-                    if meals.isEmpty {
+                    if loadState == .loading {
+                        ProgressView("正在加载…")
+                    } else if loadState == .failed {
+                        Text("餐次记录加载失败，请下拉重试").foregroundStyle(.secondary)
+                    } else if meals.isEmpty {
                         Text("尚无记录。点击右上 + 添加一次。").foregroundStyle(.secondary)
                     } else {
                         ForEach(meals) { meal in
@@ -115,8 +140,10 @@ struct DietView: View {
     }
 
     private func refresh() async {
+        await MainActor.run { loadState = .loading }
         do {
-            let (list, totals) = try await environment.database.asyncRead { db -> ([MealRecord], Totals) in
+            let (list, nutrition) = try await environment.database.asyncRead {
+                db -> ([MealRecord], MealNutritionEvidenceWindow) in
                 let rows = try MealRecord
                     .order(Column("eaten_at").desc)
                     .limit(50)
@@ -124,33 +151,30 @@ struct DietView: View {
 
                 let calendar = Calendar.current
                 let dayStart = calendar.startOfDay(for: Date())
-                let dayEnd = calendar.date(byAdding: .day, value: 1, to: dayStart) ?? dayStart
-                let s = Int64(dayStart.timeIntervalSince1970)
-                let e = Int64(dayEnd.timeIntervalSince1970)
-                let totalRow = try Row.fetchOne(db, sql: """
-                    SELECT
-                        COALESCE(SUM(calories_kcal), 0) AS cal,
-                        COALESCE(SUM(protein_g), 0) AS pro,
-                        COALESCE(SUM(fat_g), 0) AS fat,
-                        COALESCE(SUM(carbs_g), 0) AS carb
-                    FROM meal_records
-                    WHERE eaten_at BETWEEN ? AND ?
-                    """, arguments: [s, e])
-                let totals = Totals(
-                    calories: totalRow?["cal"] ?? 0,
-                    protein: totalRow?["pro"] ?? 0,
-                    fat: totalRow?["fat"] ?? 0,
-                    carbs: totalRow?["carb"] ?? 0
+                let evidence = try MealNutritionEvidenceQuery.load(
+                    db: db,
+                    fromLocalDay: dayStart,
+                    throughLocalDay: dayStart,
+                    calendar: calendar
                 )
-                return (rows, totals)
+                return (rows, evidence)
             }
             await MainActor.run {
                 meals = list
-                todayTotals = totals
+                todayNutrition = nutrition
+                loadState = .loaded
             }
         } catch {
+            await MainActor.run {
+                todayNutrition = nil
+                loadState = .failed
+            }
             AppLogger.shared.error("Diet refresh failed: \(error.localizedDescription)")
         }
+    }
+
+    private func nutritionLabel(_ value: Double?, unit: String) -> String {
+        value.map { "\(mealNutritionText($0)) \(unit)" } ?? "—"
     }
 
     private func delete(_ meal: MealRecord) async {
@@ -204,10 +228,10 @@ private struct MealRow: View {
                     Text(dateLabel).font(.footnote).foregroundStyle(.secondary)
                 }
                 HStack(spacing: 12) {
-                    if let c = meal.caloriesKcal { Text("\(mealNutritionText(c)) kcal") }
-                    if let p = meal.proteinG { Text("P \(mealNutritionText(p))g") }
-                    if let f = meal.fatG { Text("F \(mealNutritionText(f))g") }
-                    if let c = meal.carbsG { Text("C \(mealNutritionText(c))g") }
+                    Text(nutritionText(meal.caloriesKcal, prefix: "", suffix: " kcal"))
+                    Text(nutritionText(meal.proteinG, prefix: "P ", suffix: "g"))
+                    Text(nutritionText(meal.fatG, prefix: "F ", suffix: "g"))
+                    Text(nutritionText(meal.carbsG, prefix: "C ", suffix: "g"))
                 }
                 .font(.footnote)
                 .foregroundStyle(.secondary)
@@ -221,6 +245,13 @@ private struct MealRow: View {
 
     private var dateLabel: String {
         AppDateFormats.shortDateTime.string(from: Date(timeIntervalSince1970: TimeInterval(meal.eatenAt)))
+    }
+
+    private func nutritionText(_ value: Double?, prefix: String, suffix: String) -> String {
+        guard let value = MealNutritionProjection.validatedValue(value) else {
+            return "\(prefix)—"
+        }
+        return "\(prefix)\(mealNutritionText(value))\(suffix)"
     }
 }
 

@@ -75,7 +75,7 @@ struct ActivityDetailView: View {
             } header: {
                 Text("今日训练")
             } footer: {
-                Text("热量缺口使用「基础代谢 + 活动能量 − 饮食摄入」。活动能量会合并 Active Energy 与运动记录里的消耗，并避免同一段训练重复计入。")
+                Text("热量缺口仅在基础代谢、活动能量和完整饮食摄入齐备时计算。活动能量会合并 Active Energy 与运动记录里的消耗，并避免同一段训练重复计入。")
             }
 
             if let loadError {
@@ -132,18 +132,22 @@ struct ActivityDetailView: View {
                     WHERE date = ?
                     """, arguments: [key]) {
                     summary.steps = row["step_count"]
-                    summary.activeEnergyKcal = row["active_energy_kcal"]
-                    summary.basalEnergyKcal = row["basal_energy_kcal"]
+                    summary.activeEnergyKcal = MealNutritionProjection.validatedValue(
+                        row["active_energy_kcal"]
+                    )
+                    summary.basalEnergyKcal = MealNutritionProjection.validatedValue(
+                        row["basal_energy_kcal"]
+                    )
                     summary.distanceMeters = row["distance_m"]
                     summary.exerciseMinutes = row["exercise_minutes"]
                 }
 
-                let intake = try Double.fetchOne(db, sql: """
-                    SELECT SUM(COALESCE(calories_kcal, 0))
-                    FROM meal_records
-                    WHERE eaten_at >= ? AND eaten_at < ?
-                    """, arguments: [startEpoch, endEpoch]) ?? 0
-                summary.intakeKcal = intake > 0 ? intake : nil
+                summary.intakeEvidence = try MealNutritionEvidenceQuery.load(
+                    db: db,
+                    fromLocalDay: start,
+                    throughLocalDay: start,
+                    calendar: calendar
+                ).calories
 
                 let rows = try ActivityWorkoutRow.fetchToday(db: db, start: startEpoch, end: endEpoch)
                 let energy = try Self.trendPoints(
@@ -211,19 +215,19 @@ struct ActivityDetailSummary: Equatable, Sendable {
     var basalEnergyKcal: Double?
     var distanceMeters: Double?
     var exerciseMinutes: Double?
-    var intakeKcal: Double?
+    var intakeEvidence: DietCaloriesEvidence = .noMeals
 
-    var totalBurnedKcal: Double? {
-        let active = activeEnergyKcal ?? 0
-        let basal = basalEnergyKcal ?? 0
-        let total = active + basal
-        return total > 0 ? total : nil
+    var energy: EnergyBalanceEvidence {
+        EnergyBalanceEvidence(
+            activeKcal: activeEnergyKcal,
+            basalKcal: basalEnergyKcal,
+            intake: intakeEvidence
+        )
     }
 
-    var deficitKcal: Double? {
-        guard let totalBurnedKcal else { return nil }
-        return totalBurnedKcal - (intakeKcal ?? 0)
-    }
+    var totalBurnedKcal: Double? { energy.burnedKcal }
+    var intakeKcal: Double? { energy.intakeKcal }
+    var deficitKcal: Double? { energy.deficitKcal }
 }
 
 struct ActivityWorkoutRow: Identifiable, Hashable, Sendable {
