@@ -99,6 +99,11 @@
 item4-7 的执行标准与证据格式详见：
 - `docs/stages/STAGE-009-item4-7-real-device-checklist.md`
 
+补充（2026-07-15）：
+- 已完成一轮 `...-043014` 机器快照，当前 DB 与文件计数可继续作为基线：
+  - `meal_records_count=114`，`meal_records_with_photo_ref=63`，`mealphotos_files=133`，`unreferenced_files=0`，`active_sync_jobs` 当前快照为 1。
+- 该快照不替代任何 item4/5/6/7 的 PASS 判定：仍缺少人工操作序列与对应截图/录像。
+
 本轮已授权“软件与 Simulator 完成、真机次日执行”，因此允许最终写：**软件/Simulator PASS，真机 INCOMPLETE**。但整体发布就绪仍为 INCOMPLETE；不得 merge、tag 或 release。
 
 ## 7. HANDOFF 与文档门
