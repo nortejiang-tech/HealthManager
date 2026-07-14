@@ -96,6 +96,9 @@
 6. Apple Watch、iPhone 与第三方 sleepAnalysis 的跨午夜、inBed/asleep、详细阶段重叠和来源组合。
 7. 后台 observer / 增量同步在真实 HealthKit 样本变化时的行为。
 
+item4-7 的执行标准与证据格式详见：
+- `docs/stages/STAGE-009-item4-7-real-device-checklist.md`
+
 本轮已授权“软件与 Simulator 完成、真机次日执行”，因此允许最终写：**软件/Simulator PASS，真机 INCOMPLETE**。但整体发布就绪仍为 INCOMPLETE；不得 merge、tag 或 release。
 
 ## 7. HANDOFF 与文档门

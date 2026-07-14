@@ -7,6 +7,7 @@
 下一会话不再实现 STAGE-007C/007D，也不生成“让 Coder 再跑一遍”的提示词。主架构师必须按以下文档在真实 iPhone 上逐项取证：
 
 - 发布门与七项真机清单：`docs/stages/STAGE-009-v03-release-gate.md`
+- 真机 item4-7 逐项动作与证据：`docs/stages/STAGE-009-item4-7-real-device-checklist.md`
 - 次日交接：`docs/handoffs/V0.3-SOFTWARE-SIMULATOR-HANDOFF-20260714.md`
 - Today 视觉与可访问性边界：`design-qa.md`
 - 餐食 schema 决策：`docs/adr/ADR-001-normalized-meal-item-snapshots.md`
