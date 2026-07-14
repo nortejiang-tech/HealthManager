@@ -174,9 +174,9 @@ find "$APP_CONTAINER/Library/Caches/MealPhotos" -type f | sed 's#^./##' | sort >
 sqlite3 "$APP_CONTAINER/Application Support/HealthManager/health.sqlite" <<'SQL' > "$WORKROOT/reports/sleep-cross-midnight.csv"
 .headers on
 .mode csv
-SELECT sample_type, source_bundle, source_name, start_at, end_at, value, value2, unit, is_deleted
+SELECT hk_type, source_bundle_id, source_name, start_at, end_at, value, value2, unit, is_deleted
 FROM health_samples_raw
-WHERE sample_type='sleep'
+WHERE hk_type='HKCategoryTypeIdentifierSleepAnalysis'
 ORDER BY start_at DESC
 LIMIT 200;
 
