@@ -178,3 +178,11 @@ HealthManager 后续开发会跨会话、跨模型接力。为了避免便宜模
 - 每个正式 PASS 阶段可在 `codex/health-planning-20260713` 创建 checkpoint commit 并 push。
 - 今晚禁止合并 `main`、打 tag 或发布正式版本。
 - STAGE-009 完成软件、迁移、全量测试和 Simulator 验证；真机验证如未执行必须标为 INCOMPLETE，并进入次日 HANDOFF。
+
+## 10. 2026-07-14 执行快照
+
+- STAGE-001～006 已 PASS；餐食分项从追加迁移、深 Store、可测试草稿、保存副作用编排、真实编辑器接线、低摩擦复用到来源证据显示均已形成 checkpoint。
+- STAGE-008 已 PASS 并推送 `ff67ca1`：Dashboard 不再消费 `sleep_efficiency`，日聚合主动清除历史非空值；真实睡眠阶段组合继续为 INCOMPLETE。
+- 当前全量基线为 `HealthManagerTests` 186/186、`HealthManagerUITests` 6/6、iPhone 17 / iOS 26.5 Simulator build 0 error / 0 warning；具体结果包见 STAGE-008 正式结果。该基线会在 STAGE-007B 后由 STAGE-009 最终重跑，不能提前当成最终发布证据。
+- STAGE-007A 的五栏共同方向保持不变，但“今日”首屏的三个信息层级原型仍需用户明确选择；见 `docs/stages/STAGE-007A-today-information-architecture-selection.md`。选择前不得开始 STAGE-007B。
+- STAGE-009 已建立任务书并完成迁移预检；软件最终门等待 STAGE-007B，真机未执行项逐项保持 INCOMPLETE。本轮继续禁止 merge、tag 与 release。
