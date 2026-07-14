@@ -1,6 +1,6 @@
 # STAGE-008：睡眠效率证据边界
 
-> 状态：READY（STAGE-006 PASS，checkpoint `b3107ef`；与等待用户选择的 STAGE-007A 解耦）
+> 状态：PASS（软件与 Simulator 范围；与等待用户选择的 STAGE-007A 解耦）
 >
 > 执行者：Coder；主架构师验收
 
@@ -84,10 +84,15 @@
 
 ## 8. 正式结果
 
-> 由主架构师填写。
-
-- 状态：PENDING
-- 验收日期：—
-- 验收 commit：—
-- 证据：—
-- 残余风险：—
+- 状态：PASS（软件与 Simulator 范围）
+- 验收日期：2026-07-14
+- 验收 commit：本文件所在 STAGE-008 checkpoint
+- 决策结果：继续保留 schema 中的 optional `sleep_efficiency`，但停止从 Dashboard data payload 与 loader 消费该列；聚合 INSERT 写 NULL，UPSERT 用 `sleep_efficiency = excluded.sleep_efficiency` 主动覆盖历史非空值。未新增百分比、默认值、目标、评分或诊断，也未改变既有 Asleep 时长算法
+- Coder 定向证据：`DailyAggregatorSleepTests` 与既有 `DailyAggregatorEnergyTests` 共 7/7；结果包 `/tmp/healthmanager-stage008-coder-unit-20260714.xcresult`。Coder build succeeded，0 error、0 warning；结果包 `/tmp/healthmanager-stage008-coder-build-20260714.xcresult`
+- 主架构师定向复验：同一 7/7 测试在候选最终逻辑上独立通过；结果包 `/tmp/healthmanager-stage008-architect-targeted-20260714-01.xcresult`。测试预置历史非空效率，证明 rebuild 后为 NULL；同批 inBed=0、awake=2 不计入，而 Asleep=1 分别得到 1,800 秒与 3,600 秒；`DashboardLoader` 仍得到 1 小时和一条近 7 日值
+- 全量证据：最终代码上的 `HealthManagerTests` 186/186；结果包 `/tmp/healthmanager-stage008-architect-full-unit-20260714-01.xcresult`。最终代码上的 `HealthManagerUITests` 6/6；结果包 `/tmp/healthmanager-stage008-architect-full-ui-20260714-01.xcresult`。独立 iPhone 17 / iOS 26.5 Simulator build succeeded，0 error、0 warning；结果包 `/tmp/healthmanager-stage008-architect-build-20260714-01.xcresult`
+- 实际 Simulator 数据审计：只读查询运行中 app container 的 `health.sqlite`，`activity_metrics_daily` 为 `98|0|0`（总行数 | `sleep_seconds` 非空 | `sleep_efficiency` 非空），原始 sleepAnalysis 样本为 0。该库能证明当前没有可用于效率验证的数据，不能证明真实设备的阶段组合
+- 静态边界：生产代码已无 `lastNightEfficiency`；Dashboard 查询只读取 `sleep_seconds`。Coder 实现候选仅修改 `DailyAggregator.swift`、`ActivityMetricsDaily.swift`、`DashboardData.swift` 并新增 `DailyAggregatorSleepTests.swift`；最终 staged checkpoint 另含主架构师填写的本验收文档。schema、migration、`sleepDuration`、HealthKit、同步、来源优先级、`SleepCard`、详情页、布局与导航均未改变，`git diff --check` 通过
+- 双轴审查：以 `ac4c9f5` 为固定点审查 staged candidate。Spec 轴 PASS，0 阻断、0 非阻断；Standards 轴代码 PASS、无新增 smell，但发现 Coder 把“修改前理论上会失败”写成 red 证据而没有真实 red 结果。正式验收不采纳该推断，TDD red 明确记为 INCOMPLETE；green、全量测试、构建和数据库断言均有可复现结果包
+- 执行记录：Coder 一次候选完成全部四个白名单文件，定向测试与 build 通过，主架构师未发现需要接管的技术实现缺陷；主架构师只修正一处未被数据证明的注释措辞，并独立完成全量验收、双轴审查与证据记录
+- 残余风险：真实 Apple Watch/iPhone/第三方 sleepAnalysis 阶段分布、跨午夜归属、inBed/asleep 配对、阶段重叠、来源选择及未来效率可计算性均为 INCOMPLETE，进入 STAGE-009 次日真机清单。TDD red 未捕获，亦为 INCOMPLETE；本阶段不据此宣称 test-first 过程，只宣称最终合同已由自动化与静态证据验证

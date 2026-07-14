@@ -129,7 +129,6 @@ struct HeartCardData: Sendable, Equatable {
 
 struct SleepCardData: Sendable, Equatable {
     var lastNightHours: Double?
-    var lastNightEfficiency: Double?
     var last7Days: [DatedDouble] = []  // hours
 }
 
@@ -231,9 +230,9 @@ struct DashboardLoader {
                 db, column: "resting_hr_bpm", table: "activity_metrics_daily",
                 fromKey: last7Key, toKey: today)
 
-            // -- sleep (last night = today's row; fall back to most recent non-null) --
+            // -- sleep (latest non-zero daily Asleep duration; efficiency is unavailable) --
             if let row = try Row.fetchOne(db, sql: """
-                SELECT sleep_seconds, sleep_efficiency
+                SELECT sleep_seconds
                 FROM activity_metrics_daily
                 WHERE sleep_seconds IS NOT NULL AND sleep_seconds > 0
                 ORDER BY date DESC LIMIT 1
@@ -241,7 +240,6 @@ struct DashboardLoader {
                 if let secs: Int = row["sleep_seconds"] {
                     snap.sleep.lastNightHours = Double(secs) / 3600.0
                 }
-                snap.sleep.lastNightEfficiency = row["sleep_efficiency"]
             }
             let sleepRaw = try Self.dailyValues(
                 db, column: "sleep_seconds", table: "activity_metrics_daily",

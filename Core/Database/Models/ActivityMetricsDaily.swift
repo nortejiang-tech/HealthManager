@@ -5,10 +5,10 @@ import GRDB
 /// `DailyAggregator` at the tail of every sync. Dashboard cards read this directly so
 /// they never touch `health_samples_raw` at view time.
 ///
-/// NOTE: `sleepEfficiency` and `sourcesJson` are **reserved** — the schema carries them but
-/// `DailyAggregator` currently writes them as NULL. They're kept for forward compatibility
-/// (per-source attribution snapshot / sleep-efficiency rollup) and read sites must treat
-/// them as optional/absent. Don't assume a non-null value until the aggregator populates them.
+/// NOTE: `sleepEfficiency` and `sourcesJson` are **reserved** — they are retained for
+/// forward compatibility only. `sleep_efficiency` is explicitly overwritten on each rebuild
+/// via UPSERT and is expected to be NULL until a later stage implements a validated
+/// efficiency metric.
 struct ActivityMetricsDaily: Codable, FetchableRecord, PersistableRecord, Equatable, Identifiable {
     static let databaseTableName = "activity_metrics_daily"
 

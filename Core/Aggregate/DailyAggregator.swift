@@ -103,6 +103,7 @@ actor DailyAggregator {
                   hrv_ms = excluded.hrv_ms,
                   vo2_max = excluded.vo2_max,
                   sleep_seconds = excluded.sleep_seconds,
+                  sleep_efficiency = excluded.sleep_efficiency,
                   computed_at = excluded.computed_at
                 """, arguments: [
                     date,
