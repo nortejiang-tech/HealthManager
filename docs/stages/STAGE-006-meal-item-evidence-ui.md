@@ -1,8 +1,8 @@
 # STAGE-006：餐食来源与证据呈现
 
-> 状态：READY（STAGE-005B PASS，checkpoint `f21589f`）
+> 状态：PASS（软件与 Simulator 范围）
 >
-> 执行者：Coder；主架构师验收
+> 执行者：Coder 初稿；主架构师接管修复并独立验收
 >
 > 前置决策：[ADR-001](../adr/ADR-001-normalized-meal-item-snapshots.md)
 
@@ -126,10 +126,15 @@ AI/database/label 不允许为 UI 测试新增 debug seed、数据库旁路或�
 
 ## 10. 正式结果
 
-> 由主架构师填写。
-
-- 状态：PENDING
-- 验收日期：—
-- 验收 commit：—
-- 证据：—
-- 残余风险：—
+- 状态：PASS（软件与 Simulator 范围）
+- 验收日期：2026-07-14
+- 验收 commit：本文件所在 STAGE-006 checkpoint
+- 定向证据：最终代码上的 `MealItemEvidencePresentationTests`、`MealItemDraftTests` 与 `MealEditorDraftTests` 共 29/29；结果包 `/tmp/healthmanager-stage006-architect-unit-v2-20260714.xcresult`。新增的 8 个 Presentation 测试穷举四类来源、全部 confidence、manual 异常历史 confidence、引用/版本 trim、三类备餐状态、0 与 nil 覆盖、四类风险措辞、sticky 修订事实，以及 AI 引用/版本/置信/人工修订/熟重/风险说明的同实例组合合同
+- 全量证据：最终代码上的 `HealthManagerTests` 184/184；结果包 `/tmp/healthmanager-stage006-architect-full-unit-v2-20260714.xcresult`。最终代码上的 `HealthManagerUITests` 6/6；结果包 `/tmp/healthmanager-stage006-architect-full-ui-v2-20260714.xcresult`。独立 iPhone 17 / iOS 26.5 Simulator build succeeded，0 error、0 warning；结果包 `/tmp/healthmanager-stage006-architect-build-v2-20260714.xcresult`
+- 交互与视觉核对：最终 UI 结果包导出至 `/tmp/healthmanager-stage006-full-ui-v2-attachments`。主架构师目视核对 `meal-item-evidence-expanded` 与复用编辑器截图：来源行是真实 44pt 点击区，折叠/展开状态明确；0/4、未知字段和手工来源说明可读；名称、克数、宏量值、常用克数、添加菜品、合计和顶部保存均未被遮挡或截断
+- 数据与副作用核对：最终全量 UI 后直接读取实际 iPhone 17 Simulator 的 `health.sqlite`，测试标记父餐、测试分项和全库孤儿分项计数为 `0|0|0`。测试继续只通过唯一 marker 的真实 UI 定向删除，不清库、不直写 SQLite、不加入 debug seed 或真实 LLM 依赖
+- 产品合同核对：`MealItemEvidencePresentation` 是来源标题、symbol、风险说明、confidence、紧凑/详情修订文案、备餐状态、覆盖和 accessibility 摘要的唯一规则源；四类来源元数据集中在单一 switch。manual nil 不制造置信徽标，异常历史 manual confidence 不被隐藏；0 算已记录、nil 才未知；View 不依赖 Store、GRDB、环境对象或写入调用。页尾瞬态 batch confidence 已删除，estimate note/error 与保存、AI、照片、复用、常用克数、父汇总和 Coordinator 路径未改变
+- 双轴审查：以 `e02cd40` 为固定点完成 Standards 与 Spec 复核。首轮发现紧凑修订文案绕过 Presentation、缺少 AI 组合用例和来源元数据重复 switch，均已修正；复核结论为规格轴 PASS、标准轴无阻断 finding。两个 UI 测试文件保留局部滚动/输入 helper 重复，作为当前仅两处且不引入跨阶段共享测试框架的非阻断取舍；出现第三个调用方时再抽取
+- 执行与接管记录：首个 Coder 候选的定向单测通过，但 UI 为 4/6；一次集中修复仍未遵守“失败即停止”并继续扩大测试 helper，主架构师按约定中止 Coder 并接管。接管后从失败 xcresult、Accessibility hierarchy 与屏幕录制定位出三类问题：懒加载前读取元素 identifier、被 sheet 覆盖的底层 TabBar 被误判为遮挡、圆角来源行视觉高度与真实 14.3pt 点击区不一致；最终分别以查询生命周期修复、真实 sheet 边界判断和 44pt 内容点击区闭环
+- 边界例外：`UITests/MealReuseUITests.swift` 不在原 Coder 白名单，但新增 Evidence 行使既有备注输入回归真实失败。主架构师批准仅调整滚动可见性与输入后置条件，并用最终全量 6/6 证明；未修改复用产品逻辑。该例外有失败结果包与 UI 层级证据，不扩展产品范围
+- 残余风险：Simulator 不证明 VoiceOver 真机听感、Dynamic Type 最大档、真实 PhotosPicker/相机、HealthKit 或既有真机数据库行为；这些项目继续标记 INCOMPLETE，进入 STAGE-009 次日真机清单。本阶段没有来源编辑器、食品数据库/OCR/条码、份量单位、综合评分或准确率结论

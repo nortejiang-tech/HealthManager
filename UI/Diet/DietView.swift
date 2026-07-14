@@ -823,11 +823,6 @@ struct MealEditView: View {
 
             nutritionTotalsRow
 
-            if let conf = nutritionEstimate?.confidence {
-                Text(confidenceLabel(conf))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
             if let note = nutritionEstimate?.note, !note.isEmpty {
                 Text(note).font(.caption).foregroundStyle(.secondary)
             }
@@ -875,6 +870,7 @@ struct MealEditView: View {
             }
             .font(.caption.monospacedDigit())
             .foregroundStyle(.secondary)
+            MealItemEvidenceView(item: item.wrappedValue, index: index)
             if !item.wrappedValue.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 CommonGramSuggestionsRow(item: item, index: index)
             }
@@ -919,15 +915,6 @@ struct MealEditView: View {
     private func formatMacro(_ value: Double?) -> String {
         guard let value else { return "—" }
         return mealNutritionText(value)
-    }
-
-    private func confidenceLabel(_ raw: String) -> String {
-        switch raw.lowercased() {
-        case "high": return "置信：高"
-        case "medium": return "置信：中"
-        case "low": return "置信：低"
-        default: return "置信：\(raw)"
-        }
     }
 
     private func save() async {

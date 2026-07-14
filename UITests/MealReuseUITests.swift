@@ -93,10 +93,9 @@ final class MealReuseUITests: XCTestCase {
         XCTAssertFalse(app.textFields["meal-item-name-1"].exists)
 
         XCTAssertTrue(scrollToElement(withId: "meal-edit-notes", in: app))
-        let notesField = app.descendants(matching: .any)["meal-edit-notes"]
+        let notesField = app.textFields["meal-edit-notes"]
         XCTAssertNotEqual(notesField.value as? String, sourceMarker)
-        notesField.tap()
-        notesField.typeText(copyMarker)
+        typeTextAndAssert(copyMarker, inFieldWithId: "meal-edit-notes", in: app)
 
         let saveCopyButton = app.buttons["meal-edit-save"]
         XCTAssertTrue(saveCopyButton.waitForExistence(timeout: 3))
@@ -114,8 +113,9 @@ final class MealReuseUITests: XCTestCase {
         XCTAssertEqual(app.textFields["meal-item-grams-0"].value as? String, "80")
         XCTAssertFalse(app.textFields["meal-item-name-1"].exists)
         XCTAssertTrue(scrollToElement(withId: "meal-edit-notes", in: app))
+        let notesReloadedField = app.textFields["meal-edit-notes"]
         XCTAssertEqual(
-            app.descendants(matching: .any)["meal-edit-notes"].value as? String,
+            notesReloadedField.value as? String,
             copyMarker
         )
         app.buttons["meal-edit-cancel"].tap()
@@ -212,10 +212,7 @@ final class MealReuseUITests: XCTestCase {
             app.textFields["meal-item-grams-1"].typeText(extraGrams)
         }
 
-        XCTAssertTrue(scrollToElement(withId: "meal-edit-notes", in: app))
-        let notesField = app.descendants(matching: .any)["meal-edit-notes"]
-        notesField.tap()
-        notesField.typeText(note)
+        typeTextAndAssert(note, inFieldWithId: "meal-edit-notes", in: app)
 
         let saveButton = app.buttons["meal-edit-save"]
         XCTAssertTrue(saveButton.waitForExistence(timeout: 3))
@@ -294,20 +291,40 @@ final class MealReuseUITests: XCTestCase {
     private func scrollToElement(
         withId id: String,
         in app: XCUIApplication,
-        attempts: Int = 14
+        attempts: Int = 18
     ) -> Bool {
-        let target = app.descendants(matching: .any)[id]
-
         for _ in 0..<attempts {
-            if target.waitForExistence(timeout: 0.25) && target.isHittable {
+            let target = app.descendants(matching: .any).matching(identifier: id).firstMatch
+            if target.waitForExistence(timeout: 0.25) && isFullyVisible(target, in: app) {
                 return true
             }
-            swipeFormUp(in: app)
+            app.swipeUp()
         }
-        return target.exists && target.isHittable
+        let target = app.descendants(matching: .any).matching(identifier: id).firstMatch
+        return target.waitForExistence(timeout: 1) && isFullyVisible(target, in: app)
     }
 
-    private func swipeFormUp(in app: XCUIApplication) {
-        app.swipeUp()
+    private func typeTextAndAssert(_ text: String, inFieldWithId id: String, in app: XCUIApplication) {
+        XCTAssertTrue(scrollToElement(withId: id, in: app))
+        let element = app.textFields[id]
+        XCTAssertTrue(element.waitForExistence(timeout: 2))
+        element.tap()
+        element.typeText(text)
+        XCTAssertEqual(element.value as? String, text)
+    }
+
+    private func isFullyVisible(_ element: XCUIElement, in app: XCUIApplication) -> Bool {
+        guard element.exists && element.isHittable else { return false }
+        let bounds = app.frame
+        let topBoundary = app.navigationBars.allElementsBoundByIndex
+            .filter { $0.exists && $0.isHittable }
+            .map { $0.frame.maxY }
+            .max() ?? bounds.minY
+        let keyboardBoundary = app.keyboards.firstMatch.exists
+            ? app.keyboards.firstMatch.frame.minY
+            : bounds.maxY
+        let frame = element.frame
+        let bottomBoundary = min(bounds.maxY, keyboardBoundary)
+        return frame.minY >= topBoundary + 4 && frame.maxY <= bottomBoundary - 12
     }
 }
