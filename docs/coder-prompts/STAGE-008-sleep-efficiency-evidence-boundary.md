@@ -17,8 +17,8 @@
 先确认：
 
 1. 分支是 `codex/health-planning-20260713`。
-2. HEAD 是 `b3107ef`，且 `git merge-base --is-ancestor b3107ef HEAD` 成功。
-3. 工作区除本阶段已提交任务书与提示词外干净。
+2. HEAD 是本阶段文档 checkpoint `9cd0973`，且 `git merge-base --is-ancestor b3107ef HEAD` 成功。
+3. 工作区干净。
 
 任一不成立就停止并报告，不要修复基线。
 
