@@ -28,7 +28,7 @@ final class SmokeTests: XCTestCase {
         attachScreenshot(named: "02-diet")
 
         // Open meal-edit modal
-        app.navigationBars["饮食"].buttons.element(boundBy: 0).tap()
+        app.buttons["diet-add-meal"].tap()
         XCTAssertTrue(app.navigationBars["添加餐次"].waitForExistence(timeout: 5))
         attachScreenshot(named: "02b-meal-edit")
         app.navigationBars["添加餐次"].buttons["取消"].tap()

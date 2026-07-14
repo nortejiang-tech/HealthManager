@@ -11,10 +11,25 @@ struct DietView: View {
     @EnvironmentObject private var environment: AppEnvironment
 
     @State private var meals: [MealRecord] = []
-    @State private var showingAdd: Bool = false
-    @State private var editingMeal: MealRecord?
+    @State private var activeSheet: DietSheetKind?
     @State private var todayTotals: Totals = .zero
     @State private var deleteErrorMessage: String?
+
+    private enum DietSheetKind: Identifiable, Equatable {
+        case add
+        case edit(MealRecord)
+        case reuse
+
+        var id: String {
+            switch self {
+            case .add: return "add"
+            case .edit(let meal):
+                return "edit-\(meal.id ?? -1)"
+            case .reuse:
+                return "reuse"
+            }
+        }
+    }
 
     struct Totals: Equatable {
         var calories: Double
@@ -39,7 +54,7 @@ struct DietView: View {
                         Text("尚无记录。点击右上 + 添加一次。").foregroundStyle(.secondary)
                     } else {
                         ForEach(meals) { meal in
-                            Button { editingMeal = meal } label: {
+                            Button { activeSheet = .edit(meal) } label: {
                                 MealRow(meal: meal)
                             }
                             .accessibilityIdentifier("meal-row-\(meal.id ?? -1)")
@@ -58,20 +73,31 @@ struct DietView: View {
             }
             .navigationTitle("饮食")
             .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
+                ToolbarItemGroup(placement: .topBarTrailing) {
                     Button {
-                        showingAdd = true
+                        activeSheet = .add
                     } label: {
                         Image(systemName: "plus")
                     }
                     .accessibilityIdentifier("diet-add-meal")
+                    Button {
+                        activeSheet = .reuse
+                    } label: {
+                        Image(systemName: "clock.arrow.circlepath")
+                    }
+                    .accessibilityIdentifier("diet-reuse-meal")
+                    .accessibilityLabel("复用餐次")
                 }
             }
-            .sheet(isPresented: $showingAdd, onDismiss: { Task { await refresh() } }) {
-                MealEditView()
-            }
-            .sheet(item: $editingMeal, onDismiss: { Task { await refresh() } }) { meal in
-                MealEditView(editing: meal)
+            .sheet(item: $activeSheet, onDismiss: { Task { await refresh() } }) { destination in
+                switch destination {
+                case .add:
+                    MealEditView()
+                case .edit(let meal):
+                    MealEditView(editing: meal)
+                case .reuse:
+                    MealReuseView()
+                }
             }
             .task { await refresh() }
             .refreshable { await refresh() }
@@ -229,6 +255,11 @@ struct MealEditView: View {
         _draft = State(initialValue: MealEditorDraft(meal: editing))
     }
 
+    init(copying copyDraft: MealStore.CopyDraft) {
+        self.editing = nil
+        _draft = State(initialValue: MealEditorDraft(copyDraft: copyDraft))
+    }
+
     private var saveDisabled: Bool {
         isBusy || !draft.canSave
     }
@@ -370,6 +401,7 @@ struct MealEditView: View {
                         .accessibilityIdentifier("meal-edit-error")
                 }
             }
+            .scrollDismissesKeyboard(.interactively)
             .disabled(!draft.canSave || isSaving)
             .navigationTitle(editing == nil ? "添加餐次" : "编辑餐次")
             .navigationBarTitleDisplayMode(.inline)
@@ -843,6 +875,9 @@ struct MealEditView: View {
             }
             .font(.caption.monospacedDigit())
             .foregroundStyle(.secondary)
+            if !item.wrappedValue.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                CommonGramSuggestionsRow(item: item, index: index)
+            }
         }
         .padding(.vertical, 2)
         .onChange(of: item.wrappedValue) { _, _ in

@@ -146,6 +146,145 @@ final class MealEditorDraftTests: XCTestCase {
         XCTAssertThrowsError(try draft.makeMealRecord())
     }
 
+    func test_initFromCopyDraftClearsParentIdentityAndPreservesOrderedItemFacts() throws {
+        let copiedItems = [
+            MealStore.ItemInput(
+                name: "番茄",
+                grams: 100,
+                preparationState: .raw,
+                caloriesKcal: 0,
+                proteinG: nil,
+                fatG: 0.5,
+                carbsG: 3,
+                provenanceKind: .manual,
+                provenanceRef: "manual-entry",
+                provenanceVersion: "1",
+                confidence: .low,
+                isUserEdited: false,
+                createdAt: 3_000
+            ),
+            MealStore.ItemInput(
+                name: "鸡蛋",
+                grams: 60,
+                preparationState: .cooked,
+                caloriesKcal: 78,
+                proteinG: 6,
+                fatG: 5,
+                carbsG: 1,
+                provenanceKind: .aiEstimate,
+                provenanceRef: "model-a",
+                provenanceVersion: "2",
+                confidence: .high,
+                isUserEdited: true,
+                createdAt: 4_000
+            )
+        ]
+        let copyDraft = MealStore.CopyDraft(
+            meal: makeMeal(
+                id: 88,
+                mealType: .dinner,
+                eatenAt: 40_000,
+                photoPath: "should-not-load.jpg",
+                mealSync: "legacy-hk",
+                notes: "legacy copy notes",
+                createdAt: 10_000,
+                calories: 999,
+                protein: 999,
+                fat: 999,
+                carbs: 999
+            ),
+            items: copiedItems
+        )
+
+        let draft = MealEditorDraft(copyDraft: copyDraft)
+
+        XCTAssertNil(draft.id)
+        XCTAssertNil(draft.hkSyncId)
+        XCTAssertEqual(draft.notes, "")
+        XCTAssertTrue(draft.photoDrafts.isEmpty)
+        XCTAssertTrue(draft.originalPhotoPaths.isEmpty)
+        XCTAssertEqual(draft.mealType, .dinner)
+        XCTAssertEqual(draft.eatenAt.timeIntervalSince1970, 40_000, accuracy: 0.001)
+        XCTAssertEqual(draft.createdAt, 10_000)
+        XCTAssertEqual(draft.loadState, .ready)
+        XCTAssertTrue(draft.canSave)
+        XCTAssertFalse(draft.isManualSummaryMode)
+
+        XCTAssertEqual(draft.nutritionItems.map(\.name), ["番茄", "鸡蛋"])
+        XCTAssertEqual(draft.nutritionItems.map(\.gramsText), ["100", "60"])
+        XCTAssertEqual(draft.nutritionItems.map(\.preparationState), [.raw, .cooked])
+        XCTAssertEqual(draft.nutritionItems[0].baselineCalories, 0)
+        XCTAssertNil(draft.nutritionItems[0].baselineProtein)
+        XCTAssertEqual(draft.nutritionItems[0].provenanceKind, .manual)
+        XCTAssertEqual(draft.nutritionItems[0].provenanceRef, "manual-entry")
+        XCTAssertEqual(draft.nutritionItems[0].provenanceVersion, "1")
+        XCTAssertEqual(draft.nutritionItems[0].confidence, .low)
+        XCTAssertFalse(draft.nutritionItems[0].isUserEdited)
+        XCTAssertEqual(draft.nutritionItems[1].provenanceKind, .aiEstimate)
+        XCTAssertEqual(draft.nutritionItems[1].provenanceRef, "model-a")
+        XCTAssertEqual(draft.nutritionItems[1].provenanceVersion, "2")
+        XCTAssertEqual(draft.nutritionItems[1].confidence, .high)
+        XCTAssertTrue(draft.nutritionItems[1].isUserEdited)
+        XCTAssertTrue(draft.nutritionItems.allSatisfy { $0.createdAt == nil })
+
+        XCTAssertEqual(draft.itemTotals?.caloriesKcal, 78)
+        XCTAssertNil(draft.itemTotals?.proteinG)
+        XCTAssertEqual(draft.itemTotals?.fatG, 5.5)
+        XCTAssertEqual(draft.itemTotals?.carbsG, 4)
+
+        let record = try draft.makeMealRecord()
+        XCTAssertNil(record.id)
+        XCTAssertNil(record.photoPath)
+        XCTAssertNil(record.notes)
+        XCTAssertNil(record.hkSyncId)
+        XCTAssertEqual(record.caloriesKcal, 78)
+        XCTAssertNil(record.proteinG)
+        XCTAssertEqual(record.fatG, 5.5)
+        XCTAssertEqual(record.carbsG, 4)
+
+        let inputs = try draft.nutritionItems.map { try $0.toItemInput() }
+        XCTAssertEqual(inputs.map(\.name), ["番茄", "鸡蛋"])
+        XCTAssertEqual(inputs.map(\.grams), [100, 60])
+        XCTAssertTrue(inputs.allSatisfy { $0.createdAt == nil })
+        XCTAssertEqual(inputs[1].provenanceRef, "model-a")
+    }
+
+    func test_initFromCopyDraftWithoutItemsKeepsLegacyTotalsManualMode() throws {
+        let sourceMeal = MealStore.CopyDraft(
+            meal: makeMeal(
+                id: nil,
+                mealType: .lunch,
+                eatenAt: 12_345,
+                createdAt: 2_000,
+                calories: 12.5,
+                protein: nil,
+                fat: 0,
+                carbs: 3.25
+            ),
+            items: []
+        )
+        let draft = MealEditorDraft(copyDraft: sourceMeal)
+
+        XCTAssertTrue(draft.canSave)
+        XCTAssertEqual(draft.loadState, MealEditorDraft.LoadState.ready)
+        XCTAssertTrue(draft.isManualSummaryMode)
+        XCTAssertEqual(draft.nutritionItems, [MealItemDraft]())
+        XCTAssertEqual(draft.caloriesText, "12.5")
+        XCTAssertEqual(draft.proteinText, "")
+        XCTAssertEqual(draft.fatText, "0.0")
+        XCTAssertEqual(draft.carbsText, "3.25")
+        XCTAssertNil(draft.itemTotals)
+
+        let record = try draft.makeMealRecord()
+        XCTAssertNil(record.id)
+        XCTAssertNil(record.photoPath)
+        XCTAssertNil(record.notes)
+        XCTAssertEqual(record.caloriesKcal, 12.5)
+        XCTAssertNil(record.proteinG)
+        XCTAssertEqual(record.fatG, 0)
+        XCTAssertEqual(record.carbsG, 3.25)
+    }
+
     func test_removingLastItemPromotesPreviousProjectionToManualSummary() throws {
         let sourceItem = MealNutritionAnalyzer.Item(
             name: "豆腐",

@@ -99,6 +99,25 @@ struct MealEditorDraft {
         self.loadState = .ready
     }
 
+    init(copyDraft: MealStore.CopyDraft) {
+        let meal = copyDraft.meal
+        self.id = nil
+        self.mealType = meal.mealType
+        self.eatenAt = Date(timeIntervalSince1970: TimeInterval(meal.eatenAt))
+        self.caloriesText = Self.formatMealValue(meal.caloriesKcal)
+        self.proteinText = Self.formatMealValue(meal.proteinG)
+        self.fatText = Self.formatMealValue(meal.fatG)
+        self.carbsText = Self.formatMealValue(meal.carbsG)
+        self.notes = ""
+        self.nutritionItems = copyDraft.items.map(MealItemDraft.init(itemInput:))
+        self.photoDrafts = []
+        self.itemTotals = Self.projectTotals(from: self.nutritionItems)
+        self.originalPhotoPaths = []
+        self.createdAt = meal.createdAt
+        self.hkSyncId = nil
+        self.loadState = .ready
+    }
+
     var canSave: Bool {
         loadState == .ready
     }
@@ -247,6 +266,19 @@ struct MealEditorDraft {
                     proteinG: $0.proteinG,
                     fatG: $0.fatG,
                     carbsG: $0.carbsG
+                )
+            }
+        )
+    }
+
+    private static func projectTotals(from items: [MealItemDraft]) -> MealNutritionTotals? {
+        MealNutritionProjection.project(
+            items.map {
+                MealNutritionValues(
+                    caloriesKcal: $0.calories,
+                    proteinG: $0.protein,
+                    fatG: $0.fat,
+                    carbsG: $0.carbs
                 )
             }
         )

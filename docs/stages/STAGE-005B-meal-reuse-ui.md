@@ -1,6 +1,6 @@
 # STAGE-005B：低摩擦餐食复用入口
 
-> 状态：READY（STAGE-005A PASS，checkpoint `0b614ff`）
+> 状态：PASS（软件与 Simulator 范围；STAGE-005A checkpoint `0b614ff`）
 >
 > 执行者：Coder；主架构师验收
 >
@@ -120,8 +120,14 @@ UI 自动化至少覆盖：
 
 > 由主架构师填写。
 
-- 状态：PENDING
-- 验收日期：—
-- 验收 commit：—
-- 证据：—
-- 残余风险：—
+- 状态：PASS（软件与 Simulator 范围）
+- 验收日期：2026-07-14
+- 验收 commit：本文件所在 STAGE-005B checkpoint
+- 定向证据：`MealEditorDraftTests` 与 `MealItemDraftTests` 等本阶段相关单元测试共 31/31；结果包 `/tmp/healthmanager-stage005b-architect-unit-v2-20260714.xcresult`
+- 全量证据：最终代码上的 `HealthManagerTests` 176/176；结果包 `/tmp/healthmanager-stage005b-full-unit-v2-20260714.xcresult`。最终代码上的 `HealthManagerUITests` 6/6，覆盖既有持久化 2 项、餐食复用 3 项和全局 smoke 1 项；结果包 `/tmp/healthmanager-stage005b-full-ui-v3-20260714.xcresult`。独立 iPhone 17 / iOS 26.5 Simulator build succeeded，0 error、0 warning；结果包 `/tmp/healthmanager-stage005b-build-v2-20260714.xcresult`
+- 交互与视觉核对：最终 UI 结果包保留 `reuse-whole-list`、`reuse-whole-editor`、`reuse-item-selection`、`common-grams-suggestion` 四张本阶段截图以及既有 smoke 截图；主架构师导出并逐张核对。整餐复用在两次选择后进入现有“添加餐次”编辑器，选中分项只带入勾选项，常用克数按钮写入现有 `gramsText`，取消不新增记录，显式保存的副本可重开且来源备注未带入
+- 数据与副作用核对：最终全量 UI 回归后直接读取实际 iPhone 17 Simulator 的 `health.sqlite`，测试标记父餐、四类测试分项和全库孤儿分项计数均为 `0|0|0`。测试只通过真实 UI 定向删除自己创建的唯一标记记录，无批量清库或测试专用数据库写入。复用页只调用 `recentSnapshots`、`makeCopyDraft` 与 `commonGramSuggestions`，不直接调用 Coordinator、GRDB、数据库写入、照片或 HealthKit；最终保存仍唯一经过现有 `mealPersistenceCoordinator.save`
+- 合同核对：`DietView` 只有一个 `.sheet(item:)` destination；新增、编辑和复用互斥。CopyDraft 到编辑草稿时清空父 id、照片、备注、HealthKit id 和旧 photo path，child `createdAt` 保持 nil，合法 0、未知 nil、preparation、来源/置信度和分项顺序保持不变；有分项父汇总继续使用共享保守投影，legacy 零分项继续走手工汇总。常用克数按 canonical name、精确 preparation 和 `limit: 3` 查询，180 ms debounce，取消旧 task，失败只隐藏辅助项
+- 静态与审查核对：`git diff --check` 通过；diff 仅含本阶段白名单实现、测试和本验收结果。主架构师按 `b7f5ce1` 固定点完成产品合同与代码实现双轴审查，最终无未解决 finding；额外修正了 VoiceOver 不应朗读测试技术前缀，以及正常路径虽已禁用但仍应穷举中文展示的空选择错误
+- 执行记录：Coder 初稿曾包含不符合安全边界的批量清理方式，主架构师在进入 checkpoint 前中止；按约定给予一次集中修复后仍存在连续编译与质量问题，因此由主架构师接管。接管后改为唯一 marker 的 UI 定向清理，补齐复制映射、single-sheet 流、常用克数生命周期、无障碍标识与最终全量证据；被拒绝的批量清理代码未进入提交
+- 残余风险：本阶段没有触发真实 PhotosPicker/相机或 HealthKit，也不证明既有真机数据库行为，继续保留为 INCOMPLETE。空历史和数据库失败/重试分支已做静态合同审查，但本阶段没有为生产 Store 注入故障以取得动态 UI 证据；后续只有出现真实故障或建立通用可控依赖注入边界时再补，不为单一测试引入 ViewModel/protocol。来源与置信度的用户可见呈现属于 STAGE-006

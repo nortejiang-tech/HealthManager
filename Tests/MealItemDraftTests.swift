@@ -129,6 +129,66 @@ final class MealItemDraftTests: XCTestCase {
         XCTAssertEqual(input.createdAt, 1_111)
     }
 
+    func test_itemInputToDraftPreservesFactsAndScalesZeroAndNilNutrition() throws {
+        let input = MealStore.ItemInput(
+            name: "手抓饼（标签版）",
+            grams: 100,
+            preparationState: .cooked,
+            caloriesKcal: 0,
+            proteinG: nil,
+            fatG: 12,
+            carbsG: nil,
+            provenanceKind: .nutritionLabel,
+            provenanceRef: "label-1",
+            provenanceVersion: "v9",
+            confidence: .low,
+            isUserEdited: false,
+            createdAt: 9_999
+        )
+        var draft = MealItemDraft(itemInput: input)
+
+        XCTAssertEqual(draft.name, "手抓饼（标签版）")
+        XCTAssertEqual(draft.gramsText, "100")
+        XCTAssertEqual(draft.baselineGrams, 100)
+        XCTAssertEqual(draft.baselineCalories, 0)
+        XCTAssertNil(draft.baselineProtein)
+        XCTAssertEqual(draft.baselineFat, 12)
+        XCTAssertNil(draft.baselineCarbs)
+        XCTAssertEqual(draft.preparationState, .cooked)
+        XCTAssertEqual(draft.provenanceKind, .nutritionLabel)
+        XCTAssertEqual(draft.provenanceRef, "label-1")
+        XCTAssertEqual(draft.provenanceVersion, "v9")
+        XCTAssertEqual(draft.confidence, .low)
+        XCTAssertFalse(draft.isUserEdited)
+        XCTAssertNil(draft.createdAt)
+        XCTAssertEqual(draft.calories, 0)
+        XCTAssertNil(draft.protein)
+        XCTAssertEqual(draft.fat, 12)
+        XCTAssertNil(draft.carbs)
+
+        draft.gramsText = "200"
+        XCTAssertEqual(draft.calories, 0)
+        XCTAssertNil(draft.protein)
+        XCTAssertEqual(draft.fat, 24)
+        XCTAssertNil(draft.carbs)
+        XCTAssertTrue(draft.isUserEdited)
+
+        let roundTrip = try draft.toItemInput()
+        XCTAssertEqual(roundTrip.name, "手抓饼（标签版）")
+        XCTAssertEqual(roundTrip.grams, 200)
+        XCTAssertEqual(roundTrip.preparationState, .cooked)
+        XCTAssertEqual(roundTrip.caloriesKcal, 0)
+        XCTAssertNil(roundTrip.proteinG)
+        XCTAssertEqual(roundTrip.fatG, 24)
+        XCTAssertNil(roundTrip.carbsG)
+        XCTAssertEqual(roundTrip.provenanceKind, .nutritionLabel)
+        XCTAssertEqual(roundTrip.provenanceRef, "label-1")
+        XCTAssertEqual(roundTrip.provenanceVersion, "v9")
+        XCTAssertEqual(roundTrip.confidence, .low)
+        XCTAssertTrue(roundTrip.isUserEdited)
+        XCTAssertNil(roundTrip.createdAt)
+    }
+
     func test_scaleOnlyByEditedGramsAndKeepsNilMetricsAndBaselineWhenNoKnownGrams() {
         let withKnownGrams = MealItemDraft(record: MealItemRecord(
             id: nil,

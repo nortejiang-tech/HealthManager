@@ -73,6 +73,25 @@ struct MealItemDraft: Identifiable, Equatable {
         self.createdAt = createdAt
     }
 
+    init(itemInput: MealStore.ItemInput) {
+        self.init(
+            name: itemInput.name,
+            gramsText: Self.displayText(from: itemInput.grams),
+            baselineGrams: itemInput.grams,
+            baselineCalories: itemInput.caloriesKcal,
+            baselineProtein: itemInput.proteinG,
+            baselineFat: itemInput.fatG,
+            baselineCarbs: itemInput.carbsG,
+            preparationState: itemInput.preparationState,
+            provenanceKind: itemInput.provenanceKind,
+            provenanceRef: itemInput.provenanceRef,
+            provenanceVersion: itemInput.provenanceVersion,
+            confidence: itemInput.confidence,
+            isUserEdited: itemInput.isUserEdited,
+            createdAt: nil
+        )
+    }
+
     static func manualEmpty() -> MealItemDraft {
         MealItemDraft(name: "", gramsText: "")
     }
