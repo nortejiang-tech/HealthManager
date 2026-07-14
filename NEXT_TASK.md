@@ -1,20 +1,20 @@
 # NEXT_TASK
 
-> 当前状态（2026-07-14）：分支 `codex/health-planning-20260713` 已完成并推送 STAGE-001～006 与 STAGE-008；当前已验收的软件实现基线为 `ff67ca1`。餐食分项 schema/持久化/编辑/复用/来源证据已落地，未经真实数据验证的睡眠效率已停止消费并主动清空历史脏值。
+> 当前状态（2026-07-14）：分支 `codex/health-planning-20260713` 已完成并推送 STAGE-001～006 与 STAGE-008；当前已验收的软件实现基线为 `ff67ca1`。STAGE-007A 已接受方案 1「按时间展开的健康证据线」。
 
-## 唯一当前产品决定
+## 当前执行阶段
 
-STAGE-007A 等待用户从三个“今日”信息架构原型中选择 1、2 或 3：
+STAGE-007B 先修正 Today 会使用的饮食与热量缺口数据合同：
 
-- 任务书：`docs/stages/STAGE-007A-today-information-architecture-selection.md`
-- 共同方向：今日 / 饮食 / 用药 / 趋势 / 更多。
-- 选择前不得开始导航实现，不得自行混合方案。
+- 任务书：`docs/stages/STAGE-007B-trustworthy-diet-energy-contract.md`
+- Coder 提示词：`docs/coder-prompts/STAGE-007B-trustworthy-diet-energy-contract.md`
+- 核心要求：未知营养不变成 0；active、basal、完整 intake 三者齐备才计算缺口；合法 0 仍是已知。
 
-用户选择后，由主架构师先写 STAGE-007B 任务书和自包含 Coder 提示词；Coder 只实现获选方案，主架构师独立验收。
+STAGE-007B PASS 后再根据 accepted diff 生成 STAGE-007C Today evidence loader 提示词；STAGE-007C PASS 后才生成 STAGE-007D 时间线与五栏导航提示词。
 
 ## 随后的发布门
 
-STAGE-009 已完成迁移预检，但最终门必须等待 STAGE-007B PASS：
+STAGE-009 已完成迁移预检，但最终门必须等待 STAGE-007D PASS：
 
 - 任务书：`docs/stages/STAGE-009-v03-release-gate.md`
 - 最终 HEAD 重跑全量 unit、全量 UI、独立 build、截图与实际 Simulator 数据库审计。

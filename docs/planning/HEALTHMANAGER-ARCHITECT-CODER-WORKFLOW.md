@@ -108,7 +108,9 @@ HealthManager 后续开发会跨会话、跨模型接力。为了避免便宜模
 | STAGE-005B | 在饮食界面加入低摩擦复用入口 | STAGE-005A PASS | Coder | 中 |
 | STAGE-006 | 展示手工/AI/数据库/标签来源、置信度和用户修订状态 | STAGE-005B PASS | Coder | 中 |
 | STAGE-007A | 今日/饮食/用药/趋势/更多信息架构原型 | STAGE-006 PASS | 主架构师 + 用户试用 | 产品判断 |
-| STAGE-007B | 仅按已确认原型调整导航，不删除诊断能力 | STAGE-007A Accepted | Coder | 中 |
+| STAGE-007B | 修正饮食与热量缺口的 unknown/complete 合同 | STAGE-007A Accepted | Coder；主架构师严审 | 中高 |
+| STAGE-007C | 建立可测试的 Today evidence snapshot/loader | STAGE-007B PASS | Coder | 中 |
+| STAGE-007D | 按方案 1 实现证据时间线与五栏导航，不删除诊断能力 | STAGE-007C PASS | Coder；主架构师视觉验收 | 中高 |
 | STAGE-008 | 睡眠效率正确计算或在证据不足时隐藏 | 可与导航后串行 | Coder | 中 |
 | STAGE-009 | 数据迁移、全量测试、Simulator/真机边界和 v0.3 HANDOFF | 前述全部 | 主架构师 | 发布门 |
 
@@ -147,7 +149,7 @@ HealthManager 后续开发会跨会话、跨模型接力。为了避免便宜模
 
 后续提示词不提前批量固化。只有前一阶段由主架构师正式 PASS 后，才根据真实 accepted diff 生成下一条，避免下游提示词建立在不存在的实现上。
 
-当前可交给 Coder 的第一条提示词：
+历史第一条实施提示词（保留作为迁移阶段示例）：
 
 - [STAGE-001 Coder 提示词](../coder-prompts/STAGE-001-meal-items-schema.md)
 
@@ -158,6 +160,10 @@ HealthManager 后续开发会跨会话、跨模型接力。为了避免便宜模
 对应架构决策：
 
 - [ADR-001](../adr/ADR-001-normalized-meal-item-snapshots.md)
+
+当前可交给 Coder 的提示词：
+
+- [STAGE-007B 可信饮食与热量缺口数据合同](../coder-prompts/STAGE-007B-trustworthy-diet-energy-contract.md)
 
 ## 8. Git 与文档纪律
 
@@ -183,6 +189,7 @@ HealthManager 后续开发会跨会话、跨模型接力。为了避免便宜模
 
 - STAGE-001～006 已 PASS；餐食分项从追加迁移、深 Store、可测试草稿、保存副作用编排、真实编辑器接线、低摩擦复用到来源证据显示均已形成 checkpoint。
 - STAGE-008 已 PASS 并推送 `ff67ca1`：Dashboard 不再消费 `sleep_efficiency`，日聚合主动清除历史非空值；真实睡眠阶段组合继续为 INCOMPLETE。
-- 当前全量基线为 `HealthManagerTests` 186/186、`HealthManagerUITests` 6/6、iPhone 17 / iOS 26.5 Simulator build 0 error / 0 warning；具体结果包见 STAGE-008 正式结果。该基线会在 STAGE-007B 后由 STAGE-009 最终重跑，不能提前当成最终发布证据。
-- STAGE-007A 的五栏共同方向保持不变，但“今日”首屏的三个信息层级原型仍需用户明确选择；见 `docs/stages/STAGE-007A-today-information-architecture-selection.md`。选择前不得开始 STAGE-007B。
-- STAGE-009 已建立任务书并完成迁移预检；软件最终门等待 STAGE-007B，真机未执行项逐项保持 INCOMPLETE。本轮继续禁止 merge、tag 与 release。
+- 当前全量基线为 `HealthManagerTests` 186/186、`HealthManagerUITests` 6/6、iPhone 17 / iOS 26.5 Simulator build 0 error / 0 warning；具体结果包见 STAGE-008 正式结果。该基线会在 STAGE-007D 后由 STAGE-009 最终重跑，不能提前当成最终发布证据。
+- STAGE-007A 已由用户接受主架构师推荐的方案 1「按时间展开的健康证据线」；见 `docs/stages/STAGE-007A-today-information-architecture-selection.md`。原型的信息层级获准，但无法由现有数据证明的精确时间、具体来源或“必须完成某餐”不进入产品。
+- 代码盘点发现 Dashboard 会把未知餐次营养当成 0，并在缺少组成时计算热量缺口，因此先增加 STAGE-007B 数据合同修复，再以 STAGE-007C/007D 分离 loader 与视觉导航，避免改版放大错误数字。
+- STAGE-009 已建立任务书并完成迁移预检；软件最终门等待 STAGE-007D，真机未执行项逐项保持 INCOMPLETE。本轮继续禁止 merge、tag 与 release。

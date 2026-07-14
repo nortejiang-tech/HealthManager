@@ -1,6 +1,6 @@
 # STAGE-009：v0.3 软件验收门与次日真机交接
 
-> 状态：IN_PROGRESS（迁移预检 PASS；最终门等待 STAGE-007A 选择与 STAGE-007B PASS）
+> 状态：IN_PROGRESS（迁移预检 PASS；最终门等待 STAGE-007D PASS）
 >
 > 执行者：主架构师；本阶段不直接交给 Coder
 
@@ -16,11 +16,13 @@
 |---|---|---|
 | ADR-001 | Accepted / VERIFIED | 保持不变 |
 | STAGE-001～006 | PASS | 不重写既有结果；最终全量回归覆盖 |
-| STAGE-007A | WAITING_USER_SELECTION | 用户明确选择 1/2/3 |
-| STAGE-007B | NOT STARTED | 已确认方案实现并由主架构师 PASS |
+| STAGE-007A | ACCEPTED（方案 1） | 保持产品与证据边界 |
+| STAGE-007B | READY | 可信饮食/缺口合同 PASS |
+| STAGE-007C | NOT STARTED | Today evidence snapshot/loader PASS |
+| STAGE-007D | NOT STARTED | 方案 1 时间线与五栏导航 PASS |
 | STAGE-008 | PASS，checkpoint `ff67ca1` | 睡眠真机数据仍为 INCOMPLETE |
 
-STAGE-007 未完成前，本阶段只能记录 PRELIMINARY/PASS 预检，不能宣称 v0.3 软件最终 PASS。
+STAGE-007D 未完成前，本阶段只能记录 PRELIMINARY/PASS 预检，不能宣称 v0.3 软件最终 PASS。
 
 ## 3. 迁移与实际数据库门
 
@@ -37,7 +39,7 @@ STAGE-007 未完成前，本阶段只能记录 PRELIMINARY/PASS 预检，不能�
 - `MealItemMigrationTests` + `SourceOriginMigrationTests`：6/6，结果包 `/tmp/healthmanager-stage009-preflight-migrations-20260714-01.xcresult`。
 - 实际 Simulator 主库只读审计：迁移为 v1、v2、v3、v4、v5；`integrity_check=ok`；外键检查无行；当前 `meal_records|meal_items|orphan|duplicate order` 为 `0|0|0|0`。
 
-这些结果只证明 `ff67ca1` 预检；STAGE-007B 后仍需在最终 HEAD 重跑最终门。
+这些结果只证明 `ff67ca1` 预检；STAGE-007D 后仍需在最终 HEAD 重跑最终门。
 
 ## 4. 最终自动化与构建门
 
@@ -95,4 +97,4 @@ STAGE-009 不生成“让 Coder 跑一遍看看”的实现提示词。主架构
 - 最终 commit：—
 - 全量证据：—
 - 视觉与数据库证据：—
-- 残余风险：等待 STAGE-007B 与次日真机
+- 残余风险：等待 STAGE-007D 与次日真机
