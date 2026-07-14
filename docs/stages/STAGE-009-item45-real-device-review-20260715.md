@@ -18,6 +18,7 @@
 - `/tmp/healthmanager-stage009-item45-device-20260715-041649-attempt02`
 - `/tmp/healthmanager-stage009-item45-device-20260715-041605-attempt02`
 - `/tmp/healthmanager-stage009-item45-device-20260715-041338-attempt01`
+- `/tmp/healthmanager-stage009-item45-device-live-20260715-043448`（当前在线设备快照，设备 `NortePro的iPhone`, iOS 26.5.2, 已安装 `com.norte.HealthManager` v0.2.5 build 7）
 
 ### 2026-07-15 标准化快照收口（机器可复用）
 
@@ -37,6 +38,13 @@
 - `reports/sleep-cross-midnight-summary.txt`
 - `reports/sync-jobs-final.txt`
 
+补充现场快照已从当前设备直接拉取（`00008150-001204800152401C`）并在上述目录生成 `reports`：
+
+- `reports/live-db-audit.txt`（`integrity_check=ok`, FK 无异常）
+- `reports/photo-paths.csv`
+- `reports/photo-files.txt`
+- `reports/sync-active.txt`（`0`）
+
 ## 关键可核对数字
 
 在 `...-0508-attempt01b` 中可复用的机器可读输出：
@@ -55,6 +63,19 @@
   - `unreferenced_files=0`
   - `missing_reference_components=0`
 - `/tmp/...-043014/reports/sync-jobs-final.txt` 显示最新 `active_sync_jobs=1`（已转到已完成序列），`total_jobs=1309`，其中 `succeeded_jobs=1060`、`failed_jobs=249`。
+
+在 `...-live-20260715-043448` 中新增基线：
+
+- `meal_records_count=114`
+- `meal_items_count=0`
+- `meal_records_with_photo_ref=63`
+- `mealphotos_files=133`
+- `active_sync_jobs=0`
+- `failed_sync_jobs=249`
+- `total_jobs=1316`
+- `active_backfill_reports=0`
+- `failed_backfill_reports=0`
+- `sleep_cross_midnight_rows=0`（该次 SQL 聚焦 `HKCategoryTypeIdentifierSleepAnalysis`）
 
 ## 缺失项（当前无法闭环 PASS）
 

@@ -29,7 +29,7 @@ git rev-parse HEAD
 3. `NEXT_TASK.md`
 4. `docs/stages/STAGE-009R2-healthkit-nutrition-clear-recovery.md`（确认 item3 结果不重复执行）
 
-说明：当前真实 DB 核对时请直接使用 `hk_type` 与 `source_bundle_id` 字段（非 `sample_type`/`source_bundle`）。
+说明：当前真实 DB 核对时请直接使用 `hk_type` 与 `source_bundle_id` 字段（非 `sample_type`/`source_bundle`）；`meal_records` 使用 `meal_type` 字段，`backfill_report` 使用 `status` 字段（而非旧版 `state`）。
 
 ## 2. 只读约束与边界
 

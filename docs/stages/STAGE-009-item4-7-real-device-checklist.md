@@ -40,7 +40,7 @@ PRAGMA user_version;
 SELECT name FROM sqlite_master WHERE type='table' AND name IN ('meal_records','meal_items','meal_photos');
 SELECT 'meal_records_count', COUNT(*) FROM meal_records;
 SELECT 'meal_items_count', COUNT(*) FROM meal_items;
-SELECT 'meal_photos_count', (SELECT COUNT(*) FROM meal_photos) FROM sqlite_master WHERE type='table' AND name='meal_photos';
+SELECT 'meal_photos_table_exists', COUNT(*) FROM sqlite_master WHERE type='table' AND name='meal_photos';
 SELECT 'sync_jobs_running', COUNT(*) FROM sync_jobs WHERE state IN ('pending','running');
 SELECT 'sync_jobs_failed', COUNT(*) FROM sync_jobs WHERE state='failed';
 SELECT 'meal_records_with_photo_ref', COUNT(*) FROM meal_records WHERE COALESCE(LENGTH(photo_path),0) > 0;
@@ -52,10 +52,10 @@ SELECT 'photo_path_components_count', COUNT(*) FROM (
 );
 SELECT 'health_samples_raw_count', COUNT(*) FROM health_samples_raw;
 SELECT 'active_sync_jobs', COUNT(*) FROM sync_jobs WHERE state IN ('pending','running');
-SELECT 'active_backfill_reports', COUNT(*) FROM backfill_report WHERE state IN ('pending','running');
+SELECT 'active_backfill_reports', COUNT(*) FROM backfill_report WHERE status IN ('running','pending');
 SQL
 
-find "$APP_CONTAINER/Library/Caches/MealPhotos" -type f | wc -l > "$WORKROOT/reports/mealphotos-count.txt"
+find "$APP_CONTAINER/Library/Application Support/MealPhotos" -type f | wc -l > "$WORKROOT/reports/mealphotos-count.txt"
 cp "$APP_CONTAINER/../healthmanager-app.json" "$WORKROOT/reports/" 2>/dev/null || true
 cp "$APP_CONTAINER/../device-details.json" "$WORKROOT/reports/" 2>/dev/null || true
 ```
@@ -66,7 +66,7 @@ cp "$APP_CONTAINER/../device-details.json" "$WORKROOT/reports/" 2>/dev/null || t
 sqlite3 "$APP_CONTAINER/Application Support/HealthManager/health.sqlite" <<'SQL' > "$WORKROOT/reports/photo-paths.csv"
 .headers on
 .mode csv
-SELECT id, created_at, meal_name, photo_path, hk_sync_id FROM meal_records ORDER BY id DESC;
+SELECT id, created_at, meal_type, photo_path, hk_sync_id FROM meal_records ORDER BY id DESC;
 SQL
 
 sqlite3 "$APP_CONTAINER/Application Support/HealthManager/health.sqlite" <<'SQL' > "$WORKROOT/reports/photo-paths-and-db-orphan-candidates.txt"
@@ -79,7 +79,7 @@ WHERE COALESCE(photo_path,'') <> ''
 ORDER BY id DESC;
 SQL
 
-find "$APP_CONTAINER/Library/Caches/MealPhotos" -type f | sed 's#^./##' | sort > "$WORKROOT/reports/photo-files-list.txt"
+find "$APP_CONTAINER/Library/Application Support/MealPhotos" -type f | sed 's#^./##' | sort > "$WORKROOT/reports/photo-files-list.txt"
 ```
 
 > 注：如确认项目使用 `meal_records.photo_path` 作为唯一引用源，建议以该列拆分后的 `photo_path` 与
@@ -224,7 +224,7 @@ SELECT id,state,job_type,trigger,start_at,ended_at,error_code,error_message,stat
 FROM sync_jobs
 ORDER BY start_at DESC
 LIMIT 80;
-SELECT id,state,created_at,ended_at,error_code FROM backfill_report ORDER BY created_at DESC LIMIT 50;
+SELECT id,status,created_at,ended_at,error_code FROM backfill_report ORDER BY created_at DESC LIMIT 50;
 SQL
 ```
 
