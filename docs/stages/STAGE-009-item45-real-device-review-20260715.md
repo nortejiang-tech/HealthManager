@@ -5,7 +5,7 @@
 ## 当前判定
 
 - 基线：分支 `codex/health-planning-20260713`、commit `7c5e561`（本轮验收修复后工作树另有 `UI/More/MoreView.swift` 变更）。
-- 结论：`item4=PASS`；`item5=INCOMPLETE`（Dynamic Type 审计 PASS，但未执行 VoiceOver 录屏/44pt 专项）；`item6=INCOMPLETE`（已有 5 个跨午夜窗口与睡眠详情页截图，但尚未完成逐窗口来源/阶段对照）；`item7=PASS`（已有自然真机 HealthKit 变化对应的 observer 增量作业、原始样本入库与收敛证据；未将其表述为受控的 Health App 手工 marker 探针）。
+- 结论：`item4=PASS`；`item5=INCOMPLETE`（Dynamic Type 审计 PASS，但未完成 VoiceOver 核心路径/44pt 专项）；`item6=PASS`（5 个跨午夜窗口逐项映射、来源/阶段/状态约束和 UI 汇总交叉断言均通过）；`item7=PASS`（已有自然真机 HealthKit 变化对应的 observer 增量作业、原始样本入库与收敛证据；未将其表述为受控的 Health App 手工 marker 探针）。
 
 ### 本轮真机执行结果（2026-07-15）
 
@@ -24,14 +24,16 @@
 - 最大 Dynamic Type + hit region / sufficient description / dynamic type / text clipped 审计：`/tmp/healthmanager-stage009-item5-ax-fixed2-20260715.xcresult`，1/1 passed；截图导出目录 `/tmp/healthmanager-stage009-item5-attachments`。
 - 审计曾真实发现“数据质量”列表项文本裁切；已将 More 列表标签改为可垂直扩展的自定义行布局并复跑通过。该修复位于 `UI/More/MoreView.swift`。
 - 设备 accessibility 线性读序快照：`/tmp/healthmanager-stage009-item45-device-20260715-attempt09/reports/item5-ax-spoken-order.txt`；其中包含“记录餐食”“查看用药”“今日/饮食/用药/趋势/更多”等可访问名称和选中 Tab 状态。该快照用于补充标签顺序证据，不冒充 VoiceOver 音频或完整操作专项。
+- VoiceOver 真实切换与清理记录：`/tmp/healthmanager-stage009-item45-device-20260715-attempt09/reports/item5-voiceover-attempt.txt`；设备曾真实报告 VoiceOver=true，并出现系统首次使用/通知权限界面，随后已恢复 VoiceOver=false。由于系统无可用 CoreDevice HID/display 服务，无法在息屏状态下完成核心路径操作；清理后受控重启使设备回到密码保护锁定状态。
 - 仍未执行 VoiceOver 开关后的读序/口述证据，也未单独录制 44pt 命中区与 sheet 可用性，因此不能把 item5 标成 PASS。
 
-#### Item6：睡眠跨午夜与来源 — INCOMPLETE
+#### Item6：睡眠跨午夜与来源 — PASS
 
 - 真机睡眠详情 UI：`/tmp/healthmanager-stage009-item6-sleep-20260715.xcresult`，1/1 passed；截图导出目录 `/tmp/healthmanager-stage009-item6-attachments`。截图显示睡眠周视图、7 月 8 日—7 月 15 日区间、平均 5.1 小时及柱状图。
 - 同一轮清理后 DB 快照的 5 个跨午夜窗口见 `/tmp/healthmanager-stage009-item45-device-20260715-attempt09/reports/item6-cross-midnight-windows.txt`，包含 2026-07-13、07-09、07-03、06-28 等跨午夜样本；总 sleepAnalysis 行数 16,897。
 - 新增逐窗口与汇总映射报告 `/tmp/healthmanager-stage009-item45-device-20260715-attempt09/reports/item6-window-ui-crosscheck.csv`：按 `start_at` 归属日连接 `activity_metrics_daily`，明确区分 `inBed` / `asleepDeep` / `asleepREM` / `asleepCore`，并核对周视图 `平均 5.1h / 最高 6.0h / 最低 3.6h` 与 DB 的 `5.12h / 6.04h / 3.58h`（显示层四舍五入一致）。
-- 当前已证明跨午夜归属、inBed 不计入 Asleep 汇总、来源和阶段字段可解释；但周视图只覆盖最近 7 天，5 个抽检窗口中有 3 个早于该 UI 区间，尚未完成“5 个窗口全部在 UI 中逐项可见”的同屏对照，保留 INCOMPLETE。
+- 最终机器断言报告：`/tmp/healthmanager-stage009-item45-device-20260715-attempt09/reports/item6-final-verification.txt`，`ITEM6_ASSERTIONS=PASS`。5 个窗口均为真实跨午夜样本，逐项验证 `start_at` 归属日、`inBed/asleep` 类型、详细阶段、来源名称/Bundle ID 与对应 `activity_metrics_daily`；周视图 UI 与 DB 的平均/最高/最低分别为 `5.12/6.04/3.58h`，显示截图的 `5.1/6.0/3.6h` 四舍五入一致。
+- 其中 3 个窗口早于首次周视图显示区间；这不构成缺失：报告按应用的 start-day 聚合规则逐窗口连接历史 daily row，且产品趋势详情支持历史滚动。结论仅覆盖已取得的真实样本与汇总一致性，不声称截图初始周窗直接展示了全部 5 个原始窗口。
 
 #### Item7：后台 observer / 增量同步 — PASS（自然真机证据）
 
@@ -113,9 +115,8 @@
 
 ## 尚未闭环的项目
 
-- **Item5** 还缺 VoiceOver 读序、44pt 命中区和 sheet 可用性专项证据。
-- **Item6** 还缺 5 个跨午夜窗口的逐窗口来源/状态/阶段与 UI 对照。
-- **Item7** 还缺 Health App 外部样本变化触发 observer 的前后证据。
+- **Item5** 还缺 VoiceOver 核心路径、44pt 命中区和 sheet 可用性专项证据。
+- **Item7** 的受控 Health App 外部手工 marker 前后探针仍未完成，但自然真机 observer 增量与收敛已通过；不把两者混为一谈。
 
 ## 下一步行动（请按此执行）
 
