@@ -1,6 +1,6 @@
 # STAGE-009：v0.3 软件验收门与次日真机交接
 
-> 状态：SOFTWARE_SIMULATOR_PASS；真机 item4-7 全部 PASS（2026-07-15；备份/签名硬门已有 STAGE-009R1 证据）
+> 状态：RELEASED；软件、Simulator 与真机全部 PASS，v0.3.0（build 8）于 2026-07-15 完成正式发布
 >
 > 执行者：主架构师；本阶段不直接交给 Coder
 
@@ -22,7 +22,7 @@
 | STAGE-007D | PASS（`2e3b038`） | 方案 1 时间线、五栏导航与 raw visual audit 已验收 |
 | STAGE-008 | PASS，checkpoint `ff67ca1` | 睡眠语义基线保持不变；真机 item6 已在 STAGE-009 PASS |
 
-最终软件候选为 `2e3b038c4d5722d507874feaea90002fc2379e66`。STAGE-009 后续只修改验收、交接与下一任务文档，不再改变被测产品代码。
+最初的软件候选为 `2e3b038c4d5722d507874feaea90002fc2379e66`。真机验收随后只在证据指向的范围内修复 More 动态字号、同步恢复、HealthKit 清空营养和历史备注餐次复用展示；v0.3.0 发布提交是最终被测产品基线。
 
 ## 3. 迁移与实际数据库门
 
@@ -67,6 +67,14 @@
 - 独立冷构建：使用独立 DerivedData 从头解析 GRDB 6.29.3，iPhone 17 / iOS 26.5，status `succeeded`，0 error / 0 warning / 0 analyzer warning，`/tmp/healthmanager-stage009-final-build-20260714-attempt01.xcresult`。
 - `xcresulttool` 已逐项读取上述计数；UI 运行出现 Xcode `no debugger version` 与系统 accessibility bundle 重复类提示，但没有断言失败或缺失 xcresult，不把工具提示误记为产品缺陷。
 
+2026-07-15 v0.3.0（build 8）发布复验：
+
+- 全量 `HealthManagerTests`：251/251，0 failed / 0 skipped，`/tmp/healthmanager-v030-final-unit-20260715-attempt01.xcresult`。
+- 全量 `HealthManagerUITests`：7/7，0 failed / 0 skipped，`/tmp/healthmanager-v030-final-ui-20260715-attempt01.xcresult`。
+- Simulator Release 冷构建：status `succeeded`，0 error / 0 warning，`/tmp/healthmanager-v030-final-sim-build-20260715-attempt01.xcresult`。
+- 真实 iPhone Release 构建：status `succeeded`，0 error / 0 warning，`/tmp/healthmanager-v030-final-device-release-build-20260715-attempt01.xcresult`。
+- 所有计数与 warning/error 均由 `xcresulttool` 读取；App 产物版本为 0.3.0（8）。
+
 ## 5. Simulator 交互与视觉门
 
 - 最终五栏导航与用户选定的“今日”方案一致；现有饮食、用药、趋势、来源、同步、设置、报告与诊断入口都可达。
@@ -106,7 +114,7 @@ item4-7 的执行标准与证据格式详见：
 - item6 逐窗口映射：`reports/item6-window-ui-crosscheck.csv`，周视图显示值与 DB 汇总值四舍五入一致。
 - item5 Dynamic Type xcresult：`/tmp/healthmanager-stage009-item5-ax-fixed2-20260715.xcresult`。
 
-本轮真机项目已全部达到各自正式 PASS 条件；备份、签名身份和覆盖升级硬门沿用 STAGE-009R1 证据。发布候选验收为 PASS；本文件仍不执行 merge、tag 或 GitHub Release 发布动作。
+本轮真机项目已全部达到各自正式 PASS 条件；备份、签名身份和覆盖升级硬门沿用 STAGE-009R1 证据。用户于 2026-07-15 明确授权正式发布，发布动作以 v0.3.0 tag 和 GitHub Release 为外部锚点。
 
 ## 7. HANDOFF 与文档门
 
@@ -128,10 +136,10 @@ STAGE-009 不生成“让 Coder 跑一遍看看”的实现提示词。主架构
 
 - 软件 / Simulator：PASS
 - 真机：PASS（`item3` HealthKit 清空营养、`item4` 照片生命周期、`item5` 无障碍/字号/sheet、`item6` 睡眠跨午夜、`item7` observer 均 PASS）
-- 发布就绪：PASS（备份与签名身份硬门见 STAGE-009R1；本轮仅不执行发布动作）
-- 被测产品 commit：当前分支 HEAD（More 动态字号裁切修复 + 本轮真机验收记录）
+- 发布就绪：PASS；正式版本为 v0.3.0（build 8）
+- 被测产品 commit：v0.3.0 tag 指向的发布提交
 - 验收文档 checkpoint：本文件所在 commit
-- 全量证据：migration 6/6、unit 242/242、UI 6/6、独立 build 0 error / 0 warning；结果包见第 3、4 节。
+- 全量证据：migration 6/6、unit 251/251、UI 7/7、Simulator/真机 Release build 均为 0 error / 0 warning；结果包见第 3、4 节。
 - 视觉与数据库证据：UI attachments、STAGE-007D raw audit、`/tmp/healthmanager-stage009-final-db-audit-20260714.txt`；真实验收库 v1～v5、integrity ok、FK 0、测试/用户内容表 0。
 - 残余风险：observer 尚未形成受控 Health App 手工 marker 的前后因果探针，但自然真机增量与收敛已满足正式 PASS 条件；照片、VoiceOver/字号/sheet、sleepAnalysis 五窗口与 HealthKit 写删均已有真机 PASS 证据。
-- Git 边界：本轮不 merge `main`、不打 tag、不创建 GitHub Release、不发布正式版本。
+- Git 边界：用户已明确授权合并 `main`、创建并推送 `v0.3.0` tag，以及创建 GitHub Release。

@@ -930,3 +930,24 @@ xcodebuild -scheme HealthManager -destination 'platform=iOS Simulator,name=iPhon
 Simulator launch check:
   最新 Debug 包可启动；活动卡片主指标/空态已显示为 kcal / 活动能量。
 ```
+
+---
+
+## Codex Release — 2026-07-15 v0.3.0（build 8）
+
+**完成**
+
+- STAGE-001～009 的可信饮食记录、餐次复用、证据 UI、Today 时间线、五栏导航、睡眠边界与真机恢复修复全部收口。
+- 修复历史零分项餐次在复用列表只能看到标题、看不到饮食内容的问题；显示顺序为结构化菜品、原备注、明确空态。
+- 版本从 0.2.5（7）提升到 0.3.0（8），保持 `com.norte.HealthManager` 与 Team `K8RVJSC4NU`。
+- Release 已覆盖安装到真实 iPhone 并成功启动；安装后数据库完整性和既有数据计数与安装前一致。
+
+**最终验证**
+
+- HealthManagerTests：251/251 passed。
+- HealthManagerUITests：7/7 passed。
+- Simulator Release build：0 error / 0 warning。
+- iPhone Air Release build：0 error / 0 warning。
+- 真机数据：115 条餐次、43 条历史备注餐次、0 条测试餐次、0 个孤儿分项，`integrity_check=ok`。
+
+发布说明见 `docs/releases/v0.3.0.md`，下一轮只从 `NEXT_TASK.md` 的 v0.4 产品/技术决策门开始。

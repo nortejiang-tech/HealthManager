@@ -2,7 +2,7 @@
 
 > 建立日期：2026-07-13
 >
-> 当前产品基线：v0.2.5 / main / HEAD 8c03941
+> 当前产品基线：v0.3.0（build 8）/ main
 >
 > 角色约定：本会话负责架构、任务书、提示词和独立验收；Coder 会话只实现当前已批准 STAGE。
 
@@ -207,3 +207,11 @@ HealthManager 后续开发会跨会话、跨模型接力。为了避免便宜模
 - STAGE-009 软件 / Simulator 门已 PASS：最终候选 `2e3b038` 上 migration 6/6、unit 242/242、UI 6/6、独立冷构建 0 error / 0 warning；真实 Simulator 主库 v1～v5、`integrity_check=ok`、FK 违规 0、UI marker 0。
 - 真机七项验收与发布就绪继续为 INCOMPLETE；不得由 Simulator 外推，也不 merge `main`、不打 tag、不创建 GitHub Release、不正式发布。
 - 唯一下一任务与停止条件见 `NEXT_TASK.md`；跨会话入口见 `docs/handoffs/V0.3-SOFTWARE-SIMULATOR-HANDOFF-20260714.md`。当前没有可直接交给 Coder 的提示词；只有真机发现边界清楚的缺陷后，才由主架构师建立独立修复 STAGE 与自包含提示词。
+
+## 11. 2026-07-15 v0.3.0 正式发布
+
+- 真机 item1～7、软件与 Simulator 门全部 PASS；v0.3.0 采用 build 8。
+- 发布前最后一项产品修复只解决历史零分项餐次在复用列表缺少饮食内容的问题：结构化菜品优先、备注兜底、空内容显式提示；不迁移数据、不改变复制语义。
+- 最终复验为 unit 251/251、UI 7/7，Simulator Release 与真实 iPhone Release 构建均为 0 error / 0 warning。
+- Release 已以同一 Bundle ID / Team 覆盖安装到真实 iPhone；安装后 115 条餐次、43 条历史备注餐次、0 条测试餐次、0 个孤儿分项，数据库完整性 `ok`。
+- v0.4 必须重新从用户需求、价值假设与证据边界开始，不把竞品功能清单直接当成路线图；具体入口见 `NEXT_TASK.md`。
