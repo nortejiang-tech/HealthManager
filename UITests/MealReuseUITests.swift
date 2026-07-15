@@ -155,6 +155,42 @@ final class MealReuseUITests: XCTestCase {
         assertNoRows(with: marker, in: app)
     }
 
+    func test_legacyNoteOnlyMealShowsDietContentInReuseList() throws {
+        let app = launchDietApp()
+        let marker = "uitest-reuse-legacy-note-\(UUID().uuidString)"
+        registerTargetedCleanup(markers: [marker], in: app)
+
+        app.buttons["diet-add-meal"].tap()
+        XCTAssertTrue(app.navigationBars["添加餐次"].waitForExistence(timeout: 5))
+        XCTAssertTrue(scrollToElement(withId: "meal-edit-notes", in: app))
+        typeTextAndAssert(marker, inFieldWithId: "meal-edit-notes", in: app)
+
+        let saveButton = app.buttons["meal-edit-save"]
+        XCTAssertTrue(saveButton.waitForExistence(timeout: 3))
+        XCTAssertTrue(saveButton.isEnabled)
+        saveButton.tap()
+        XCTAssertTrue(app.navigationBars["饮食"].waitForExistence(timeout: 5))
+
+        let sourceMealId = try XCTUnwrap(
+            mealRowId(for: marker, in: app),
+            "源餐未能在列表找到: \(marker)"
+        )
+
+        app.buttons["diet-reuse-meal"].tap()
+        XCTAssertTrue(app.navigationBars["复用餐次"].waitForExistence(timeout: 5))
+
+        let reuseWholeButton = app.buttons["meal-reuse-whole-\(sourceMealId)"]
+        XCTAssertTrue(reuseWholeButton.waitForExistence(timeout: 5))
+        attachScreenshot(named: "reuse-legacy-note-list", from: app)
+
+        let reusedMarkerText = app.staticTexts["meal-reuse-content-\(sourceMealId)"]
+        XCTAssertTrue(
+            reusedMarkerText.waitForExistence(timeout: 5),
+            "复用列表未展示历史饮食描述，应展示：\(marker)"
+        )
+        XCTAssertEqual(reusedMarkerText.label, marker)
+    }
+
     private func launchDietApp() -> XCUIApplication {
         let app = XCUIApplication()
         app.launchArguments = ["-HM_DEBUG_BYPASS_ONBOARDING"]

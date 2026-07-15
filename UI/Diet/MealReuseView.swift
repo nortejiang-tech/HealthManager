@@ -102,6 +102,15 @@ struct MealReuseView: View {
     private func snapshotRow(_ snapshot: MealStore.Snapshot) -> some View {
         let mealId = snapshot.meal.id ?? -1
         let itemNames = snapshot.items.map(\.name)
+        let trimmedNotes = snapshot.meal.notes?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let contentSummary: String
+        if !itemNames.isEmpty {
+            contentSummary = itemNames.joined(separator: ", ")
+        } else if let trimmedNotes, !trimmedNotes.isEmpty {
+            contentSummary = trimmedNotes
+        } else {
+            contentSummary = "未记录饮食内容"
+        }
         let nutritionSummary = [
             format(snapshot.meal.caloriesKcal, fallback: "—", suffix: "kcal"),
             format(snapshot.meal.proteinG, fallback: "—", suffix: "P"),
@@ -125,16 +134,11 @@ struct MealReuseView: View {
                     .foregroundStyle(.secondary)
             }
 
-            if itemNames.isEmpty {
-                Text("（无分项）")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-            } else {
-                Text(itemNames.joined(separator: ", "))
-                    .font(.footnote)
-                    .lineLimit(2)
-                    .foregroundStyle(.secondary)
-            }
+            Text(contentSummary)
+                .font(.footnote)
+                .lineLimit(2)
+                .foregroundStyle(.secondary)
+                .accessibilityIdentifier("meal-reuse-content-\(mealId)")
 
             HStack {
                 Button("复用整餐") {
