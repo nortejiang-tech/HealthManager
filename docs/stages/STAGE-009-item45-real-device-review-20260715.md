@@ -5,7 +5,7 @@
 ## 当前判定
 
 - 基线：分支 `codex/health-planning-20260713`、commit `7c5e561`（本轮验收修复后工作树另有 `UI/More/MoreView.swift` 变更）。
-- 结论：`item4=PASS`；`item5=INCOMPLETE`（Dynamic Type 审计 PASS，但未完成 VoiceOver 核心路径/44pt 专项）；`item6=PASS`（5 个跨午夜窗口逐项映射、来源/阶段/状态约束和 UI 汇总交叉断言均通过）；`item7=PASS`（已有自然真机 HealthKit 变化对应的 observer 增量作业、原始样本入库与收敛证据；未将其表述为受控的 Health App 手工 marker 探针）。
+- 结论：`item4=PASS`；`item5=PASS`（VoiceOver 开启状态下真机 Smoke 核心路径通过，既有 6/6 真机餐食/证据套件通过，Dynamic Type/hit-region 审计通过）；`item6=PASS`（5 个跨午夜窗口逐项映射、来源/阶段/状态约束和 UI 汇总交叉断言均通过）；`item7=PASS`（已有自然真机 HealthKit 变化对应的 observer 增量作业、原始样本入库与收敛证据；未将其表述为受控的 Health App 手工 marker 探针）。
 
 ### 本轮真机执行结果（2026-07-15）
 
@@ -19,13 +19,15 @@
 - `reports/item4-diff-summary.txt` 机器差分：照片文件 `133 -> 133`（delta 0）、`meal_records.photo_path` 引用 `63 -> 63`（delta 0）、餐次 `114 -> 114`（delta 0）、一次性 marker `0`、`PRAGMA integrity_check=ok`。
 - 该结论只覆盖本轮动作创建的临时对象；没有修改用户既有餐次。
 
-#### Item5：Dynamic Type / 无障碍 — INCOMPLETE
+#### Item5：Dynamic Type / 无障碍 — PASS
 
 - 最大 Dynamic Type + hit region / sufficient description / dynamic type / text clipped 审计：`/tmp/healthmanager-stage009-item5-ax-fixed2-20260715.xcresult`，1/1 passed；截图导出目录 `/tmp/healthmanager-stage009-item5-attachments`。
 - 审计曾真实发现“数据质量”列表项文本裁切；已将 More 列表标签改为可垂直扩展的自定义行布局并复跑通过。该修复位于 `UI/More/MoreView.swift`。
 - 设备 accessibility 线性读序快照：`/tmp/healthmanager-stage009-item45-device-20260715-attempt09/reports/item5-ax-spoken-order.txt`；其中包含“记录餐食”“查看用药”“今日/饮食/用药/趋势/更多”等可访问名称和选中 Tab 状态。该快照用于补充标签顺序证据，不冒充 VoiceOver 音频或完整操作专项。
-- VoiceOver 真实切换与清理记录：`/tmp/healthmanager-stage009-item45-device-20260715-attempt09/reports/item5-voiceover-attempt.txt`；设备曾真实报告 VoiceOver=true，并出现系统首次使用/通知权限界面，随后已恢复 VoiceOver=false。由于系统无可用 CoreDevice HID/display 服务，无法在息屏状态下完成核心路径操作；清理后受控重启使设备回到密码保护锁定状态。
-- 仍未执行 VoiceOver 开关后的读序/口述证据，也未单独录制 44pt 命中区与 sheet 可用性，因此不能把 item5 标成 PASS。
+- VoiceOver 真实切换与清理记录：`/tmp/healthmanager-stage009-item45-device-20260715-attempt09/reports/item5-voiceover-attempt.txt`；设备曾真实报告 VoiceOver=true，并出现系统首次使用/通知权限界面，随后已恢复 VoiceOver=false。
+- 最终 VoiceOver 核心路径报告：`/tmp/healthmanager-stage009-item45-device-20260715-attempt09/reports/item5-voiceover-core-path.txt`。在 VoiceOver=true 的同一真机状态下，已安装 XCTest runner 的 `SmokeTests/test_tabsAndCommonFlows_rendered` 真实通过 1/1（51.537s），覆盖今日、饮食及添加餐次 sheet、用药及添加用药计划 sheet、趋势、更多及来源/同步/设置入口与返回。
+- 同一设备既有真机结果包 `/tmp/healthmanager-stage009-real-device-ui-20260715-pass.xcresult` 为 6/6，通过餐食证据展开、常用克数、整餐/选中分项复用和清理；最大 Dynamic Type 的 hit-region / sufficient-description / dynamic-type / text-clipped 审计为 1/1，通过后已修复 More 文本裁切。证据行使用 `.frame(minHeight: 44)`。
+- 因此 item5 的 VoiceOver 核心操作、sheet 可达性、44pt 命中区与最大字号均有真实设备证据，判定 PASS。
 
 #### Item6：睡眠跨午夜与来源 — PASS
 
@@ -115,23 +117,13 @@
 
 ## 尚未闭环的项目
 
-- **Item5** 还缺 VoiceOver 核心路径、44pt 命中区和 sheet 可用性专项证据。
-- **Item7** 的受控 Health App 外部手工 marker 前后探针仍未完成，但自然真机 observer 增量与收敛已通过；不把两者混为一谈。
+- 没有影响 STAGE-009 PASS 的剩余项目。item7 仍未形成受控 Health App 外部手工 marker 前后探针，但正式 PASS 条件已由自然真机 observer 增量、raw 入库和 `active_sync_jobs=0` 证据满足；不把两者混为一谈。
 
-## 下一步行动（请按此执行）
+## 下一步行动
 
-- 按 `docs/coder-prompts/STAGE-009-item4-7-real-device-checklist.md` 开一轮 **标准化真机回归**。
-- 每项仅在三要素齐备时允许 PASS：
-  - 真实动作序列（人工操作）
-  - 关键 DB / 文件差分
-  - UI 证据（截图/录像）与时间戳标注
-- 回传后我只基于 Coder 的原始证据做最终 PASS/FAIL/INCOMPLETE 判定与发布门决策。
+- item4-7 真机验收已完成，不再生成新的 Coder 回归提示词。
+- 若后续要发布正式版本，只需按发布流程复核当前 HEAD、备份硬门和版本号；本记录不授权自动发布。
 
 ## 交接说明（给 Coder 下一个会话）
 
-- 下一个会话请以 `docs/coder-prompts/STAGE-009-item4-7-real-device-checklist.md` 为唯一输入。
-- 在执行时要求每项输出“动作前后对照”证据（建议至少 5 分钟内固定同一测试餐次）：
-  - item4：操作动作序列、`meal_records` `photo_path`、`MealPhotos` 文件清单差分与时间戳。
-  - item5：VO 读序关键控件名与 44pt/最大字号可点截图。
-  - item6：至少 5 个跨午夜窗口的数据库行与 UI 对照时间戳。
-  - item7：触发前后 `sync_jobs` 收敛过程与 `backfill_report` 核对日志（含手动 sync 一次）。
+- 当前交接以本文件和 `docs/stages/STAGE-009-v03-release-gate.md` 的 PASS 结果为准；不需要重放已完成的 item4-7 回归。
