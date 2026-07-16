@@ -18,6 +18,15 @@ struct ManualActivityEntryView: View {
     var body: some View {
         NavigationStack {
             Form {
+                Section {
+                    HMEditorGuide(
+                        title: "补录会保留估算身份",
+                        message: "这条活动会标记为手工来源；消耗按公式估算，不会伪装成设备实测。",
+                        systemImage: "square.and.pencil",
+                        tone: .estimate
+                    )
+                }
+
                 Section("活动") {
                     Picker("类型", selection: $kind) {
                         ForEach(ManualActivityKind.allCases) { item in
@@ -31,10 +40,24 @@ struct ManualActivityEntryView: View {
                 }
 
                 Section {
+                    HMEvidenceTag(
+                        tone: .estimate,
+                        text: "MET 公式估算",
+                        systemImage: "function"
+                    )
+                    HMEvidenceTag(
+                        tone: latestWeightKg == nil ? .actionRequired : .confirmed,
+                        text: latestWeightKg == nil ? "体重采用默认 75 kg" : "体重采用最近记录",
+                        systemImage: latestWeightKg == nil ? "exclamationmark.circle" : "checkmark.circle.fill"
+                    )
                     LabeledContent("体重", value: String(format: "%.1f kg", estimateWeight))
                     LabeledContent("强度", value: String(format: "%.1f MET", kind.met))
                     LabeledContent("估算时长", value: estimatedMinutes.map { String(format: "%.0f 分钟", $0) } ?? "—")
                     LabeledContent("活动消耗", value: estimatedCalories.map { String(format: "%.0f kcal", $0) } ?? "—")
+                    Text(formulaText)
+                        .font(.footnote.monospaced())
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 } header: {
                     Text("估算")
                 } footer: {
@@ -43,12 +66,18 @@ struct ManualActivityEntryView: View {
 
                 if let errorText {
                     Section {
-                        Text(errorText)
-                            .foregroundStyle(.red)
-                            .textSelection(.enabled)
+                        HMEditorCallout(
+                            title: "活动保存失败",
+                            message: "输入内容仍保留在当前页面，可检查后再次保存。",
+                            tone: .actionRequired,
+                            systemImage: "exclamationmark.triangle.fill",
+                            detail: errorText
+                        )
                     }
                 }
             }
+            .scrollContentBackground(.hidden)
+            .background(HMColors.background)
             .navigationTitle("补录活动")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -56,9 +85,10 @@ struct ManualActivityEntryView: View {
                     Button("取消") { dismiss() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("保存") {
+                    Button(isSaving ? "保存中…" : "保存") {
                         Task { await save() }
                     }
+                    .tint(HMColors.comparison)
                     .disabled(isSaving || estimatedCalories == nil)
                 }
             }
@@ -74,7 +104,20 @@ struct ManualActivityEntryView: View {
         if latestWeightKg == nil {
             return "没有找到最近体重，暂按 75 kg 估算。补录体重后，新活动会按最新体重计算。"
         }
-        return "估算公式：MET × 体重 × 小时。距离只在没有填写时长时用于反推时长。"
+        return "距离只在没有填写时长时用于反推时长；保存后仍会标记为手工估算来源。"
+    }
+
+    private var formulaText: String {
+        guard let estimatedMinutes, let estimatedCalories else {
+            return "填写时长，或填写距离以反推时长后，才会计算消耗。"
+        }
+        return String(
+            format: "%.1f MET × %.1f kg × %.2f 小时 = %.0f kcal",
+            kind.met,
+            estimateWeight,
+            estimatedMinutes / 60,
+            estimatedCalories
+        )
     }
 
     private var enteredDurationMinutes: Double? {

@@ -169,44 +169,32 @@ struct MealItemEvidencePresentation: Equatable {
 struct MealItemEvidenceView: View {
     let item: MealItemDraft
     let index: Int
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var isExpanded: Bool = false
 
     var body: some View {
         let presentation = MealItemEvidencePresentation(item: item)
         let itemName = item.name.trimmingCharacters(in: .whitespacesAndNewlines)
         let itemDisplayName = itemName.isEmpty ? "该条目" : itemName
+        let tone = evidenceTone(for: item.provenanceKind)
 
         VStack(alignment: .leading, spacing: 6) {
             Button {
                 isExpanded.toggle()
             } label: {
-                HStack(spacing: 8) {
-                    Label(
-                        presentation.provenanceSourceTitle,
-                        systemImage: presentation.provenanceSymbolName
-                    )
-                    .labelStyle(.titleAndIcon)
-                    .font(.caption)
-                    .fontWeight(.medium)
-
-                    if let compactConfidence = presentation.compactConfidenceText {
-                        Text(compactConfidence)
-                            .foregroundStyle(.secondary)
+                Group {
+                    if dynamicTypeSize.isAccessibilitySize {
+                        VStack(alignment: .leading, spacing: 8) {
+                            evidenceSummary(presentation, tone: tone)
+                            disclosureLabel
+                        }
+                    } else {
+                        HStack(spacing: 8) {
+                            evidenceSummary(presentation, tone: tone)
+                            Spacer(minLength: 8)
+                            disclosureLabel
+                        }
                     }
-
-                    if let compactRevision = presentation.compactRevisionText {
-                        Text(compactRevision)
-                            .foregroundStyle(.secondary)
-                            .font(.caption)
-                    }
-
-                    Spacer()
-                    Text(isExpanded ? "收起" : "详情")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
-                        .foregroundStyle(.secondary)
-                        .font(.caption2)
                 }
                 .padding(.horizontal, 8)
                 .frame(minHeight: 44)
@@ -219,7 +207,7 @@ struct MealItemEvidenceView: View {
             .accessibilityHint("轻点可展开或收起来源依据")
             .background {
                 RoundedRectangle(cornerRadius: 10)
-                    .fill(Color.secondary.opacity(0.12))
+                    .fill(tone.secondaryColor)
             }
 
             if isExpanded {
@@ -240,11 +228,56 @@ struct MealItemEvidenceView: View {
                 }
                 .font(.caption)
                 .foregroundStyle(.secondary)
-                .padding(.leading, 6)
+                .padding(12)
+                .background(HMColors.background.opacity(0.55), in: RoundedRectangle(cornerRadius: 10))
                 .accessibilityElement(children: .contain)
             }
         }
         .padding(.vertical, 2)
+    }
+
+    @ViewBuilder
+    private func evidenceSummary(
+        _ presentation: MealItemEvidencePresentation,
+        tone: HMSemanticTone
+    ) -> some View {
+        HMEvidenceTag(
+            tone: tone,
+            text: presentation.provenanceSourceTitle,
+            systemImage: presentation.provenanceSymbolName
+        )
+
+        if let compactConfidence = presentation.compactConfidenceText {
+            Text(compactConfidence)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+
+        if let compactRevision = presentation.compactRevisionText {
+            Text(compactRevision)
+                .font(.caption)
+                .foregroundStyle(HMColors.confirmed)
+        }
+    }
+
+    private var disclosureLabel: some View {
+        HStack(spacing: 4) {
+            Text(isExpanded ? "收起" : "依据")
+            Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+        }
+        .font(.caption.weight(.medium))
+        .foregroundStyle(.secondary)
+    }
+
+    private func evidenceTone(for kind: MealItemRecord.ProvenanceKind) -> HMSemanticTone {
+        switch kind {
+        case .manual:
+            return .neutral
+        case .aiEstimate:
+            return .estimate
+        case .nutritionDatabase, .nutritionLabel:
+            return .comparison
+        }
     }
 
     @ViewBuilder

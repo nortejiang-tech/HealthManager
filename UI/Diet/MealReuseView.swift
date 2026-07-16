@@ -3,6 +3,7 @@ import SwiftUI
 struct MealReuseView: View {
     @EnvironmentObject private var environment: AppEnvironment
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     @State private var state: LoadState = .loading
     @State private var snapshots: [MealStore.Snapshot] = []
@@ -26,31 +27,37 @@ struct MealReuseView: View {
                 Group {
                     switch state {
                     case .loading:
-                        ProgressView("加载历史餐次…")
-                            .accessibilityIdentifier("meal-reuse-loading")
+                        VStack(spacing: 16) {
+                            ProgressView("加载历史餐次…")
+                                .accessibilityIdentifier("meal-reuse-loading")
+                            Text("正在读取本机已保存的餐次，不会修改原记录。")
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                        }
                     case .empty:
-                        VStack(spacing: 8) {
-                            Text("暂无可复用的历史餐次。")
-                                .accessibilityIdentifier("meal-reuse-empty")
-                            Button("刷新") {
-                                Task {
-                                    await loadRecentMeals()
-                                }
-                            }
-                            .buttonStyle(.bordered)
-                        }
+                        HMEmptyState(
+                            title: "暂无历史餐次",
+                            message: "保存过餐次后，可以从这里创建一份可编辑的新草稿。",
+                            icon: "clock.arrow.circlepath",
+                            tone: .neutral,
+                            primaryActionTitle: "刷新",
+                            primaryActionIcon: "arrow.clockwise",
+                            primaryAction: { Task { await loadRecentMeals() } },
+                            primaryActionIdentifier: "meal-reuse-refresh"
+                        )
+                        .padding(20)
+                        .accessibilityIdentifier("meal-reuse-empty")
                     case .failed(let message):
-                        VStack(spacing: 8) {
-                            Text("读取历史餐次失败：\(message)")
-                                .multilineTextAlignment(.center)
-                                .accessibilityIdentifier("meal-reuse-error")
-                            Button("重试") {
-                                Task {
-                                    await loadRecentMeals()
-                                }
-                            }
-                            .buttonStyle(.bordered)
-                        }
+                        HMInlineRecovery(
+                            title: "历史餐次读取失败",
+                            message: "原记录没有被修改，可以重试本机读取。",
+                            technicalDetails: message,
+                            actionTitle: "重试",
+                            onAction: { Task { await loadRecentMeals() } },
+                            titleAccessibilityIdentifier: "meal-reuse-error",
+                            actionAccessibilityIdentifier: "meal-reuse-retry"
+                        )
+                        .padding(20)
                     case .ready:
                         if let selected = selectedSnapshot {
                             selectedMealView(selected)
@@ -71,6 +78,7 @@ struct MealReuseView: View {
                 .task {
                     await loadRecentMeals()
                 }
+                .tint(HMColors.confirmed)
             }
         }
     }
@@ -88,14 +96,27 @@ struct MealReuseView: View {
 
             List {
                 Section {
+                    HMEditorGuide(
+                        title: "原记录保持不变",
+                        message: "复用整餐或只选分项，都会先创建一份可以继续修改的新草稿。",
+                        systemImage: "doc.on.doc",
+                        tone: .confirmed
+                    )
+                }
+
+                Section {
                     ForEach(snapshots, id: \.meal.id) { snapshot in
                         snapshotRow(snapshot)
                     }
                 } header: {
                     Text("近期餐次")
                         .accessibilityIdentifier("meal-reuse-list")
+                } footer: {
+                    Text("营养值按原记录带入；未知字段仍保持未知。")
                 }
             }
+            .scrollContentBackground(.hidden)
+            .background(HMColors.background)
         }
     }
 
@@ -127,6 +148,9 @@ struct MealReuseView: View {
                     Text(dateLabel(snapshot.meal.eatenAt))
                         .foregroundStyle(.secondary)
                         .font(.footnote)
+                    Label("本地记录", systemImage: "internaldrive")
+                        .font(.caption)
+                        .foregroundStyle(HMColors.confirmed)
                 }
                 Spacer()
                 Text(nutritionSummary)
@@ -140,28 +164,47 @@ struct MealReuseView: View {
                 .foregroundStyle(.secondary)
                 .accessibilityIdentifier("meal-reuse-content-\(mealId)")
 
-            HStack {
-                Button("复用整餐") {
-                    Task {
-                        await reuse(snapshot, with: .wholeMeal)
-                    }
-                }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.small)
-                .accessibilityIdentifier("meal-reuse-whole-\(mealId)")
+            reuseActions(snapshot, mealId: mealId)
+        }
+        .padding(.vertical, 6)
+    }
 
+    @ViewBuilder
+    private func reuseActions(_ snapshot: MealStore.Snapshot, mealId: Int64) -> some View {
+        if dynamicTypeSize.isAccessibilitySize {
+            VStack(alignment: .leading, spacing: 8) {
+                wholeMealButton(snapshot, mealId: mealId)
                 if !snapshot.items.isEmpty {
-                    Button("选择菜品") {
-                        selectedSnapshot = snapshot
-                        selectedItemIds = []
-                    }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-                    .accessibilityIdentifier("meal-reuse-select-\(mealId)")
+                    selectItemsButton(snapshot, mealId: mealId)
+                }
+            }
+        } else {
+            HStack {
+                wholeMealButton(snapshot, mealId: mealId)
+                if !snapshot.items.isEmpty {
+                    selectItemsButton(snapshot, mealId: mealId)
                 }
             }
         }
-        .padding(.vertical, 2)
+    }
+
+    private func wholeMealButton(_ snapshot: MealStore.Snapshot, mealId: Int64) -> some View {
+        Button("复用整餐") {
+            Task { await reuse(snapshot, with: .wholeMeal) }
+        }
+        .buttonStyle(.borderedProminent)
+        .controlSize(.small)
+        .accessibilityIdentifier("meal-reuse-whole-\(mealId)")
+    }
+
+    private func selectItemsButton(_ snapshot: MealStore.Snapshot, mealId: Int64) -> some View {
+        Button("选择菜品") {
+            selectedSnapshot = snapshot
+            selectedItemIds = []
+        }
+        .buttonStyle(.bordered)
+        .controlSize(.small)
+        .accessibilityIdentifier("meal-reuse-select-\(mealId)")
     }
 
     private func selectedMealView(_ snapshot: MealStore.Snapshot) -> some View {
@@ -169,6 +212,13 @@ struct MealReuseView: View {
         let childItems = snapshot.items
 
         return VStack(alignment: .leading, spacing: 12) {
+            HMEditorGuide(
+                title: "选择后生成新草稿",
+                message: "这里只决定复制哪些分项；原餐次、时间和内容不会被改写。",
+                systemImage: "checklist",
+                tone: .confirmed
+            )
+
             HStack {
                 Text("选择要复用的菜品")
                     .font(.headline)
@@ -192,8 +242,9 @@ struct MealReuseView: View {
                             toggleSelection(for: itemId)
                         } label: {
                             HStack {
-                                Text(isSelected ? "✓" : "·")
-                                    .foregroundStyle(isSelected ? Color.accentColor : Color.secondary)
+                                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                                    .foregroundStyle(isSelected ? HMColors.confirmed : Color.secondary)
+                                    .accessibilityHidden(true)
                                 Text(item.name)
                                 Spacer()
                                 if let grams = item.grams {
@@ -205,6 +256,8 @@ struct MealReuseView: View {
                         .buttonStyle(.plain)
                         .accessibilityIdentifier("meal-reuse-item-toggle-\(mealId)-\(itemId)")
                         .accessibilityLabel("选择\(item.name)")
+                        .accessibilityValue(isSelected ? "已选择" : "未选择")
+                        .accessibilityAddTraits(isSelected ? .isSelected : [])
                     } else {
                         HStack {
                             Text(item.name)
@@ -233,6 +286,8 @@ struct MealReuseView: View {
                 }
             }
             .buttonStyle(.borderedProminent)
+            .tint(HMColors.confirmed)
+            .controlSize(.large)
             .disabled(selectedItemIds.isEmpty)
             .accessibilityIdentifier("meal-reuse-item-confirm")
             .padding(.horizontal)

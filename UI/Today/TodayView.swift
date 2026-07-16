@@ -222,15 +222,215 @@ struct TodayScreenContent: View {
 
 private struct TodayLoadingView: View {
     var body: some View {
-        VStack(spacing: 14) {
-            ProgressView()
-                .controlSize(.large)
-            Text("正在加载今日证据…")
-                .font(.callout)
+        ScrollView {
+            VStack(alignment: .leading, spacing: 28) {
+                TodayStateHeader(
+                    tone: .neutral,
+                    status: "正在读取本机证据",
+                    systemImage: "arrow.triangle.2.circlepath"
+                )
+
+                Text("正在整理\n今天的数据")
+                    .font(.largeTitle.weight(.bold))
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityAddTraits(.isHeader)
+
+                TodayBaselineSkeleton()
+
+                TodayLoadingLens()
+
+                TodayLoadingSummary()
+
+                VStack(spacing: 0) {
+                    TodayLoadingRow()
+                    Divider().overlay(HMColors.separator)
+                    TodayLoadingRow()
+                }
+
+                Label(
+                    "只读取本机数据库；完成后会显示来源、缺失与估算状态。",
+                    systemImage: "info.circle"
+                )
+                .font(.footnote)
                 .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityElement(children: .combine)
+            }
+            .padding(.horizontal, 20)
+            .padding(.top, 20)
+            .padding(.bottom, 32)
         }
-        .padding(24)
-        .accessibilityElement(children: .combine)
+        .background(HMColors.background.ignoresSafeArea())
+        .accessibilityIdentifier("today-loading")
+    }
+}
+
+private struct TodayStateHeader: View {
+    let tone: HMSemanticTone
+    let status: String
+    let systemImage: String
+
+    @Environment(\.locale) private var locale
+
+    private var dateLabel: String {
+        let formatter = DateFormatter()
+        formatter.locale = TodayEvidencePresentation.resolvedInterfaceLocale(
+            environmentLocale: locale
+        )
+        formatter.setLocalizedDateFormatFromTemplate("MMMMdEEEE")
+        return formatter.string(from: Date())
+    }
+
+    var body: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .top, spacing: 16) {
+                HMEditorialHeader(title: "今日", subtitle: dateLabel)
+                HMEvidenceTag(
+                    tone: tone,
+                    text: status,
+                    systemImage: systemImage
+                )
+            }
+            VStack(alignment: .leading, spacing: 14) {
+                HMEditorialHeader(title: "今日", subtitle: dateLabel)
+                HMEvidenceTag(
+                    tone: tone,
+                    text: status,
+                    systemImage: systemImage
+                )
+            }
+        }
+    }
+}
+
+private struct TodayBaselineSkeleton: View {
+    private let nodePositions: [(CGFloat, CGFloat)] = [
+        (0.07, 0.72),
+        (0.43, 0.45),
+        (0.82, 0.28)
+    ]
+
+    var body: some View {
+        GeometryReader { proxy in
+            ZStack(alignment: .topLeading) {
+                Path { path in
+                    let width = proxy.size.width
+                    let height = proxy.size.height
+                    path.move(to: CGPoint(x: 0, y: height * 0.66))
+                    path.addCurve(
+                        to: CGPoint(x: width, y: height * 0.32),
+                        control1: CGPoint(x: width * 0.24, y: height * 0.95),
+                        control2: CGPoint(x: width * 0.63, y: height * 0.12)
+                    )
+                }
+                .stroke(HMColors.skeleton, style: StrokeStyle(lineWidth: 4, lineCap: .round))
+
+                ForEach(nodePositions.indices, id: \.self) { index in
+                    let position = nodePositions[index]
+                    Circle()
+                        .fill(HMColors.background)
+                        .frame(width: 30, height: 30)
+                        .overlay {
+                            Circle()
+                                .stroke(HMColors.skeleton, lineWidth: 5)
+                        }
+                        .position(
+                            x: proxy.size.width * position.0,
+                            y: proxy.size.height * position.1
+                        )
+                }
+
+                VStack(alignment: .leading, spacing: 10) {
+                    HMLoadingSkeleton(width: proxy.size.width * 0.34, height: 16)
+                    HMLoadingSkeleton(width: proxy.size.width * 0.23, height: 12)
+                }
+                .offset(x: proxy.size.width * 0.07, y: 8)
+
+                VStack(alignment: .leading, spacing: 10) {
+                    HMLoadingSkeleton(width: proxy.size.width * 0.26, height: 16)
+                    HMLoadingSkeleton(width: proxy.size.width * 0.17, height: 12)
+                }
+                .offset(x: proxy.size.width * 0.55, y: 22)
+            }
+        }
+        .frame(height: 220)
+        .accessibilityHidden(true)
+    }
+}
+
+private struct TodayLoadingLens: View {
+    var body: some View {
+        HStack(spacing: 16) {
+            Circle()
+                .fill(HMColors.skeleton)
+                .frame(width: 48, height: 48)
+            VStack(alignment: .leading, spacing: 10) {
+                HMLoadingSkeleton(height: 16)
+                HMLoadingSkeleton(width: 170, height: 12)
+            }
+        }
+        .padding(20)
+        .hmSurface(cornerRadius: 22)
+        .accessibilityHidden(true)
+    }
+}
+
+private struct TodayLoadingSummary: View {
+    var body: some View {
+        VStack(spacing: 18) {
+            HStack(spacing: 18) {
+                summaryItem
+                Divider().overlay(HMColors.separator)
+                summaryItem
+                Divider().overlay(HMColors.separator)
+                summaryItem
+            }
+            Divider().overlay(HMColors.separator)
+            HStack(spacing: 14) {
+                loadingBlock
+                loadingBlock
+            }
+            Divider().overlay(HMColors.separator)
+            HMLoadingSkeleton(width: 190, height: 12)
+        }
+        .padding(20)
+        .hmSurface(cornerRadius: 18)
+        .accessibilityHidden(true)
+    }
+
+    private var summaryItem: some View {
+        HStack(spacing: 8) {
+            Circle()
+                .fill(HMColors.skeleton)
+                .frame(width: 28, height: 28)
+            HMLoadingSkeleton(height: 12)
+        }
+    }
+
+    private var loadingBlock: some View {
+        RoundedRectangle(cornerRadius: 14, style: .continuous)
+            .fill(HMColors.skeleton)
+            .frame(maxWidth: .infinity)
+            .frame(height: 70)
+    }
+}
+
+private struct TodayLoadingRow: View {
+    var body: some View {
+        HStack(spacing: 14) {
+            Circle()
+                .fill(HMColors.skeleton)
+                .frame(width: 52, height: 52)
+            VStack(alignment: .leading, spacing: 9) {
+                HMLoadingSkeleton(width: 130, height: 14)
+                HMLoadingSkeleton(width: 190, height: 12)
+            }
+            Spacer(minLength: 8)
+            Image(systemName: "chevron.right")
+                .foregroundStyle(.tertiary)
+        }
+        .padding(.vertical, 18)
+        .accessibilityHidden(true)
     }
 }
 
@@ -239,23 +439,51 @@ private struct TodayFailureView: View {
     let onRetryTap: () -> Void
 
     var body: some View {
-        VStack(spacing: 14) {
-            Image(systemName: "exclamationmark.arrow.triangle.2.circlepath")
-                .font(.system(size: 40, weight: .semibold))
-                .foregroundStyle(CardTheme.activity.primary)
-            Text("加载失败")
-                .font(.title2.bold())
-                .accessibilityIdentifier("today-load-error")
-            Text(message)
-                .font(.body)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-            Button("重试", action: onRetryTap)
-                .buttonStyle(.borderedProminent)
-                .controlSize(.large)
-                .accessibilityIdentifier("today-retry")
+        ScrollView {
+            VStack(alignment: .leading, spacing: 24) {
+                TodayStateHeader(
+                    tone: .actionRequired,
+                    status: "读取失败",
+                    systemImage: "exclamationmark.circle.fill"
+                )
+
+                HMInlineRecovery(
+                    title: "今天的数据暂时没有整理完成",
+                    message: "这次读取没有删除本地记录。你可以重新读取今日页面。",
+                    technicalDetails: message,
+                    actionTitle: "重新读取",
+                    onAction: onRetryTap,
+                    titleAccessibilityIdentifier: "today-load-error",
+                    actionAccessibilityIdentifier: "today-retry"
+                )
+
+                VStack(spacing: 0) {
+                    HMInformationRow(
+                        systemImage: "externaldrive.fill",
+                        tone: .confirmed,
+                        title: "本地记录",
+                        detail: "本次失败不会清除已有数据",
+                        trailingText: "保留",
+                        trailingTone: .confirmed
+                    )
+                    Divider().overlay(HMColors.separator)
+                    HMInformationRow(
+                        systemImage: "arrow.clockwise",
+                        tone: .comparison,
+                        title: "重试范围",
+                        detail: "只重新读取今日证据",
+                        trailingText: "今日",
+                        trailingTone: .comparison
+                    )
+                }
+                .padding(.horizontal, 16)
+                .hmSurface(cornerRadius: 18)
+            }
+            .padding(.horizontal, 20)
+            .padding(.top, 20)
+            .padding(.bottom, 32)
         }
-        .padding(28)
+        .background(HMColors.background.ignoresSafeArea())
     }
 }
 
@@ -276,6 +504,10 @@ private struct TodayLoadedContent: View {
                     onQualityTap: onQualityTap
                 )
 
+                TodayDecisionPanel(
+                    presentation: presentation
+                )
+
                 TodayEvidenceCard(
                     presentation: presentation,
                     onSummaryTap: onSummaryTap,
@@ -289,6 +521,7 @@ private struct TodayLoadedContent: View {
             .padding(.top, 12)
             .padding(.bottom, 28)
         }
+        .background(HMColors.background.ignoresSafeArea())
     }
 }
 
@@ -299,27 +532,21 @@ private struct TodayHeader: View {
     var body: some View {
         ViewThatFits(in: .horizontal) {
             HStack(alignment: .top, spacing: 12) {
-                title
-                Spacer(minLength: 8)
+                HMEditorialHeader(
+                    title: presentation.headerTitle,
+                    subtitle: presentation.dateText
+                )
                 qualityPill
             }
 
-            VStack(alignment: .leading, spacing: 10) {
-                title
+            VStack(alignment: .leading, spacing: 12) {
+                HMEditorialHeader(
+                    title: presentation.headerTitle,
+                    subtitle: presentation.dateText
+                )
                 qualityPill
             }
         }
-    }
-
-    private var title: some View {
-        VStack(alignment: .leading, spacing: 3) {
-            Text(presentation.headerTitle)
-                .font(.largeTitle.bold())
-            Text(presentation.dateText)
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-        }
-        .accessibilityElement(children: .combine)
     }
 
     private var qualityPill: some View {
@@ -338,6 +565,7 @@ private struct TodayHeader: View {
             .padding(.horizontal, 11)
             .frame(minHeight: 44)
             .background(qualityColor.opacity(0.12), in: Capsule())
+            .overlay(Capsule().stroke(qualityColor.opacity(0.25), lineWidth: 1))
         }
         .buttonStyle(.plain)
         .accessibilityLabel("\(presentation.qualityText)，查看数据质量")
@@ -347,12 +575,51 @@ private struct TodayHeader: View {
     private var qualityColor: Color {
         switch presentation.qualityStyle {
         case .unreconciled:
-            return .gray
+            return HMColors.neutral
         case .reconciledNoAlerts:
-            return .green
+            return HMColors.confirmed
         case .hasAlerts:
-            return .orange
+            return HMColors.actionRequired
         }
+    }
+}
+
+private struct TodayDecisionPanel: View {
+    let presentation: TodayEvidencePresentation
+
+    var body: some View {
+        HMDecisionLens(
+            title: lensTitle,
+            text: lensNarrative,
+            tone: lensTone,
+            systemImage: lensIcon
+        )
+        .accessibilityIdentifier("today-decision-lens")
+    }
+
+    private var lensTone: HMSemanticTone {
+        if presentation.qualityStyle == .hasAlerts { return .actionRequired }
+        if !presentation.timelineRows.isEmpty { return .confirmed }
+        return .neutral
+    }
+
+    private var lensIcon: String {
+        presentation.qualityStyle == .hasAlerts ? "exclamationmark.circle.fill" : "scope"
+    }
+
+    private var lensTitle: String {
+        if presentation.qualityStyle == .hasAlerts { return "先核对待处理项" }
+        return presentation.timelineRows.isEmpty ? "今日记录基线" : "值得查看的事实"
+    }
+
+    private var lensNarrative: String {
+        if presentation.qualityStyle == .hasAlerts {
+            return "当前数据质量有待处理项。先核对来源，再据此查看当日记录。"
+        }
+        if presentation.timelineRows.isEmpty {
+            return "今天还没有已保存的餐食或用药动作；当日汇总仍按现有样本展示。"
+        }
+        return "今天收录了 \(presentation.timelineRows.count) 条餐食或用药事实，并覆盖 \(presentation.sourceCoverageRows.count) 类原始样本。"
     }
 }
 
@@ -370,32 +637,29 @@ private struct TodayEvidenceCard: View {
                 presentation: presentation,
                 onSummaryTap: onSummaryTap
             )
-            cardDivider
+            Divider()
+                .overlay(HMColors.separator)
+                .padding(.leading, 18)
+                .padding(.trailing, 18)
+
             TodayTimelineSection(
                 presentation: presentation,
                 onTimelineTap: onTimelineTap,
                 onRecordMealTap: onRecordMealTap,
                 onMedicationTap: onMedicationTap
             )
-            cardDivider
+
+            Divider()
+                .overlay(HMColors.separator)
+                .padding(.leading, 18)
+                .padding(.trailing, 18)
+
             TodaySourceCoverageFooter(
                 presentation: presentation,
                 onSourcesTap: onSourcesTap
             )
         }
-        .background(
-            Color(uiColor: .secondarySystemGroupedBackground),
-            in: RoundedRectangle(cornerRadius: 22, style: .continuous)
-        )
-        .overlay {
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .stroke(CardTheme.sleep.primary.opacity(0.08), lineWidth: 1)
-        }
-    }
-
-    private var cardDivider: some View {
-        Divider()
-            .padding(.horizontal, 18)
+        .hmSurface(cornerRadius: 22)
     }
 }
 
@@ -442,7 +706,7 @@ private struct TodayDailySummarySection: View {
     private func sectionHeading(title: String, subtitle: String) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(title)
-                .font(.headline)
+                .font(.title3.weight(.semibold))
             Text(subtitle)
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -923,11 +1187,43 @@ private enum TodayPreviewFixtures {
     .environment(\.locale, Locale(identifier: "zh_CN"))
 }
 
+#Preview("Loading (Dark)") {
+    NavigationStack {
+        TodayScreenContent(state: .loading)
+    }
+    .environment(\.locale, Locale(identifier: "zh_CN"))
+    .preferredColorScheme(.dark)
+}
+
+#Preview("Loading (Accessibility Large)") {
+    NavigationStack {
+        TodayScreenContent(state: .loading)
+    }
+    .environment(\.locale, Locale(identifier: "zh_CN"))
+    .environment(\.dynamicTypeSize, .accessibility2)
+}
+
 #Preview("Failed") {
     NavigationStack {
         TodayScreenContent(state: .failed("今日数据暂时无法读取，请重试。"))
     }
     .environment(\.locale, Locale(identifier: "zh_CN"))
+}
+
+#Preview("Failed (Dark)") {
+    NavigationStack {
+        TodayScreenContent(state: .failed("今日数据暂时无法读取，请重试。"))
+    }
+    .environment(\.locale, Locale(identifier: "zh_CN"))
+    .preferredColorScheme(.dark)
+}
+
+#Preview("Failed (Accessibility Large)") {
+    NavigationStack {
+        TodayScreenContent(state: .failed("今日数据暂时无法读取，请重试。"))
+    }
+    .environment(\.locale, Locale(identifier: "zh_CN"))
+    .environment(\.dynamicTypeSize, .accessibility2)
 }
 
 #Preview("Accessibility Large") {

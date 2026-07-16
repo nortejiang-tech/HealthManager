@@ -1,31 +1,27 @@
 # NEXT_TASK
 
-> 当前状态（2026-07-15）：v0.3.0（build 8）发布门已 PASS；正式发布版本包含 v0.3 全部可信记录基础、真机收口修复，以及历史备注餐次在复用列表中的内容展示修复。
+> 当前状态（2026-07-16）：v0.4.0（build 9）发布候选已完成全量回归、Release 构建、真实 iPhone 覆盖安装、启动与数据保持验证；用户已明确授权发布，Git / GitHub 收尾正在执行。
 
-## 唯一下一任务：定义 v0.4 的首个可验证探索
+## 当前唯一任务：完成 v0.4.0 发布收尾
 
-下一轮先做产品与技术决策，不直接进入实现。主架构师需基于现有用户需求边界和 [竞品研究](docs/research/2026-07-13-health-app-competitor-primary-research.md)，从以下候选中选择一个最有价值、最小可验证的方向：
+本轮已完成根状态、五个一级页面、记录与计划编辑、趋势 / 证据 / 运维详情、设置 / AI / 权限、卡片编辑、全 App 深色与 Dynamic Type / Reduce Motion 审计，以及最终双轴审查和 258 / 258 全量回归。最终人工反馈也已纳入：趋势页把来源轨道移至底部，饮食页移除重复的大型新增 / 复用按钮。
 
-1. FoodDataSource seam、数据许可、离线策略和版本化。
-2. 许可清晰的食品候选与个人食品；只有该基础成立后，才评估营养标签 OCR、条码和份量换算。
-3. 本地个人纠正记忆、App Intent / Shortcut / 可选 Watch 快捷动作。
-4. 一条来源可追溯、可忽略的今日简报。
-5. 能量消耗 shadow mode；只做影子比较，不自动改变用户目标。
+- [最终实施交接](docs/handoffs/UI-REDESIGN-IMPLEMENTATION-HANDOFF-20260716.md)
+- [STAGE-010H：最终回归、审查与交接](docs/stages/STAGE-010H-final-regression-and-handoff.md)
+- [STAGE-011：v0.4.0 UI 发布](docs/stages/STAGE-011-v040-ui-release.md)
+- [v0.4.0 发布说明](docs/releases/v0.4.0.md)
+- [全页面设计合同](docs/design/2026-07-16-ui-redesign-design-contract.md)
+- [ADR-002：证据型功能视觉语言](docs/adr/ADR-002-evidence-led-functional-ui-language.md)
 
-## 进入 Coder 前的硬门
+## 已授权且正在执行的收尾
 
-- 先明确用户问题、非目标、证据来源、隐私边界和成功指标。
-- 涉及新数据模型、第三方数据集或同步语义时，先建立 ADR；未经接受不得改 schema 或引入依赖。
-- 先用原型、只读数据分析或小范围技术探针验证价值，再生成唯一 STAGE 的 Coder 提示词。
-- 不因薄荷健康、Elevate 或其他竞品已有某功能就直接复制；竞品只提供实现证据和体验参考，产品取舍继续以本产品需求为主。
+1. 创建 v0.4.0 产品提交与 annotated tag。
+2. push `main` 与 `v0.4.0`，创建私有仓库 GitHub Release。
+3. 回填 STAGE-011、交接和协作总图，确保仓库状态与外部发布结果一致。
 
-## v0.3 稳定边界
+## 稳定边界
 
-- 版本：`v0.3.0` / build `8`。
-- 数据库迁移：v1～v5；不得原地修改，新增 schema 只能追加 v6。
-- 最终自动化：HealthManagerTests 251/251、HealthManagerUITests 7/7。
-- 最终构建：Simulator Release 与真实 iPhone Release 均为 0 error / 0 warning。
-- 真机覆盖安装：Bundle ID `com.norte.HealthManager`、Team `K8RVJSC4NU`；升级后数据库完整性 `ok`，115 条餐次、43 条历史备注餐次、0 条测试餐次、0 个孤儿分项。
-- 发布说明：[v0.3.0](docs/releases/v0.3.0.md)。
-
-社区、排行、挑战、电商、广告、课程、自动减重目标和未经验证的健康评分继续明确排除。
+- 真实 iPhone 已覆盖安装 `0.4.0 (9)` 并验证启动与数据库保持；GitHub Release 在本任务收尾前仍是 pending。
+- 本轮没有修改 `Core/`、数据库 schema、HealthKit、同步、通知、营养 / 能量算法或持久化合同。
+- Simulator 证据不能外推真实 iPhone VoiceOver 操作手感、触觉、系统权限面板、第三方 App 或长期升级行为。
+- 社区、排行、挑战、电商、广告、课程、自动目标、健康评分和未经验证的健康结论继续明确排除。

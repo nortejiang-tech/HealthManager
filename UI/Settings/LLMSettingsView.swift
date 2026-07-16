@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 /// Configure the LLM endpoints that power AI commentary (text) and meal-photo
 /// nutrition estimation (vision).
@@ -30,22 +31,41 @@ struct LLMSettingsView: View {
     @State private var testing: Bool = false
     @State private var testResult: String?
     @State private var testFailed: Bool = false
+    @State private var testingVision: Bool = false
+    @State private var visionTestResult: String?
+    @State private var visionTestFailed: Bool = false
 
     var body: some View {
         Form {
             Section {
-                Toggle("启用 AI 摘要", isOn: $enabled)
+                HMDecisionLens(
+                    title: "两条 AI 通道，各自有外发边界",
+                    text: "日报 / 周报评注只发送本地聚合摘要文本；餐食照片分析只发送你在编辑器中主动选择的图片。两条通道可以使用不同的接口、模型和 Key。",
+                    tone: .estimate,
+                    systemImage: "sparkles"
+                )
+            }
+
+            Section {
+                Toggle("启用可选 AI 功能", isOn: $enabled)
             } header: {
                 Text("总开关")
             } footer: {
-                Text("开启后，「总结」页会在本地确定性摘要旁边显示 AI 评注。关闭则只用本地摘要。")
+                Text("关闭后本地摘要、餐食手工编辑和保存仍可使用；不会自动请求任何模型服务。")
             }
 
             profileSection
 
-            presetSection
-
-            Section("文本接口") {
+            Section {
+                HMEvidenceTag(
+                    tone: textChannelReady ? .estimate : .actionRequired,
+                    text: textChannelReady ? "文本评注通道已填写" : "文本评注通道未完成",
+                    systemImage: "doc.text"
+                )
+                Text("发送内容：本机已生成的日报 / 周报聚合摘要文本；不发送原始样本、设备 ID 或来源明细。")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
                 TextField("Base URL（如 https://open.bigmodel.cn/api/paas/v4）", text: $baseURL)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled(true)
@@ -58,9 +78,44 @@ struct LLMSettingsView: View {
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled(true)
                     .font(.callout.monospaced())
+
+                keyStatus(baseURL: baseURL, key: textKey)
+
+                Button {
+                    Task { await testConnection() }
+                } label: {
+                    HStack {
+                        if testing {
+                            ProgressView().controlSize(.small)
+                        }
+                        Label(testing ? "测试中…" : "测试文本模型连接", systemImage: "link")
+                    }
+                }
+                .disabled(testing || !textChannelReady)
+
+                if let result = testResult {
+                    HMEditorCallout(
+                        title: testFailed ? "文本连接测试失败" : "文本连接测试通过",
+                        message: testFailed ? "表单内容和已保存配置均未被覆盖。" : "结果只证明当前文本接口请求成功，不代表照片通道可用。",
+                        tone: testFailed ? .actionRequired : .confirmed,
+                        systemImage: testFailed ? "xmark.octagon" : "checkmark.seal",
+                        detail: result
+                    )
+                }
+            } header: {
+                Text("A · 日报 / 周报评注")
             }
 
             Section {
+                HMEvidenceTag(
+                    tone: visionChannelReady ? .estimate : .actionRequired,
+                    text: visionChannelReady ? "餐食照片通道已填写" : "餐食照片通道未完成",
+                    systemImage: "photo"
+                )
+                Text("发送内容：仅限你在餐食编辑器中主动选择并发起分析的图片；不会访问或上传整个照片库。")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
                 TextField("Vision Base URL（可与文本不同接口）", text: $visionBaseURL)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled(true)
@@ -73,31 +128,47 @@ struct LLMSettingsView: View {
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled(true)
                     .font(.callout.monospaced())
+                keyStatus(baseURL: effectiveVisionBaseURL, key: visionKey)
+
+                Button {
+                    Task { await testVisionConnection() }
+                } label: {
+                    HStack {
+                        if testingVision {
+                            ProgressView().controlSize(.small)
+                        }
+                        Label(testingVision ? "测试中…" : "测试照片模型连接", systemImage: "photo.badge.checkmark")
+                    }
+                }
+                .disabled(testingVision || !visionChannelReady)
+
+                if let visionTestResult {
+                    HMEditorCallout(
+                        title: visionTestFailed ? "照片连接测试失败" : "照片连接测试通过",
+                        message: visionTestFailed
+                            ? "表单内容和已保存配置均未被覆盖。"
+                            : "结果证明当前接口接收了图像请求；不代表具体餐食估算一定准确。",
+                        tone: visionTestFailed ? .actionRequired : .confirmed,
+                        systemImage: visionTestFailed ? "xmark.octagon" : "checkmark.seal",
+                        detail: visionTestResult
+                    )
+                }
             } header: {
-                Text("图像接口")
+                Text("B · 餐食照片分析")
             } footer: {
-                Text("图像接口可与文本接口使用不同的服务商；两者的 API Key 各自独立保存。")
+                Text("连接测试只发送 App 内生成的中性测试图和“仅回复 OK”指令，不包含照片库、餐食或健康数据。真实餐食估算仍只在编辑器中由你主动发起。")
             }
 
             Section {
-                Button {
-                    Task { await testConnection() }
-                } label: {
-                    HStack {
-                        if testing {
-                            ProgressView().controlSize(.small)
-                        }
-                        Text(testing ? "测试中…" : "测试文本模型连接")
-                    }
-                }
-                .disabled(testing || baseURL.isEmpty || textModel.isEmpty || (textKey.isEmpty && !LLMConfig.isLocalHost(baseURL)))
-
-                if let result = testResult {
-                    Label(result, systemImage: testFailed ? "xmark.octagon" : "checkmark.seal")
-                        .foregroundStyle(testFailed ? .red : .green)
-                        .font(.footnote)
-                }
+                HMEditorCallout(
+                    title: "Key 与配置分开保存",
+                    message: "API Key 存在系统 Keychain，并按接口地址记忆；数据库快照、兼容接口和 Profile 都不包含 Key。",
+                    tone: .confirmed,
+                    systemImage: "key.fill"
+                )
             }
+
+            presetSection
 
             Section {
                 Button(role: .destructive) {
@@ -105,11 +176,14 @@ struct LLMSettingsView: View {
                 } label: {
                     Label("清除所有 LLM 配置", systemImage: "trash")
                 }
+                .tint(HMColors.actionRequired)
             } footer: {
-                Text("发送给 LLM 的内容仅限本机已经聚合过的「日报 / 周报」纯文本——不会上传原始样本、设备 ID 或来源信息。Key 存储在 iOS Keychain，不随 DB 导出。")
+                Text("文本通道只发送本机聚合后的日报 / 周报；照片通道只发送你主动选择并发起分析的图片。不会自动上传原始 HealthKit 样本、设备 ID 或整个照片库。Key 存储在 iOS Keychain，不随 DB 导出。")
             }
         }
-        .navigationTitle("AI 摘要")
+        .scrollContentBackground(.hidden)
+        .background(HMColors.background)
+        .navigationTitle("AI 功能")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .confirmationAction) {
@@ -135,6 +209,9 @@ struct LLMSettingsView: View {
                 presets = LLMConfig.presets
             }
         }
+        .sheet(isPresented: $showingSaveProfile) {
+            saveProfileSheet
+        }
         .confirmationDialog(
             "清除全部 LLM 配置？",
             isPresented: $showingResetConfirm,
@@ -150,9 +227,44 @@ struct LLMSettingsView: View {
                 textKey = ""
                 visionKey = ""
                 testResult = nil
+                visionTestResult = nil
             }
             Button("取消", role: .cancel) {}
         }
+    }
+
+    private var textChannelReady: Bool {
+        let trimmedBase = baseURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedModel = textModel.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedKey = textKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        return !trimmedBase.isEmpty
+            && !trimmedModel.isEmpty
+            && (!trimmedKey.isEmpty || LLMConfig.isLocalHost(trimmedBase))
+    }
+
+    private var effectiveVisionBaseURL: String {
+        let vision = visionBaseURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        return vision.isEmpty ? baseURL.trimmingCharacters(in: .whitespacesAndNewlines) : vision
+    }
+
+    private var visionChannelReady: Bool {
+        let model = visionModel.trimmingCharacters(in: .whitespacesAndNewlines)
+        let key = visionKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        return !effectiveVisionBaseURL.isEmpty
+            && !model.isEmpty
+            && (!key.isEmpty || LLMConfig.isLocalHost(effectiveVisionBaseURL))
+    }
+
+    @ViewBuilder
+    private func keyStatus(baseURL: String, key: String) -> some View {
+        let trimmedBase = baseURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        let hasKey = !key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        let localWithoutKey = !trimmedBase.isEmpty && LLMConfig.isLocalHost(trimmedBase) && !hasKey
+        HMEvidenceTag(
+            tone: hasKey || localWithoutKey ? .confirmed : .neutral,
+            text: hasKey ? "Key 已填写，将存入 Keychain" : (localWithoutKey ? "本地接口可不填 Key" : "Key 尚未填写"),
+            systemImage: hasKey ? "key.fill" : "key"
+        )
     }
 
     // MARK: - Profile section ("我的配置" — one-tap switch between saved setups)
@@ -192,9 +304,6 @@ struct LLMSettingsView: View {
             Text("我的配置")
         } footer: {
             Text("把当前文本/图像接口 + 模型保存成一份配置，下次一键切回。API Key 仍按接口地址自动记忆，不会重复填写。")
-        }
-        .sheet(isPresented: $showingSaveProfile) {
-            saveProfileSheet
         }
     }
 
@@ -237,6 +346,14 @@ struct LLMSettingsView: View {
     private var saveProfileSheet: some View {
         NavigationStack {
             Form {
+                Section {
+                    HMEditorGuide(
+                        title: "保存双通道字段，不保存 Key",
+                        message: "Profile 只记录文本 / 图像接口与模型，方便下次切换；Key 仍按接口地址留在系统 Keychain。",
+                        systemImage: "bookmark",
+                        tone: .confirmed
+                    )
+                }
                 Section("配置名") {
                     TextField("如：智谱 GLM 免费", text: $newProfileName)
                 }
@@ -271,6 +388,8 @@ struct LLMSettingsView: View {
                     Text("API Key 不进入配置，仍保留在 Keychain 中（按接口地址记忆）。")
                 }
             }
+            .scrollContentBackground(.hidden)
+            .background(HMColors.background)
             .navigationTitle("保存当前配置")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -328,6 +447,7 @@ struct LLMSettingsView: View {
                 } label: {
                     presetRow(preset)
                 }
+                .tint(.primary)
             }
             .onDelete(perform: deletePresets)
 
@@ -367,6 +487,7 @@ struct LLMSettingsView: View {
             .font(.caption.monospaced())
             .foregroundStyle(.secondary)
         }
+        .foregroundStyle(.primary)
     }
 
     private func apply(_ preset: LLMConfig.Preset, toText: Bool, toVision: Bool) {
@@ -447,6 +568,49 @@ struct LLMSettingsView: View {
             }
         }
     }
+
+    private func testVisionConnection() async {
+        await MainActor.run {
+            testingVision = true
+            visionTestResult = nil
+            visionTestFailed = false
+        }
+
+        let renderer = UIGraphicsImageRenderer(size: CGSize(width: 32, height: 32))
+        let testImage = renderer.image { context in
+            context.cgContext.setFillColor(UIColor.systemGray6.cgColor)
+            context.cgContext.fill(CGRect(x: 0, y: 0, width: 32, height: 32))
+            context.cgContext.setFillColor(UIColor.systemGray3.cgColor)
+            context.cgContext.fill(CGRect(x: 8, y: 8, width: 16, height: 16))
+        }
+        let client = LLMClient(
+            baseURL: effectiveVisionBaseURL,
+            model: visionModel.trimmingCharacters(in: .whitespacesAndNewlines),
+            apiKey: visionKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        )
+
+        do {
+            let reply = try await client.analyzeImage(
+                testImage,
+                prompt: "这是连接测试图，不包含健康信息。请只回复 OK。",
+                systemPrompt: nil,
+                maxSide: 32,
+                jpegQuality: 0.7,
+                temperature: 0.0
+            )
+            await MainActor.run {
+                testingVision = false
+                visionTestResult = "连接 OK：\(reply.prefix(40))"
+                visionTestFailed = false
+            }
+        } catch {
+            await MainActor.run {
+                testingVision = false
+                visionTestResult = error.localizedDescription
+                visionTestFailed = true
+            }
+        }
+    }
 }
 
 /// Sheet for adding a custom provider to the preset list.
@@ -467,6 +631,14 @@ private struct AddProviderView: View {
     var body: some View {
         NavigationStack {
             Form {
+                Section {
+                    HMEditorGuide(
+                        title: "只添加接口模板",
+                        message: "这里仅保存名称、Base URL 和建议模型。添加后不会自动启用 AI、填写 Key 或发送任何数据。",
+                        systemImage: "plus.circle",
+                        tone: .estimate
+                    )
+                }
                 Section("接口名称") {
                     TextField("如：我的自建服务", text: $name)
                 }
@@ -490,7 +662,17 @@ private struct AddProviderView: View {
                 } footer: {
                     Text("仅作为快速选择时的填充建议，保存后仍可在接口字段中修改。")
                 }
+                Section {
+                    HMEditorCallout(
+                        title: "此处不保存 API Key",
+                        message: "把接口应用到文本或照片通道后再填写 Key；Key 将进入系统 Keychain，而不是接口模板。",
+                        tone: .confirmed,
+                        systemImage: "lock.fill"
+                    )
+                }
             }
+            .scrollContentBackground(.hidden)
+            .background(HMColors.background)
             .navigationTitle("添加接口")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

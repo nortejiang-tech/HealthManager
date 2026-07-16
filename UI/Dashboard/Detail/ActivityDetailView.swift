@@ -13,24 +13,47 @@ struct ActivityDetailView: View {
     @State private var period: MetricPeriod = .week
     @State private var showingManualEntry = false
     @State private var loadError: String?
+    @State private var isLoading: Bool = true
+    @State private var hasLoadedSnapshot: Bool = false
+    @State private var refreshGeneration: Int = 0
 
     var body: some View {
         List {
-            Section("今日消耗") {
+            if isLoading {
+                Section {
+                    ProgressView("正在读取活动详情…")
+                }
+            }
+
+            if hasLoadedSnapshot {
+                Section("今日消耗") {
+                HMInformationRow(
+                    systemImage: "flame",
+                    tone: .comparison,
+                    title: "热量公式",
+                    detail: "基础代谢 + 活动能量 = 总消耗。热量缺口 = 总消耗 − 饮食摄入。"
+                )
                 LabeledContent("总消耗", value: kcalLabel(summary.totalBurnedKcal))
                 LabeledContent("活动能量", value: kcalLabel(summary.activeEnergyKcal))
                 LabeledContent("基础代谢", value: kcalLabel(summary.basalEnergyKcal))
                 LabeledContent("饮食摄入", value: kcalLabel(summary.intakeKcal))
-                LabeledContent("热量缺口", value: signedKcalLabel(summary.deficitKcal))
+                VStack(alignment: .leading, spacing: 8) {
+                    LabeledContent("热量缺口", value: signedKcalLabel(summary.deficitKcal))
+                    HMEvidenceTag(
+                        tone: summary.deficitKcal == nil ? .actionRequired : .confirmed,
+                        text: deficitEvidenceMessage,
+                        systemImage: summary.deficitKcal == nil ? "exclamationmark.circle" : "checkmark.circle.fill"
+                    )
+                }
             }
 
-            Section("今日活动") {
+                Section("今日活动") {
                 LabeledContent("步数", value: summary.steps.map { "\($0) 步" } ?? "—")
                 LabeledContent("距离", value: distanceLabel(summary.distanceMeters))
                 LabeledContent("锻炼时长", value: minutesLabel(summary.exerciseMinutes))
             }
 
-            Section("趋势") {
+                Section("趋势") {
                 Picker("周期", selection: $period) {
                     ForEach(MetricPeriod.allCases) { period in
                         Text(period.label).tag(period)
@@ -57,10 +80,14 @@ struct ActivityDetailView: View {
                 )
             }
 
-            Section {
+                Section {
                 if workouts.isEmpty {
-                    Text("今天还没有运动记录。")
-                        .foregroundStyle(.secondary)
+                    HMEmptyState(
+                        title: "今天暂无训练记录",
+                        message: "这不影响步数和活动能量展示；如有未同步的训练，可回补或手工补录。",
+                        icon: "figure.run",
+                        tone: .neutral
+                    )
                 } else {
                     ForEach(workouts) { row in
                         ActivityWorkoutRowView(row: row)
@@ -72,20 +99,30 @@ struct ActivityDetailView: View {
                 } label: {
                     Label("补录今天的活动", systemImage: "plus.circle")
                 }
-            } header: {
+                .buttonStyle(.bordered)
+                .tint(HMColors.comparison)
+                } header: {
                 Text("今日训练")
-            } footer: {
+                } footer: {
                 Text("热量缺口仅在基础代谢、活动能量和完整饮食摄入齐备时计算。活动能量会合并 Active Energy 与运动记录里的消耗，并避免同一段训练重复计入。")
+                }
             }
 
             if let loadError {
                 Section {
-                    Text(loadError)
-                        .foregroundStyle(.red)
-                        .textSelection(.enabled)
+                    HMInlineRecovery(
+                        title: "活动详情加载失败",
+                        message: "现有活动记录没有被修改。可在当前页面重新读取。",
+                        technicalDetails: loadError,
+                        actionTitle: "重新读取"
+                    ) {
+                        Task { await refresh() }
+                    }
                 }
             }
         }
+        .scrollContentBackground(.hidden)
+        .background(HMColors.background)
         .navigationTitle("活动")
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
@@ -113,7 +150,30 @@ struct ActivityDetailView: View {
         }
     }
 
+    private var deficitEvidenceMessage: String {
+        if summary.deficitKcal != nil {
+            return "基础代谢、活动能量与完整饮食摄入均有记录"
+        }
+        if summary.totalBurnedKcal == nil {
+            return "基础代谢或活动能量未知，热量缺口停止"
+        }
+        switch summary.intakeEvidence {
+        case .complete:
+            return "输入未完整，热量缺口停止"
+        case .incomplete:
+            return "饮食摄入未完整，热量缺口停止"
+        case .noMeals:
+            return "今日无饮食记录，热量缺口停止"
+        }
+    }
+
     private func refresh() async {
+        refreshGeneration += 1
+        let generation = refreshGeneration
+        if !hasLoadedSnapshot {
+            isLoading = true
+        }
+        loadError = nil
         let selectedPeriod = period
         do {
             let data = try await environment.database.asyncRead { db -> (ActivityDetailSummary, [ActivityWorkoutRow], [MetricPoint], [MetricPoint]) in
@@ -163,14 +223,21 @@ struct ActivityDetailView: View {
                 return (summary, rows, energy, steps)
             }
             await MainActor.run {
+                guard generation == refreshGeneration else { return }
                 summary = data.0
                 workouts = data.1
                 energyPoints = data.2
                 stepPoints = data.3
                 loadError = nil
+                hasLoadedSnapshot = true
+                isLoading = false
             }
         } catch {
-            await MainActor.run { loadError = "加载失败：\(error.localizedDescription)" }
+            await MainActor.run {
+                guard generation == refreshGeneration else { return }
+                loadError = "加载失败：\(error.localizedDescription)"
+                isLoading = false
+            }
             AppLogger.shared.error("Activity detail refresh failed: \(error.localizedDescription)")
         }
     }
@@ -239,6 +306,7 @@ struct ActivityWorkoutRow: Identifiable, Hashable, Sendable {
     let energyKcal: Double?
     let distanceMeters: Double?
     let sourceLabel: String
+    let isManualEstimate: Bool
 
     var id: String { sampleUUID }
 
@@ -267,7 +335,8 @@ struct ActivityWorkoutRow: Identifiable, Hashable, Sendable {
         let manualName = ManualActivityKind.displayName(forRawValue: extra["manualActivityKind"] as? String)
         let energy = doubleValue(extra["totalEnergyKcal"])
         let distance = doubleValue(extra["totalDistanceMeters"])
-        let origin = SourceAttribution.Origin(rawValue: row["source_origin"] ?? "unknown")?.label ?? "未识别"
+        let originRaw: String = row["source_origin"] ?? "unknown"
+        let origin = SourceAttribution.Origin(rawValue: originRaw)?.label ?? "未识别"
         return ActivityWorkoutRow(
             sampleUUID: row["sample_uuid"] ?? "",
             startAt: row["start_at"] ?? 0,
@@ -276,7 +345,8 @@ struct ActivityWorkoutRow: Identifiable, Hashable, Sendable {
             activityLabel: manualName ?? WorkoutsView.label(for: type),
             energyKcal: energy,
             distanceMeters: distance,
-            sourceLabel: origin
+            sourceLabel: origin,
+            isManualEstimate: SourceAttribution.Origin(rawValue: originRaw) == .manual
         )
     }
 
@@ -298,6 +368,8 @@ private struct ActivityMetricBarChart: View {
     let format: (Double) -> String
 
     @State private var scrollPositionX: Date = Calendar.current.startOfDay(for: Date())
+    @State private var rawSelection: Date?
+    @State private var inspectedDate: Date?
 
     private var plotPoints: [(Date, Double)] {
         points.compactMap { point in
@@ -349,6 +421,24 @@ private struct ActivityMetricBarChart: View {
                 CardEmptyState(text: emptyText)
                     .frame(height: 150)
             } else {
+                VStack(alignment: .leading, spacing: 3) {
+                    if let selectedPoint {
+                        Text("选中 \(selectionDateFormatter.string(from: selectedPoint.0))")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(HMColors.comparison)
+                        Text("\(format(selectedPoint.1)) \(unit)")
+                            .font(.title3.weight(.bold))
+                            .monospacedDigit()
+                    } else {
+                        Text(overallSummary)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    Text("来源：Apple 健康与手工记录 · 本机按日汇总")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+
                 Chart {
                     ForEach(plotPoints, id: \.0) { item in
                         BarMark(
@@ -357,6 +447,18 @@ private struct ActivityMetricBarChart: View {
                         )
                         .foregroundStyle(CardTheme.activity.gradient)
                         .cornerRadius(3)
+                    }
+
+                    if let selectedPoint {
+                        RuleMark(x: .value("选中日期", selectedPoint.0, unit: period.chartUnit))
+                            .foregroundStyle(HMColors.comparison.opacity(0.55))
+                            .lineStyle(StrokeStyle(lineWidth: 1, dash: [3, 3]))
+                        PointMark(
+                            x: .value("选中日期", selectedPoint.0, unit: period.chartUnit),
+                            y: .value(title, selectedPoint.1)
+                        )
+                        .foregroundStyle(HMColors.comparison)
+                        .symbolSize(42)
                     }
                 }
                 .chartYScale(domain: yDomain)
@@ -388,10 +490,22 @@ private struct ActivityMetricBarChart: View {
                 .chartScrollableAxes(.horizontal)
                 .chartXVisibleDomain(length: effectiveVisibleSeconds)
                 .chartScrollPosition(x: $scrollPositionX)
+                .chartXSelection(value: $rawSelection)
                 .frame(height: 150)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("\(title)趋势图")
+                .accessibilityValue(chartAccessibilitySummary)
+                .accessibilityHint("可水平滚动并选择日期；选中结果会显示为文字")
                 .onAppear { resetScrollToLatest() }
                 .onChange(of: points) { _, _ in resetScrollToLatest() }
-                .onChange(of: period) { _, _ in resetScrollToLatest() }
+                .onChange(of: rawSelection) { _, newValue in
+                    if let newValue { inspectedDate = newValue }
+                }
+                .onChange(of: period) { _, _ in
+                    inspectedDate = nil
+                    rawSelection = nil
+                    resetScrollToLatest()
+                }
             }
         }
         .padding(.vertical, 6)
@@ -406,6 +520,31 @@ private struct ActivityMetricBarChart: View {
         case .year:
             return .dateTime.month(.abbreviated)
         }
+    }
+
+    private var selectedPoint: (Date, Double)? {
+        guard let inspectedDate else { return nil }
+        return plotPoints.min {
+            abs($0.0.timeIntervalSince(inspectedDate)) < abs($1.0.timeIntervalSince(inspectedDate))
+        }
+    }
+
+    private var overallSummary: String {
+        guard let latest = plotPoints.last else { return emptyText }
+        let missingCount = max(points.count - plotPoints.count, 0)
+        let missingText = missingCount > 0 ? "，\(missingCount) 个日期无值" : ""
+        return "\(period.label)内有 \(plotPoints.count) 个有值日期\(missingText)；最新 \(format(latest.1)) \(unit)"
+    }
+
+    private var chartAccessibilitySummary: String {
+        if let selectedPoint {
+            return "选中 \(selectionDateFormatter.string(from: selectedPoint.0))，\(format(selectedPoint.1)) \(unit)。来源：Apple 健康与手工记录，本机按日汇总。"
+        }
+        return overallSummary + "。来源：Apple 健康与手工记录，本机按日汇总。"
+    }
+
+    private var selectionDateFormatter: DateFormatter {
+        period == .year ? AppDateFormats.yearMonthDay : AppDateFormats.monthDayWeekday
     }
 }
 
@@ -426,16 +565,19 @@ struct ActivityWorkoutRowView: View {
                 Text(durationLabel)
                 if let energy = row.energyKcal {
                     Text(String(format: "%.0f kcal", energy))
+                } else {
+                    Text("消耗：—")
                 }
                 if let distance = row.distanceMeters, distance > 0 {
                     Text(String(format: "%.2f km", distance / 1000))
                 }
             }
             .font(.footnote)
-            .foregroundStyle(.secondary)
-            Text(row.sourceLabel)
-                .font(.caption)
-                .foregroundStyle(.tertiary)
+            HMEvidenceTag(
+                tone: row.isManualEstimate ? .estimate : .confirmed,
+                text: row.isManualEstimate ? "手工补录 · 消耗为估算" : row.sourceLabel,
+                systemImage: row.isManualEstimate ? "square.and.pencil" : "heart.text.square"
+            )
         }
         .padding(.vertical, 2)
     }
@@ -451,4 +593,5 @@ struct ActivityWorkoutRowView: View {
         }
         return "\(minutes) 分钟"
     }
+
 }

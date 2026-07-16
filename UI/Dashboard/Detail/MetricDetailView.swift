@@ -5,6 +5,7 @@ import Charts
 /// summary statistics, and a definition footnote. Used for every dashboard card.
 struct MetricDetailView: View {
     @EnvironmentObject private var environment: AppEnvironment
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     let config: MetricDetailConfig
 
@@ -47,6 +48,7 @@ struct MetricDetailView: View {
             }
             .padding(16)
         }
+        .background(HMColors.background)
         .navigationTitle(config.title)
         .navigationBarTitleDisplayMode(.large)
         .task(id: period) {
@@ -87,9 +89,12 @@ struct MetricDetailView: View {
     private var summaryHeader: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 6) {
-                Text(inspectedLabel ?? headerLabel)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                HMEvidenceTag(
+                    tone: inspectedDate == nil ? .neutral : .comparison,
+                    text: inspectedLabel ?? headerLabel,
+                    systemImage: inspectedDate == nil ? "chart.xyaxis.line" : "scope"
+                )
+                .fixedSize(horizontal: false, vertical: true)
                 if inspectedDate == nil {
                     if canShowTrend {
                         let trendSeries = visiblePoints.compactMap { p -> DatedDouble? in
@@ -111,7 +116,7 @@ struct MetricDetailView: View {
             }
             HStack(alignment: .firstTextBaseline, spacing: 4) {
                 Text(displayValue)
-                    .font(.system(size: 34, weight: .bold, design: .rounded))
+                    .font(.system(.title, design: .rounded).weight(.bold))
                     .foregroundStyle(config.theme.primary)
                     .monospacedDigit()
                 if !displayValue.contains("—"), let unit = config.unit {
@@ -198,10 +203,18 @@ struct MetricDetailView: View {
             chartView
                 .frame(height: 220)
                 .padding(.vertical, 6)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("\(config.title)趋势图")
+                .accessibilityValue(chartAccessibilitySummary)
+                .accessibilityHint("可水平滚动并选择日期查看明细")
         } else if let err = loadError {
-            Text(err)
-                .font(.footnote)
-                .foregroundStyle(.red)
+            HMEditorCallout(
+                title: "指标加载失败",
+                message: err,
+                tone: .actionRequired,
+                systemImage: "exclamationmark.triangle.fill",
+                detail: nil
+            )
         } else {
             CardEmptyState(text: "该时段暂无数据")
                 .frame(height: 220)
@@ -306,18 +319,47 @@ struct MetricDetailView: View {
         .chartXSelection(value: $rawSelection)
     }
 
+    @ViewBuilder
     private var statsGrid: some View {
         let values = visiblePoints.compactMap { $0.value }
         let avg = values.isEmpty ? nil : values.reduce(0, +) / Double(values.count)
         let mn = values.min()
         let mx = values.max()
         let last = values.last
-        return HStack(spacing: 12) {
-            statCell(label: "平均", value: avg)
-            statCell(label: "最高", value: mx)
-            statCell(label: "最低", value: mn)
-            statCell(label: "最新", value: last)
+
+        if dynamicTypeSize.isAccessibilitySize {
+            LazyVGrid(columns: [GridItem(.flexible())], spacing: 12) {
+                statCells(avg: avg, max: mx, min: mn, last: last)
+            }
+        } else {
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 12) {
+                    statCells(avg: avg, max: mx, min: mn, last: last)
+                }
+                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
+                    statCells(avg: avg, max: mx, min: mn, last: last)
+                }
+            }
         }
+    }
+
+    @ViewBuilder
+    private func statCells(avg: Double?, max: Double?, min: Double?, last: Double?) -> some View {
+        statCell(label: "平均", value: avg)
+        statCell(label: "最高", value: max)
+        statCell(label: "最低", value: min)
+        statCell(label: "最新", value: last)
+    }
+
+    private var chartAccessibilitySummary: String {
+        let values = visiblePoints.compactMap(\.value)
+        guard let first = values.first, let last = values.last else {
+            return "当前时段暂无数据"
+        }
+        if values.count == 1 {
+            return "当前仅一条数据，\(config.format(first))\(config.unit.map { " \($0)" } ?? "")"
+        }
+        return "当前可见 \(values.count) 条数据，从 \(config.format(first)) 到 \(config.format(last))\(config.unit.map { " \($0)" } ?? "")"
     }
 
     /// Breakdown card for the deficit detail view: shows the three numbers that make
@@ -379,7 +421,11 @@ struct MetricDetailView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(14)
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .background(HMColors.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(HMColors.separator, lineWidth: 1)
+        }
     }
 
     /// Lists every raw sample recorded on the inspected day for body metrics
@@ -434,7 +480,11 @@ struct MetricDetailView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(14)
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .background(HMColors.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(HMColors.separator, lineWidth: 1)
+        }
     }
 
     private var averageMeasurement: Double {
@@ -518,7 +568,11 @@ struct MetricDetailView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(10)
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .background(HMColors.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(HMColors.separator, lineWidth: 1)
+        }
     }
 
     // MARK: - Derived

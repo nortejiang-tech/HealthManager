@@ -2,6 +2,7 @@ import SwiftUI
 
 struct SummaryView: View {
     @EnvironmentObject private var environment: AppEnvironment
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     @State private var today: DailySummary?
     @State private var week: WeeklySummary?
@@ -9,25 +10,38 @@ struct SummaryView: View {
     @State private var llmGeneratingDaily: Bool = false
     @State private var llmGeneratingWeekly: Bool = false
     @State private var llmError: String?
+    @State private var loadError: String?
+    @State private var hasLoadedSummaries: Bool = false
 
     private var generator: SummaryGenerator { SummaryGenerator(database: environment.database) }
 
     var body: some View {
         List {
             Section {
-                Button {
-                    Task { await generateBoth() }
-                } label: {
-                    Label(generating ? "生成中…" : "重新生成日报 + 周报", systemImage: "sparkles")
-                }
-                .disabled(generating)
-                Text("本地确定性聚合，不联网。若已配置 AI 摘要，会在每段下方追加 LLM 评注。")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
+                HMDecisionLens(
+                    title: "本地摘要是主结果",
+                    text: "日报和周报先在本机按现有记录确定性聚合。若 AI 摘要已开启且配置完成，会在本地结果之后单独请求模型评注。",
+                    tone: .confirmed,
+                    systemImage: "lock.doc",
+                    primaryActionTitle: generating ? "正在生成…" : "生成日报 + 周报",
+                    primaryActionIcon: "doc.badge.gearshape",
+                    primaryActionTone: .comparison,
+                    primaryAction: {
+                        guard !generating else { return }
+                        Task { await generateBoth() }
+                    }
+                )
+                .allowsHitTesting(!generating)
+                .opacity(generating ? 0.72 : 1)
             }
 
             if !LLMConfig.isConfigured, LLMConfig.enabled {
                 Section {
+                    HMEvidenceTag(
+                        tone: .actionRequired,
+                        text: "AI 评注尚未配置",
+                        systemImage: "key.fill"
+                    )
                     NavigationLink {
                         LLMSettingsView()
                     } label: {
@@ -40,6 +54,11 @@ struct SummaryView: View {
 
             Section("今日日报") {
                 if let s = today, let text = s.summaryText, !text.isEmpty {
+                    HMEvidenceTag(
+                        tone: .confirmed,
+                        text: "本地确定性摘要",
+                        systemImage: "lock.doc.fill"
+                    )
                     Text(text)
                         .font(.system(.body, design: .rounded))
                         .textSelection(.enabled)
@@ -52,13 +71,25 @@ struct SummaryView: View {
                         loading: llmGeneratingDaily,
                         regenerate: { Task { await augmentDaily() } }
                     )
-                } else {
-                    Text("尚未生成。点击上方按钮。").foregroundStyle(.secondary)
+                } else if hasLoadedSummaries {
+                    HMEmptyState(
+                        title: "今日日报尚未生成",
+                        message: "生成后会先显示本地聚合结果；AI 评注始终与主结果分开展示。",
+                        icon: "doc.text",
+                        tone: .neutral
+                    )
+                } else if loadError == nil {
+                    ProgressView("正在读取今日日报…")
                 }
             }
 
             Section("本周周报") {
                 if let s = week, let text = s.summaryText, !text.isEmpty {
+                    HMEvidenceTag(
+                        tone: .confirmed,
+                        text: "本地确定性摘要",
+                        systemImage: "lock.doc.fill"
+                    )
                     Text(text)
                         .font(.system(.body, design: .rounded))
                         .textSelection(.enabled)
@@ -73,20 +104,45 @@ struct SummaryView: View {
                         loading: llmGeneratingWeekly,
                         regenerate: { Task { await augmentWeekly() } }
                     )
-                } else {
-                    Text("尚未生成。").foregroundStyle(.secondary)
+                } else if hasLoadedSummaries {
+                    HMEmptyState(
+                        title: "本周周报尚未生成",
+                        message: "生成后会按本周记录汇总；没有记录的项目不会按 0 推断。",
+                        icon: "calendar.badge.clock",
+                        tone: .neutral
+                    )
+                } else if loadError == nil {
+                    ProgressView("正在读取本周周报…")
                 }
             }
 
             if let err = llmError {
                 Section("AI 错误") {
-                    Text(err)
-                        .font(.footnote)
-                        .foregroundStyle(.red)
-                        .textSelection(.enabled)
+                    HMEditorCallout(
+                        title: "AI 评注生成失败",
+                        message: "本地摘要仍然有效，失败只影响可选的 AI 评注。",
+                        tone: .actionRequired,
+                        systemImage: "exclamationmark.triangle.fill",
+                        detail: err
+                    )
+                }
+            }
+
+            if let loadError {
+                Section {
+                    HMInlineRecovery(
+                        title: "摘要加载失败",
+                        message: "现有摘要没有被修改。可在当前页面重新读取。",
+                        technicalDetails: loadError,
+                        actionTitle: "重新读取"
+                    ) {
+                        Task { await refresh() }
+                    }
                 }
             }
         }
+        .scrollContentBackground(.hidden)
+        .background(HMColors.background)
         .navigationTitle("总结")
         .refreshable { await refresh() }
         .task { await refresh() }
@@ -100,23 +156,17 @@ struct SummaryView: View {
         loading: Bool,
         regenerate: @escaping () -> Void
     ) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack {
-                Label("AI 评注", systemImage: "sparkles")
-                    .font(.caption.bold())
-                    .foregroundStyle(.tint)
-                Spacer()
-                if loading {
-                    ProgressView().controlSize(.small)
-                } else {
-                    Button {
-                        regenerate()
-                    } label: {
-                        Image(systemName: "arrow.clockwise")
-                            .imageScale(.small)
-                    }
-                    .buttonStyle(.borderless)
-                    .disabled(!LLMConfig.isConfigured)
+        VStack(alignment: .leading, spacing: 10) {
+            if dynamicTypeSize.isAccessibilitySize {
+                VStack(alignment: .leading, spacing: 8) {
+                    llmTag
+                    llmAction(text: text, loading: loading, regenerate: regenerate)
+                }
+            } else {
+                HStack {
+                    llmTag
+                    Spacer()
+                    llmAction(text: text, loading: loading, regenerate: regenerate)
                 }
             }
             if let text, !text.isEmpty {
@@ -137,13 +187,47 @@ struct SummaryView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             } else {
-                Text("点击 ↻ 生成评注。")
+                Text("点击“生成评注”请求已配置的模型服务。")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
+            Text("外部边界：只发送本地聚合后的摘要文本，不发送原始样本或设备标识。")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
         }
-        .padding(8)
-        .background(Color.accentColor.opacity(0.08), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .padding(12)
+        .background(HMColors.estimate.opacity(0.10), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(HMColors.estimate.opacity(0.28), lineWidth: 1)
+        }
+    }
+
+    private var llmTag: some View {
+                HMEvidenceTag(
+                    tone: .estimate,
+                    text: "AI 评注 · 可选次级内容",
+                    systemImage: "sparkles"
+                )
+    }
+
+    @ViewBuilder
+    private func llmAction(text: String?, loading: Bool, regenerate: @escaping () -> Void) -> some View {
+        if loading {
+            ProgressView("正在生成评注…")
+                .controlSize(.small)
+        } else {
+            Button {
+                regenerate()
+            } label: {
+                Label(text?.isEmpty == false ? "重新生成" : "生成评注", systemImage: "arrow.clockwise")
+                    .frame(minHeight: 44)
+            }
+            .buttonStyle(.bordered)
+            .tint(HMColors.estimate)
+            .disabled(!LLMConfig.isConfigured)
+        }
     }
 
     private func refresh() async {
@@ -156,8 +240,11 @@ struct SummaryView: View {
             await MainActor.run {
                 today = d
                 week = w
+                loadError = nil
+                hasLoadedSummaries = true
             }
         } catch {
+            await MainActor.run { loadError = error.localizedDescription }
             AppLogger.shared.error("Summary refresh failed: \(error.localizedDescription)")
         }
     }
@@ -172,6 +259,8 @@ struct SummaryView: View {
                 today = d
                 week = w
                 generating = false
+                loadError = nil
+                hasLoadedSummaries = true
             }
             // Default-on LLM: auto-augment if configured.
             if LLMConfig.enabled && LLMConfig.isConfigured {
@@ -180,7 +269,10 @@ struct SummaryView: View {
             }
         } catch {
             AppLogger.shared.error("Summary generate failed: \(error.localizedDescription)")
-            await MainActor.run { generating = false }
+            await MainActor.run {
+                generating = false
+                loadError = error.localizedDescription
+            }
         }
     }
 

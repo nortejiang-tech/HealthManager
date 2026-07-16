@@ -7,20 +7,30 @@ private func mealNutritionText(_ value: Double) -> String {
     value == value.rounded() ? String(format: "%.0f", value) : String(value)
 }
 
+private enum DietLoadState: Equatable {
+    case loading
+    case loaded
+    case stale
+    case failed
+
+    var hasUsableContent: Bool {
+        self == .loaded || self == .stale
+    }
+
+    var showsRecovery: Bool {
+        self == .failed || self == .stale
+    }
+}
+
 struct DietView: View {
     @EnvironmentObject private var environment: AppEnvironment
 
     @State private var meals: [MealRecord] = []
     @State private var activeSheet: DietSheetKind?
     @State private var todayNutrition: MealNutritionEvidenceWindow?
-    @State private var loadState: LoadState = .loading
+    @State private var loadState: DietLoadState = .loading
+    @State private var refreshGeneration: Int = 0
     @State private var deleteErrorMessage: String?
-
-    private enum LoadState: Equatable {
-        case loading
-        case loaded
-        case failed
-    }
 
     private enum DietSheetKind: Identifiable, Equatable {
         case add
@@ -40,62 +50,22 @@ struct DietView: View {
 
     var body: some View {
         NavigationStack {
-            List {
-                Section("今日合计") {
-                    LabeledContent("热量", value: nutritionLabel(todayNutrition?.totals?.caloriesKcal, unit: "kcal"))
-                    LabeledContent("蛋白质", value: nutritionLabel(todayNutrition?.totals?.proteinG, unit: "g"))
-                    LabeledContent("脂肪", value: nutritionLabel(todayNutrition?.totals?.fatG, unit: "g"))
-                    LabeledContent("碳水", value: nutritionLabel(todayNutrition?.totals?.carbsG, unit: "g"))
-                    switch loadState {
-                    case .loading:
-                        Text("正在加载今日饮食数据…")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                    case .failed:
-                        Text("今日饮食数据加载失败，请下拉重试")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                    case .loaded:
-                        if todayNutrition?.mealCount == 0 {
-                            Text("今日尚无餐次记录")
-                                .font(.footnote)
-                                .foregroundStyle(.secondary)
-                        } else if let totals = todayNutrition?.totals,
-                                  [totals.caloriesKcal, totals.proteinG, totals.fatG, totals.carbsG]
-                                    .contains(where: { $0 == nil }) {
-                            Text("部分餐次营养信息未完整记录")
-                                .font(.footnote)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
+            DietScreenContent(
+                loadState: loadState,
+                meals: meals,
+                todayNutrition: todayNutrition,
+                onAdd: { activeSheet = .add },
+                onReuse: { activeSheet = .reuse },
+                onMealTap: { meal in
+                    activeSheet = .edit(meal)
+                },
+                onDeleteMeal: { meal in
+                    await delete(meal)
+                },
+                onRetry: {
+                    await refresh()
                 }
-
-                Section("近期餐次") {
-                    if loadState == .loading {
-                        ProgressView("正在加载…")
-                    } else if loadState == .failed {
-                        Text("餐次记录加载失败，请下拉重试").foregroundStyle(.secondary)
-                    } else if meals.isEmpty {
-                        Text("尚无记录。点击右上 + 添加一次。").foregroundStyle(.secondary)
-                    } else {
-                        ForEach(meals) { meal in
-                            Button { activeSheet = .edit(meal) } label: {
-                                MealRow(meal: meal)
-                            }
-                            .accessibilityIdentifier("meal-row-\(meal.id ?? -1)")
-                            .buttonStyle(.plain)
-                            .contentShape(Rectangle())
-                            .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                                Button(role: .destructive) {
-                                    Task { await delete(meal) }
-                                } label: {
-                                    Label("删除", systemImage: "trash")
-                                }
-                            }
-                        }
-                    }
-                }
-            }
+            )
             .navigationTitle("饮食")
             .toolbar {
                 ToolbarItemGroup(placement: .topBarTrailing) {
@@ -105,6 +75,7 @@ struct DietView: View {
                         Image(systemName: "plus")
                     }
                     .accessibilityIdentifier("diet-add-meal")
+                    .accessibilityLabel("新增餐次")
                     Button {
                         activeSheet = .reuse
                     } label: {
@@ -140,7 +111,13 @@ struct DietView: View {
     }
 
     private func refresh() async {
-        await MainActor.run { loadState = .loading }
+        let (hadUsableContent, generation) = await MainActor.run {
+            refreshGeneration += 1
+            return (loadState.hasUsableContent, refreshGeneration)
+        }
+        if !hadUsableContent {
+            await MainActor.run { loadState = .loading }
+        }
         do {
             let (list, nutrition) = try await environment.database.asyncRead {
                 db -> ([MealRecord], MealNutritionEvidenceWindow) in
@@ -160,21 +137,23 @@ struct DietView: View {
                 return (rows, evidence)
             }
             await MainActor.run {
+                guard generation == refreshGeneration else { return }
                 meals = list
                 todayNutrition = nutrition
                 loadState = .loaded
             }
         } catch {
             await MainActor.run {
-                todayNutrition = nil
-                loadState = .failed
+                guard generation == refreshGeneration else { return }
+                if hadUsableContent {
+                    loadState = .stale
+                } else {
+                    todayNutrition = nil
+                    loadState = .failed
+                }
             }
             AppLogger.shared.error("Diet refresh failed: \(error.localizedDescription)")
         }
-    }
-
-    private func nutritionLabel(_ value: Double?, unit: String) -> String {
-        value.map { "\(mealNutritionText($0)) \(unit)" } ?? "—"
     }
 
     private func delete(_ meal: MealRecord) async {
@@ -195,6 +174,339 @@ struct DietView: View {
             }
             AppLogger.shared.error("Meal delete failed: \(error.localizedDescription)")
         }
+    }
+}
+
+private struct DietScreenContent: View {
+    let loadState: DietLoadState
+    let meals: [MealRecord]
+    let todayNutrition: MealNutritionEvidenceWindow?
+    let onAdd: () -> Void
+    let onReuse: () -> Void
+    let onMealTap: (MealRecord) -> Void
+    let onDeleteMeal: (MealRecord) async -> Void
+    let onRetry: () async -> Void
+
+    private var evidenceTone: HMSemanticTone {
+        switch loadState {
+        case .loading:
+            return .neutral
+        case .failed, .stale:
+            return .actionRequired
+        case .loaded:
+            switch todayNutrition?.calories {
+            case .incomplete:
+                return .estimate
+            case .complete:
+                return .confirmed
+            case .noMeals, .none:
+                return .neutral
+            }
+        }
+    }
+
+    private var decisionText: String {
+        switch loadState {
+        case .loading:
+            return "正在读取今天的营养汇总与最近餐次。"
+        case .failed:
+            return "暂时无法更新营养汇总；已经保存的餐次不会因此被删除。"
+        case .stale:
+            return "本次更新失败；下方保留上一次成功读取的餐次与营养证据。"
+        case .loaded:
+            guard let nutrition = todayNutrition else {
+                return "今天还没有可汇总的餐次。"
+            }
+            if nutrition.mealCount == 0 {
+                return "今天还没有可汇总的餐次；这里仅显示你主动保存的记录。"
+            }
+            return "已记录 \(nutrition.mealCount) 餐。完整营养项进入汇总，未提供的字段保留为“—”。"
+        }
+    }
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                Text(HMDateText.fullWeekday())
+                    .font(.body)
+                    .foregroundStyle(.secondary)
+
+                HMDecisionLens(
+                    title: "今日营养基线",
+                    text: decisionText,
+                    tone: evidenceTone,
+                    systemImage: "fork.knife"
+                )
+
+                if loadState.hasUsableContent, !meals.isEmpty {
+                    mealList
+                    evidencePanel
+                } else {
+                    evidencePanel
+                    mealList
+                }
+
+                if loadState.showsRecovery {
+                    HMInlineRecovery(
+                        title: "饮食读取失败",
+                        message: loadState == .stale
+                            ? "当前仍显示上一次成功读取的内容；重试只更新今日列表与营养证据。"
+                            : "重试范围仅限今日列表与营养证据读取。",
+                        actionTitle: "重试",
+                        onAction: {
+                            Task { await onRetry() }
+                        },
+                        actionAccessibilityIdentifier: "diet-retry"
+                    )
+                    .hmSurface(cornerRadius: 18)
+                }
+            }
+            .padding(.horizontal, 20)
+            .padding(.top, 12)
+            .padding(.bottom, 28)
+        }
+        .background(HMColors.background.ignoresSafeArea())
+    }
+
+    private var evidencePanel: some View {
+        DietEvidencePanel(
+            loadState: loadState,
+            nutrition: todayNutrition
+        )
+    }
+
+    private var mealList: some View {
+        DietMealListPanel(
+            loadState: loadState,
+            meals: meals,
+            onMealTap: onMealTap,
+            onDeleteMeal: onDeleteMeal
+        )
+    }
+}
+
+private struct DietEvidencePanel: View {
+    let loadState: DietLoadState
+    let nutrition: MealNutritionEvidenceWindow?
+
+    private var calText: String {
+        guard let nutrition else { return "—" }
+        switch nutrition.calories {
+        case .noMeals:
+            return "—"
+        case .incomplete:
+            return "未完整"
+        case let .complete(value):
+            return String(format: "%.0f kcal", value)
+        }
+    }
+
+    private var proteinText: String {
+        guard let totals = nutrition?.totals,
+              let protein = MealNutritionProjection.validatedValue(totals.proteinG) else {
+            return "—"
+        }
+        return String(format: "%.0f g", protein)
+    }
+
+    private var fatText: String {
+        guard let totals = nutrition?.totals,
+              let fat = MealNutritionProjection.validatedValue(totals.fatG) else {
+            return "—"
+        }
+        return String(format: "%.0f g", fat)
+    }
+
+    private var carbText: String {
+        guard let totals = nutrition?.totals,
+              let carbs = MealNutritionProjection.validatedValue(totals.carbsG) else {
+            return "—"
+        }
+        return String(format: "%.0f g", carbs)
+    }
+
+    private var statusHint: String {
+        switch loadState {
+        case .loading:
+            return "读取中"
+        case .failed:
+            return "待重试"
+        case .stale:
+            return "上次读取"
+        case .loaded:
+            guard let nutrition else { return "未返回" }
+            if nutrition.mealCount == 0 {
+                return "今日空白"
+            }
+            return "有记录"
+        }
+    }
+
+    var body: some View {
+        Group {
+            if loadState == .loading {
+                VStack(alignment: .leading, spacing: 12) {
+                    HMLoadingSkeleton(width: 128, height: 20)
+                    HMLoadingSkeleton(height: 54)
+                    HMLoadingSkeleton(height: 48)
+                }
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("正在读取今日营养汇总")
+            } else {
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack(spacing: 4) {
+                        Text("今日营养汇总")
+                            .font(.title3.weight(.semibold))
+                        Spacer(minLength: 4)
+                        HMEvidenceTag(
+                            tone: loadState == .failed ? .actionRequired : .comparison,
+                            text: statusHint,
+                            systemImage: "chart.bar.doc.horizontal"
+                        )
+                        .font(.footnote)
+                    }
+
+                    HStack(spacing: 0) {
+                        DietMetricCell(label: "热量", value: calText)
+                        Divider().overlay(HMColors.separator)
+                        DietMetricCell(label: "蛋白", value: proteinText)
+                        Divider().overlay(HMColors.separator)
+                        DietMetricCell(label: "脂肪", value: fatText)
+                        Divider().overlay(HMColors.separator)
+                        DietMetricCell(label: "碳水", value: carbText)
+                    }
+
+                    HMInformationRow(
+                        systemImage: "list.bullet.rectangle",
+                        tone: loadState == .failed ? .actionRequired : .comparison,
+                        title: "今日餐次",
+                        detail: loadState.hasUsableContent && (nutrition?.mealCount ?? 0) == 0
+                            ? "等待你主动保存第一餐"
+                            : (loadState == .failed ? "尚未取得餐次快照" : "支持继续补录并编辑")
+                    )
+
+                    if let totals = nutrition?.totals,
+                       [totals.caloriesKcal, totals.proteinG, totals.fatG, totals.carbsG]
+                        .contains(where: { $0 == nil }) {
+                        HMEvidenceTag(
+                            tone: .estimate,
+                            text: "部分营养字段缺失，未知值显示“—”。",
+                            systemImage: "exclamationmark.triangle"
+                        )
+                    }
+                }
+            }
+        }
+        .padding(16)
+        .hmSurface(cornerRadius: 18)
+    }
+}
+
+private struct DietMetricCell: View {
+    let label: String
+    let value: String
+
+    var body: some View {
+        VStack(spacing: 2) {
+            Text(label)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Text(value)
+                .font(.system(.body, design: .rounded).weight(.semibold))
+                .foregroundStyle(.primary)
+                .monospacedDigit()
+                .lineLimit(1)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 6)
+    }
+}
+
+private struct DietMealListPanel: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    let loadState: DietLoadState
+    let meals: [MealRecord]
+    let onMealTap: (MealRecord) -> Void
+    let onDeleteMeal: (MealRecord) async -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack {
+                Text("近期餐次")
+                    .font(.title3.weight(.semibold))
+                Spacer(minLength: 8)
+                if loadState.hasUsableContent, !meals.isEmpty {
+                    Text("共 \(meals.count) 条")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            switch loadState {
+            case .loading:
+                VStack(spacing: 10) {
+                    HMLoadingSkeleton(height: 44)
+                    Divider().overlay(HMColors.separator)
+                    HMLoadingSkeleton(height: 44)
+                    Divider().overlay(HMColors.separator)
+                    HMLoadingSkeleton(height: 44)
+                }
+                .padding(.vertical, 10)
+
+            case .failed:
+                Text("餐次记录加载失败，请下拉重试")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .padding(.vertical, 12)
+
+            case .loaded, .stale:
+                if meals.isEmpty {
+                    HMEmptyState(
+                        title: "暂无餐次",
+                        message: "最近还没有保存的餐次。可以从上方记录一次，或复用历史餐次创建新草稿。",
+                        icon: "fork.knife",
+                        tone: .neutral,
+                        primaryActionTitle: nil,
+                        secondaryActionTitle: nil
+                    )
+                } else {
+                    List {
+                        ForEach(meals) { meal in
+                            Button {
+                                onMealTap(meal)
+                            } label: {
+                                MealRow(meal: meal)
+                                    .padding(.vertical, 2)
+                            }
+                            .buttonStyle(.plain)
+                            .contentShape(Rectangle())
+                            .accessibilityIdentifier("meal-row-\(meal.id ?? -1)")
+                            .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                                Button(role: .destructive) {
+                                    Task { await onDeleteMeal(meal) }
+                                } label: {
+                                    Label("删除", systemImage: "trash")
+                                }
+                            }
+                            .listRowInsets(EdgeInsets())
+                            .listRowBackground(Color.clear)
+                        }
+                    }
+                    .listStyle(.plain)
+                    .scrollContentBackground(.hidden)
+                    .scrollDisabled(true)
+                    .frame(height: listHeight)
+                }
+            }
+        }
+        .padding(14)
+        .hmSurface(cornerRadius: 18)
+    }
+
+    private var listHeight: CGFloat {
+        let estimatedRowHeight: CGFloat = dynamicTypeSize.isAccessibilitySize ? 156 : 86
+        return max(estimatedRowHeight, CGFloat(meals.count) * estimatedRowHeight)
     }
 }
 
@@ -347,7 +659,7 @@ struct MealEditView: View {
                     }
                 }
 
-                Section("基本") {
+                Section("餐次与时间") {
                     Picker("餐次", selection: $draft.mealType) {
                         ForEach(MealRecord.MealType.allCases, id: \.self) { t in
                             Text(t.label).tag(t)
@@ -425,14 +737,29 @@ struct MealEditView: View {
                         .accessibilityIdentifier("meal-edit-notes")
                 }
 
-                if let error = draftError {
-                    Text(error)
-                        .font(.footnote)
-                        .foregroundStyle(.red)
-                        .accessibilityIdentifier("meal-edit-error")
-                }
             }
             .scrollDismissesKeyboard(.interactively)
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                if let error = draftError {
+                    HStack(alignment: .top, spacing: 10) {
+                        Image(systemName: "exclamationmark.circle.fill")
+                            .foregroundStyle(HMColors.actionRequired)
+                            .accessibilityHidden(true)
+                        Text(error)
+                            .font(.footnote.weight(.medium))
+                            .foregroundStyle(.primary)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .accessibilityIdentifier("meal-edit-error")
+                        Spacer(minLength: 0)
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
+                    .background(HMColors.surface)
+                    .overlay(alignment: .top) {
+                        Divider().overlay(HMColors.separator)
+                    }
+                }
+            }
             .disabled(!draft.canSave || isSaving)
             .navigationTitle(editing == nil ? "添加餐次" : "编辑餐次")
             .navigationBarTitleDisplayMode(.inline)
@@ -460,6 +787,7 @@ struct MealEditView: View {
                         }
                     }
                     .disabled(saveDisabled)
+                    .tint(HMColors.primaryAction)
                     .accessibilityIdentifier("meal-edit-save")
                 }
             }
@@ -597,18 +925,25 @@ struct MealEditView: View {
             Button {
                 Task { await runAIEstimate() }
             } label: {
-                if isAnalyzingNutrition {
-                    HStack(spacing: 8) {
-                        ProgressView().controlSize(.small)
-                        Text(analysisProgress ?? "AI 估算中…")
+                Group {
+                    if isAnalyzingNutrition {
+                        HStack(spacing: 8) {
+                            ProgressView().controlSize(.small)
+                            Text(analysisProgress ?? "AI 估算中…")
+                        }
+                    } else if pending > 0 {
+                        Label("AI 估算营养（\(pending) 项待处理）", systemImage: "sparkles")
+                    } else {
+                        Label("AI 估算营养", systemImage: "sparkles")
                     }
-                } else if pending > 0 {
-                    Label("AI 估算营养（\(pending) 项待处理）", systemImage: "sparkles")
-                } else {
-                    Label("AI 估算营养", systemImage: "sparkles")
                 }
+                .frame(maxWidth: .infinity, alignment: .center)
+                .frame(minHeight: 44)
             }
+            .buttonStyle(.borderedProminent)
+            .tint(HMColors.estimate)
             .disabled(isBusy || pending == 0 || !canCallAnyModel)
+            .accessibilityIdentifier("meal-edit-ai-estimate")
 
             if !canCallAnyModel {
                 Text("未配置 AI 模型。前往「设置 → AI 摘要」配置文本或图像模型。")
@@ -623,10 +958,21 @@ struct MealEditView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
+
+            if let nutritionError {
+                HMEditorCallout(
+                    title: "部分输入未完成",
+                    message: "已成功的估算会保留在下方；再次估算只处理尚未完成的文字或照片。",
+                    tone: .actionRequired,
+                    systemImage: "exclamationmark.triangle.fill",
+                    detail: nutritionError,
+                    accessibilityIdentifier: "meal-edit-ai-error"
+                )
+            }
         } header: {
             Text("AI 估算")
         } footer: {
-            Text("点按钮后会把文字描述与每张照片并行交给模型估算，结果合并到下方营养列表（自动去重同名菜品）。")
+            Text("仅在你点击后，文字与所选照片才会发送到已配置的模型服务。返回结果会合并到营养分项，但不自动升级为确认事实。")
         }
     }
 
@@ -1054,4 +1400,109 @@ private struct AnalysisJob: @unchecked Sendable {
     let key: String
     let label: String
     let analysisModelName: String
+}
+
+private enum DietPreviewFixtures {
+    static let now: Date = {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.locale = Locale(identifier: "zh_CN")
+        return calendar.date(from: DateComponents(year: 2026, month: 7, day: 16, hour: 8, minute: 12)) ?? Date()
+    }()
+
+    static let todayMeal: MealRecord = {
+        MealRecord(
+            id: 1,
+            mealType: .breakfast,
+            eatenAt: Int64(now.timeIntervalSince1970),
+            caloriesKcal: 540,
+            proteinG: 32,
+            fatG: 14,
+            carbsG: 45,
+            photoPath: nil,
+            notes: "示例餐食",
+            createdAt: Int64(now.timeIntervalSince1970),
+            hkSyncId: nil
+        )
+    }()
+
+    static let loadedNutrition: MealNutritionEvidenceWindow = {
+        MealNutritionEvidenceWindow(
+            mealCount: 1,
+            totals: MealNutritionTotals(
+                caloriesKcal: 540,
+                proteinG: 32,
+                fatG: 14,
+                carbsG: 45
+            ),
+            calories: .complete(540),
+            days: []
+        )
+    }()
+
+    static let emptyNutrition: MealNutritionEvidenceWindow = {
+        MealNutritionEvidenceWindow(
+            mealCount: 0,
+            totals: nil,
+            calories: .noMeals,
+            days: []
+        )
+    }()
+}
+
+#Preview("Diet loaded") {
+    DietScreenContent(
+        loadState: .loaded,
+        meals: [DietPreviewFixtures.todayMeal],
+        todayNutrition: DietPreviewFixtures.loadedNutrition,
+        onAdd: {},
+        onReuse: {},
+        onMealTap: { _ in },
+        onDeleteMeal: { _ in },
+        onRetry: {}
+    )
+    .environment(\.locale, Locale(identifier: "zh_CN"))
+}
+
+#Preview("Diet loaded (Dark)") {
+    DietScreenContent(
+        loadState: .loaded,
+        meals: [DietPreviewFixtures.todayMeal],
+        todayNutrition: DietPreviewFixtures.loadedNutrition,
+        onAdd: {},
+        onReuse: {},
+        onMealTap: { _ in },
+        onDeleteMeal: { _ in },
+        onRetry: {}
+    )
+    .environment(\.locale, Locale(identifier: "zh_CN"))
+    .preferredColorScheme(.dark)
+}
+
+#Preview("Diet loaded (Accessibility Large)") {
+    DietScreenContent(
+        loadState: .loaded,
+        meals: [DietPreviewFixtures.todayMeal],
+        todayNutrition: DietPreviewFixtures.loadedNutrition,
+        onAdd: {},
+        onReuse: {},
+        onMealTap: { _ in },
+        onDeleteMeal: { _ in },
+        onRetry: {}
+    )
+    .environment(\.locale, Locale(identifier: "zh_CN"))
+    .environment(\.dynamicTypeSize, .accessibility2)
+}
+
+#Preview("Diet empty") {
+    DietScreenContent(
+        loadState: .loaded,
+        meals: [],
+        todayNutrition: DietPreviewFixtures.emptyNutrition,
+        onAdd: {},
+        onReuse: {},
+        onMealTap: { _ in },
+        onDeleteMeal: { _ in },
+        onRetry: {}
+    )
+    .environment(\.locale, Locale(identifier: "zh_CN"))
 }

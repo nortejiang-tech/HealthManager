@@ -11,93 +11,33 @@ struct DashboardView: View {
     @State private var snapshot: DashboardSnapshot = DashboardSnapshot()
     @State private var loadError: String?
     @State private var isLoading: Bool = true
+    @State private var hasLoadedSnapshot: Bool = false
+    @State private var refreshGeneration: Int = 0
     @State private var showAlerts: Bool = false
     @State private var showQuality: Bool = false
     @State private var showingEditor: Bool = false
     @State private var metricPath: [MetricRoute] = []
 
-    private let cardGrid: [GridItem] = [
-        GridItem(.flexible(), spacing: 12),
-        GridItem(.flexible(), spacing: 12)
-    ]
-
     var body: some View {
         NavigationStack(path: $metricPath) {
-            ScrollView {
-                VStack(spacing: 14) {
-                    HeroHeader(
-                        snapshot: snapshot,
-                        onAlertsTap: { showAlerts = true },
-                        onQualityTap: { showQuality = true },
-                        onMetricTap: { metricPath.append($0) }
-                    )
-
-                    LazyVGrid(columns: cardGrid, spacing: 12) {
-                        ForEach(layout.visibleCards) { kind in
-                            NavigationLink(value: kind.route) {
-                                cardView(for: kind)
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
-                    .padding(.horizontal, 12)
-                    .animation(.snappy, value: layout.visibleCards)
-
-                    if let err = loadError {
-                        Text(err)
-                            .font(.footnote)
-                            .foregroundStyle(.red)
-                            .padding(.horizontal, 16)
-                    }
-
-                    if !layout.hiddenCards.isEmpty {
-                        moreMetricsSection
-                            .padding(.horizontal, 12)
-                            .padding(.top, 8)
-                    }
-
-                    VStack(spacing: 0) {
-                        NavigationLink {
-                            DataQualityDetailView()
-                        } label: {
-                            HStack {
-                                Image(systemName: "list.bullet.rectangle")
-                                Text("数据质量 / 同步明细 / 报告")
-                                Spacer()
-                                Image(systemName: "chevron.right").foregroundStyle(.tertiary)
-                            }
-                            .font(.subheadline)
-                            .padding(.horizontal, 14).padding(.vertical, 12)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                        Divider().padding(.leading, 14)
-                        NavigationLink {
-                            WorkoutsView()
-                        } label: {
-                            HStack {
-                                Image(systemName: "figure.run")
-                                Text("运动记录")
-                                Spacer()
-                                Image(systemName: "chevron.right").foregroundStyle(.tertiary)
-                            }
-                            .font(.subheadline)
-                            .padding(.horizontal, 14).padding(.vertical, 12)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                    }
-                    .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                    .padding(.horizontal, 12)
-                    .padding(.top, 4)
-
-                    Spacer(minLength: 24)
+            DashboardScreenContent(
+                snapshot: snapshot,
+                isLoading: isLoading,
+                hasLoadedSnapshot: hasLoadedSnapshot,
+                loadError: loadError,
+                visibleCards: layout.visibleCards,
+                hiddenCards: layout.hiddenCards,
+                onAlertsTap: { showAlerts = true },
+                onQualityTap: { showQuality = true },
+                onMetricTap: { metricPath.append($0) },
+                onRetry: {
+                    await refresh()
+                },
+                cardView: { kind in
+                    AnyView(cardView(for: kind))
                 }
-                .padding(.bottom, 16)
-            }
-            .navigationTitle("摘要")
+            )
+            .navigationTitle("趋势")
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
@@ -105,6 +45,7 @@ struct DashboardView: View {
                     } label: {
                         Image(systemName: "square.and.pencil")
                     }
+                    .accessibilityIdentifier("dashboard-edit-cards")
                     .accessibilityLabel("编辑卡片")
                 }
             }
@@ -195,29 +136,254 @@ struct DashboardView: View {
         return zone
     }
 
-    @ViewBuilder
-    private var moreMetricsSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("更多指标")
-                .font(.system(.subheadline, design: .rounded).weight(.semibold))
-                .foregroundStyle(.secondary)
-                .padding(.leading, 4)
+    private func refresh() async {
+        refreshGeneration += 1
+        let generation = refreshGeneration
+        let shouldShowInitialLoading = !hasLoadedSnapshot
+        if shouldShowInitialLoading {
+            isLoading = true
+        }
+        loadError = nil
+        do {
+            let loader = DashboardLoader(database: environment.database)
+            let snap = try await loader.loadSnapshot()
+            await MainActor.run {
+                guard generation == self.refreshGeneration else { return }
+                self.snapshot = snap
+                self.loadError = nil
+                self.hasLoadedSnapshot = true
+                self.isLoading = false
+            }
+        } catch {
+            await MainActor.run {
+                guard generation == self.refreshGeneration else { return }
+                self.loadError = "加载失败：\(error.localizedDescription)"
+                self.isLoading = false
+            }
+            AppLogger.shared.error("Dashboard refresh failed: \(error.localizedDescription)")
+        }
+    }
+}
 
-            VStack(spacing: 0) {
-                ForEach(Array(layout.hiddenCards.enumerated()), id: \.element) { idx, kind in
-                    moreMetricRow(kind: kind)
-                    if idx < layout.hiddenCards.count - 1 {
-                        Divider().padding(.leading, 44)
+private struct DashboardScreenContent: View {
+    let snapshot: DashboardSnapshot
+    let isLoading: Bool
+    let hasLoadedSnapshot: Bool
+    let loadError: String?
+    let visibleCards: [DashboardCardKind]
+    let hiddenCards: [DashboardCardKind]
+    let onAlertsTap: () -> Void
+    let onQualityTap: () -> Void
+    let onMetricTap: (MetricRoute) -> Void
+    let onRetry: () async -> Void
+    let cardView: (DashboardCardKind) -> AnyView
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                Text(HMDateText.fullWeekday())
+                    .font(.body)
+                    .foregroundStyle(.secondary)
+
+                if isLoading {
+                    DashboardLoadingHero()
+                } else if hasLoadedSnapshot {
+                    HeroHeader(
+                        snapshot: snapshot,
+                        onAlertsTap: onAlertsTap,
+                        onQualityTap: onQualityTap,
+                        onMetricTap: onMetricTap
+                    )
+                }
+
+                if let loadError {
+                    HMInlineRecovery(
+                        title: "趋势摘要读取失败",
+                        message: "本地指标暂时无法更新；可以重试本次读取。",
+                        technicalDetails: loadError,
+                        actionTitle: "重试",
+                        onAction: {
+                            Task { await onRetry() }
+                        },
+                        titleAccessibilityIdentifier: "dashboard-load-error-title",
+                        actionAccessibilityIdentifier: "dashboard-retry"
+                    )
+                }
+
+                if isLoading || hasLoadedSnapshot {
+                    DashboardCardGrid(
+                        isLoading: isLoading,
+                        visibleCards: visibleCards,
+                        onMetricTap: onMetricTap,
+                        cardView: cardView
+                    )
+                }
+
+                if hasLoadedSnapshot, !hiddenCards.isEmpty {
+                    DashboardHiddenMetricsSection(
+                        kinds: hiddenCards,
+                        isLoading: isLoading,
+                        onMetricTap: onMetricTap
+                    )
+                }
+
+                DashboardQuickLinksSection(onQualityTap: onQualityTap)
+
+                if hasLoadedSnapshot {
+                    HMProvenanceRail(
+                        title: "指标从哪里来",
+                        steps: provenanceSteps
+                    )
+                }
+
+                Spacer(minLength: 12)
+            }
+            .padding(.horizontal, 20)
+            .padding(.top, 12)
+            .padding(.bottom, 28)
+        }
+        .background(HMColors.background.ignoresSafeArea())
+        .accessibilityIdentifier("dashboard-screen")
+    }
+
+    private var provenanceSteps: [HMProvenanceRail.Step] {
+        [
+            .init(
+                title: "来源",
+                detail: "Apple 健康与手工记录",
+                tone: .confirmed,
+                systemImage: "dot.radiowaves.left.and.right",
+                accessibilityIdentifier: "dashboard-provenance-steps-healthkit"
+            ),
+            .init(
+                title: "整理",
+                detail: "在本机按日汇总",
+                tone: .comparison,
+                systemImage: "square.stack.3d.down.right",
+                accessibilityIdentifier: "dashboard-provenance-steps-aggregation"
+            ),
+            .init(
+                title: "展示",
+                detail: "进入趋势与明细",
+                tone: .comparison,
+                systemImage: "scope",
+                accessibilityIdentifier: "dashboard-provenance-steps-presentation"
+            )
+        ]
+    }
+}
+
+private struct DashboardLoadingHero: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .top) {
+                HMEvidenceTag(
+                    tone: .neutral,
+                    text: "趋势加载中",
+                    systemImage: "arrow.triangle.2.circlepath"
+                )
+                Spacer()
+                HMLoadingSkeleton(width: 56, height: 28, cornerRadius: 14)
+            }
+
+            HStack(spacing: 14) {
+                ForEach(0..<4, id: \.self) { _ in
+                    VStack(alignment: .leading, spacing: 6) {
+                        HMLoadingSkeleton(width: 28, height: 28, cornerRadius: 14)
+                        HMLoadingSkeleton(height: 26)
+                        HMLoadingSkeleton(width: 52, height: 14)
+                    }
+                    .frame(maxWidth: .infinity)
+                }
+            }
+        }
+        .padding(16)
+        .hmSurface(cornerRadius: 16)
+        .accessibilityLabel("趋势主摘要加载中")
+    }
+}
+
+private struct DashboardCardGrid: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    let isLoading: Bool
+    let visibleCards: [DashboardCardKind]
+    let onMetricTap: (MetricRoute) -> Void
+    let cardView: (DashboardCardKind) -> AnyView
+
+    private let cardGrid: [GridItem] = [
+        GridItem(.flexible(), spacing: 12),
+        GridItem(.flexible(), spacing: 12)
+    ]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("指标")
+                .font(.title3.weight(.semibold))
+
+            if isLoading {
+                VStack(spacing: 12) {
+                    ForEach(0..<2, id: \.self) { _ in
+                        HMLoadingSkeleton(height: 120, cornerRadius: 16)
+                    }
+                }
+            } else {
+                LazyVGrid(columns: cardGrid, spacing: 12) {
+                    ForEach(visibleCards) { kind in
+                        Button {
+                            onMetricTap(kind.route)
+                        } label: {
+                            cardView(kind)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
                     }
                 }
             }
-            .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        }
+        .animation(reduceMotion ? nil : .snappy, value: visibleCards)
+    }
+}
+
+private struct DashboardHiddenMetricsSection: View {
+    let kinds: [DashboardCardKind]
+    let isLoading: Bool
+    let onMetricTap: (MetricRoute) -> Void
+
+    var body: some View {
+        if isLoading {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("更多指标")
+                    .font(.title3.weight(.semibold))
+                HMLoadingSkeleton(height: 120, cornerRadius: 16)
+            }
+        } else {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("更多指标")
+                    .font(.title3.weight(.semibold))
+
+                VStack(spacing: 0) {
+                    ForEach(Array(kinds.enumerated()), id: \.element) { idx, kind in
+                        moreMetricRow(kind: kind)
+                        if idx < kinds.count - 1 {
+                            Divider().overlay(HMColors.separator).padding(.leading, 44)
+                        }
+                    }
+                }
+                .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .stroke(HMColors.separator, lineWidth: 1)
+                )
+            }
         }
     }
 
     @ViewBuilder
     private func moreMetricRow(kind: DashboardCardKind) -> some View {
-        NavigationLink(value: kind.route) {
+        Button {
+            onMetricTap(kind.route)
+        } label: {
             HStack(spacing: 12) {
                 Image(systemName: kind.iconName)
                     .font(.system(size: 14, weight: .semibold))
@@ -239,27 +405,59 @@ struct DashboardView: View {
         }
         .buttonStyle(.plain)
     }
+}
 
-    private func refresh() async {
-        isLoading = true
-        defer { isLoading = false }
-        do {
-            let loader = DashboardLoader(database: environment.database)
-            let snap = try await loader.loadSnapshot()
-            await MainActor.run {
-                self.snapshot = snap
-                self.loadError = nil
+private struct DashboardQuickLinksSection: View {
+    let onQualityTap: () -> Void
+
+    var body: some View {
+        VStack(spacing: 0) {
+            Button(action: onQualityTap) {
+                dashboardLinkLabel(
+                    title: "数据质量 / 同步明细 / 报告",
+                    systemImage: "list.bullet.rectangle"
+                )
             }
-        } catch {
-            await MainActor.run {
-                self.loadError = "加载失败：\(error.localizedDescription)"
+            .buttonStyle(.plain)
+
+            Divider().overlay(HMColors.separator).padding(.leading, 14)
+
+            NavigationLink {
+                WorkoutsView()
+            } label: {
+                dashboardLinkLabel(
+                    title: "运动记录",
+                    systemImage: "figure.run"
+                )
             }
-            AppLogger.shared.error("Dashboard refresh failed: \(error.localizedDescription)")
+            .buttonStyle(.plain)
         }
+        .background(HMColors.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(HMColors.separator, lineWidth: 1)
+        )
+    }
+
+    private func dashboardLinkLabel(title: String, systemImage: String) -> some View {
+        HStack {
+            Image(systemName: systemImage)
+            Text(title)
+                .font(.subheadline)
+            Spacer()
+            Image(systemName: "chevron.right")
+                .font(.caption.bold())
+                .foregroundStyle(.tertiary)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .frame(minHeight: 44)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(Rectangle())
     }
 }
 
-/// Routes for each card → detail screen.
+/// Routes for each card -> detail screen.
 enum MetricRoute: Hashable {
     case activity, steps, activeKcal, restingHR, sleep, weight, bodyFat, bmi, diet, deficit, distance
 
@@ -278,4 +476,24 @@ enum MetricRoute: Hashable {
         case .deficit: return .deficit
         }
     }
+}
+
+#Preview("Dashboard loaded") {
+    DashboardView()
+        .environmentObject(AppEnvironment.shared)
+        .environmentObject(AppEnvironment.shared.syncEngine)
+}
+
+#Preview("Dashboard loaded (Dark)") {
+    DashboardView()
+        .environmentObject(AppEnvironment.shared)
+        .environmentObject(AppEnvironment.shared.syncEngine)
+        .preferredColorScheme(.dark)
+}
+
+#Preview("Dashboard loaded (Accessibility Large)") {
+    DashboardView()
+        .environmentObject(AppEnvironment.shared)
+        .environmentObject(AppEnvironment.shared.syncEngine)
+        .environment(\.dynamicTypeSize, .accessibility2)
 }

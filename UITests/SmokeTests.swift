@@ -73,8 +73,26 @@ final class SmokeTests: XCTestCase {
 
         // Tab 4: 趋势
         app.tabBars.buttons["趋势"].tap()
-        XCTAssertTrue(app.navigationBars["摘要"].waitForExistence(timeout: 8))
+        XCTAssertTrue(app.navigationBars["趋势"].waitForExistence(timeout: 8))
         attachScreenshot(named: "04-dashboard")
+
+        // Trends -> card editor. Reset first so the interaction is deterministic,
+        // then prove hide/show are reversible and leave the default layout behind.
+        anyDescendant(in: app, matching: "dashboard-edit-cards").tap()
+        XCTAssertTrue(
+            anyDescendant(in: app, matching: "dashboard-card-editor").waitForExistence(timeout: 5),
+            "Dashboard card editor did not open."
+        )
+        revealBySwipingUp("dashboard-card-reset", in: app).tap()
+        revealBySwipingDown("dashboard-card-hide-activity", in: app).tap()
+        let showActivity = revealBySwipingUp("dashboard-card-show-activity", in: app)
+        attachScreenshot(named: "04b-dashboard-card-editor-hidden-change")
+        showActivity.tap()
+        revealBySwipingUp("dashboard-card-reset", in: app).tap()
+        _ = revealBySwipingDown("dashboard-card-hide-activity", in: app)
+        attachScreenshot(named: "04c-dashboard-card-editor-default")
+        anyDescendant(in: app, matching: "dashboard-card-done").tap()
+        XCTAssertTrue(app.navigationBars["趋势"].waitForExistence(timeout: 5))
 
         // Tab 5: 更多
         app.tabBars.buttons["更多"].tap()
@@ -115,6 +133,26 @@ final class SmokeTests: XCTestCase {
 
     private func descendants(in app: XCUIApplication, matching identifierPrefix: String) -> XCUIElementQuery {
         app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@", identifierPrefix))
+    }
+
+    private func revealBySwipingUp(_ identifier: String, in app: XCUIApplication) -> XCUIElement {
+        let element = anyDescendant(in: app, matching: identifier)
+        for _ in 0..<8 {
+            if element.exists && element.isHittable { return element }
+            app.swipeUp()
+        }
+        XCTAssertTrue(element.exists && element.isHittable, "Could not reveal \(identifier) by scrolling down.")
+        return element
+    }
+
+    private func revealBySwipingDown(_ identifier: String, in app: XCUIApplication) -> XCUIElement {
+        let element = anyDescendant(in: app, matching: identifier)
+        for _ in 0..<8 {
+            if element.exists && element.isHittable { return element }
+            app.swipeDown()
+        }
+        XCTAssertTrue(element.exists && element.isHittable, "Could not reveal \(identifier) by scrolling up.")
+        return element
     }
 
     private func attachScreenshot(named name: String) {

@@ -10,52 +10,42 @@ struct MedicationView: View {
     @State private var showingAddPlan: Bool = false
     @State private var editingPlan: MedicationPlan?
     @State private var notifStatus: UNAuthorizationStatus = .notDetermined
+    @State private var isLoading: Bool = true
+    @State private var hasLoadedSnapshot: Bool = false
+    @State private var refreshGeneration: Int = 0
+    @State private var loadError: String?
 
     var body: some View {
         NavigationStack {
-            List {
-                if notifStatus == .denied {
-                    Section {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Label("通知未授权", systemImage: "bell.slash")
-                                .font(.body.bold())
-                            Text("用药提醒需要通知权限。前往「设置 → 通知 → 健康管理」开启。")
-                                .font(.footnote).foregroundStyle(.secondary)
-                        }
-                    }
-                }
-                Section("用药计划") {
-                    if plans.isEmpty {
-                        Text("尚无计划。点击右上 + 添加。").foregroundStyle(.secondary)
-                    } else {
-                        ForEach(plans) { plan in
-                            PlanRow(plan: plan) {
-                                Task { await recordTaken(plan) }
-                            } onEdit: {
-                                editingPlan = plan
-                            } onDelete: {
-                                Task { await delete(plan) }
-                            }
-                        }
-                    }
-                }
-
-                Section("最近日志") {
-                    if recentLogs.isEmpty {
-                        Text("尚无记录").foregroundStyle(.secondary)
-                    } else {
-                        ForEach(recentLogs) { log in
-                            LogRow(log: log, planName: planName(for: log.planId))
-                        }
-                    }
-                }
-            }
+            MedicationScreenContent(
+                isLoading: isLoading,
+                hasLoadedSnapshot: hasLoadedSnapshot,
+                loadError: loadError,
+                plans: plans,
+                recentLogs: recentLogs,
+                notifStatus: notifStatus,
+                onAddPlan: { showingAddPlan = true },
+                onPlanTap: { editingPlan = $0 },
+                onRecord: { plan in
+                    await recordTaken(plan)
+                },
+                onDeletePlan: { plan in
+                    await delete(plan)
+                },
+                onRetry: {
+                    await refresh()
+                    await refreshNotifStatus()
+                },
+                planName: planName(for:)
+            )
             .navigationTitle("用药")
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button { showingAddPlan = true } label: {
                         Image(systemName: "plus")
                     }
+                    .accessibilityIdentifier("medication-add-plan")
+                    .accessibilityLabel("新增用药计划")
                 }
             }
             .sheet(isPresented: $showingAddPlan, onDismiss: { Task { await refresh() } }) {
@@ -78,6 +68,15 @@ struct MedicationView: View {
     }
 
     private func refresh() async {
+        let (shouldShowInitialLoading, generation) = await MainActor.run {
+            refreshGeneration += 1
+            return (!hasLoadedSnapshot, refreshGeneration)
+        }
+        await MainActor.run {
+            isLoading = shouldShowInitialLoading
+            loadError = nil
+        }
+
         do {
             let (planList, logList) = try await environment.database.asyncRead { db -> ([MedicationPlan], [MedicationLog]) in
                 let p = try MedicationPlan
@@ -90,10 +89,19 @@ struct MedicationView: View {
                 return (p, l)
             }
             await MainActor.run {
+                guard generation == refreshGeneration else { return }
                 plans = planList
                 recentLogs = logList
+                loadError = nil
+                isLoading = false
+                hasLoadedSnapshot = true
             }
         } catch {
+            await MainActor.run {
+                guard generation == refreshGeneration else { return }
+                loadError = "用药页读取失败：\(error.localizedDescription)"
+                isLoading = false
+            }
             AppLogger.shared.error("Medication refresh failed: \(error.localizedDescription)")
         }
     }
@@ -142,6 +150,327 @@ struct MedicationView: View {
     }
 }
 
+private struct MedicationScreenContent: View {
+    let isLoading: Bool
+    let hasLoadedSnapshot: Bool
+    let loadError: String?
+    let plans: [MedicationPlan]
+    let recentLogs: [MedicationLog]
+    let notifStatus: UNAuthorizationStatus
+    let onAddPlan: () -> Void
+    let onPlanTap: (MedicationPlan) -> Void
+    let onRecord: (MedicationPlan) async -> Void
+    let onDeletePlan: (MedicationPlan) async -> Void
+    let onRetry: () async -> Void
+    let planName: (Int64?) -> String
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                Text(HMDateText.fullWeekday())
+                    .font(.body)
+                    .foregroundStyle(.secondary)
+
+                if isLoading {
+                    VStack(alignment: .leading, spacing: 12) {
+                        HMLoadingSkeleton(width: 132, height: 20)
+                        HMLoadingSkeleton(height: 72, cornerRadius: 16)
+                        HMLoadingSkeleton(height: 56, cornerRadius: 16)
+                    }
+                    .padding(16)
+                    .hmSurface(cornerRadius: 18)
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel("正在读取用药计划与动作")
+                } else if hasLoadedSnapshot {
+                    MedicationOverview(
+                        isLoading: false,
+                        hasLoadedSnapshot: true,
+                        hasError: loadError != nil,
+                        planCount: plans.count,
+                        logCount: recentLogs.count
+                    )
+
+                    MedicationNotificationPanel(status: notifStatus)
+                }
+
+                if let loadError {
+                    HMInlineRecovery(
+                        title: "用药页读取失败",
+                        message: "主列表数据来自数据库快照。",
+                        technicalDetails: loadError,
+                        actionTitle: "重试",
+                        onAction: {
+                            Task { await onRetry() }
+                        },
+                        titleAccessibilityIdentifier: "medication-load-error-title",
+                        actionAccessibilityIdentifier: "medication-retry"
+                    )
+                }
+
+                if hasLoadedSnapshot {
+                    MedicationPlansPanel(
+                        isLoading: isLoading,
+                        plans: plans,
+                        onAddPlan: onAddPlan,
+                        onPlanTap: onPlanTap,
+                        onRecord: onRecord,
+                        onDeletePlan: onDeletePlan
+                    )
+
+                    MedicationLogsPanel(
+                        isLoading: isLoading,
+                        logs: recentLogs,
+                        planName: planName
+                    )
+                }
+
+            }
+            .padding(.horizontal, 20)
+            .padding(.top, 12)
+            .padding(.bottom, 28)
+        }
+        .background(HMColors.background.ignoresSafeArea())
+        .accessibilityIdentifier("medication-screen")
+    }
+}
+
+private struct MedicationOverview: View {
+    let isLoading: Bool
+    let hasLoadedSnapshot: Bool
+    let hasError: Bool
+    let planCount: Int
+    let logCount: Int
+
+    var body: some View {
+        HStack(spacing: 0) {
+            overviewItem(
+                value: hasLoadedSnapshot && !isLoading ? "\(planCount)" : "—",
+                label: "个计划",
+                icon: "pills.fill",
+                tone: !hasLoadedSnapshot || isLoading
+                    ? .neutral
+                    : (hasError ? .actionRequired : .comparison)
+            )
+            Divider()
+                .overlay(HMColors.separator)
+                .padding(.vertical, 4)
+            overviewItem(
+                value: hasLoadedSnapshot && !isLoading ? "\(logCount)" : "—",
+                label: "条最近动作",
+                icon: "checkmark.circle.fill",
+                tone: !hasLoadedSnapshot || isLoading
+                    ? .neutral
+                    : (hasError ? .actionRequired : .confirmed)
+            )
+        }
+        .padding(16)
+        .hmSurface(cornerRadius: 18)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(
+            hasLoadedSnapshot && !isLoading
+                ? "\(planCount) 个计划，\(logCount) 条最近动作"
+                : (hasError ? "用药计划与动作读取失败" : "正在读取用药计划与动作")
+        )
+    }
+
+    private func overviewItem(
+        value: String,
+        label: String,
+        icon: String,
+        tone: HMSemanticTone
+    ) -> some View {
+        HStack(spacing: 10) {
+            HMIconBadge(systemImage: icon, tone: tone, size: 34)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(value)
+                    .font(.title2.weight(.bold))
+                    .foregroundStyle(tone.color)
+                    .monospacedDigit()
+                Text(label)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+private struct MedicationNotificationPanel: View {
+    let status: UNAuthorizationStatus
+
+    private var tone: HMSemanticTone {
+        switch status {
+        case .denied:
+            return .actionRequired
+        case .authorized, .provisional, .ephemeral:
+            return .confirmed
+        default:
+            return .neutral
+        }
+    }
+
+    private var title: String {
+        switch status {
+        case .denied:
+            return "提醒未开启"
+        case .authorized, .provisional, .ephemeral:
+            return "通知可用"
+        default:
+            return "未检测到通知权限状态"
+        }
+    }
+
+    private var detail: String {
+        switch status {
+        case .denied:
+            return "当前不会发送用药提醒，但仍可继续管理计划和记录动作。"
+        case .authorized, .provisional, .ephemeral:
+            return "提醒可按计划触发；实际动作仍以日志为准。"
+        default:
+            return "权限状态待确认，当前状态不阻塞记录。"
+        }
+    }
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            HMIconBadge(systemImage: notificationIcon, tone: tone)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.headline)
+                    .foregroundStyle(.primary)
+                Text(detail)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(14)
+        .hmSurface(cornerRadius: 16)
+    }
+
+    private var notificationIcon: String {
+        switch status {
+        case .denied:
+            return "bell.slash.fill"
+        case .authorized, .provisional, .ephemeral:
+            return "bell.fill"
+        default:
+            return "bell.badge"
+        }
+    }
+}
+
+private struct MedicationPlansPanel: View {
+    let isLoading: Bool
+    let plans: [MedicationPlan]
+    let onAddPlan: () -> Void
+    let onPlanTap: (MedicationPlan) -> Void
+    let onRecord: (MedicationPlan) async -> Void
+    let onDeletePlan: (MedicationPlan) async -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("用药计划")
+                    .font(.title3.weight(.semibold))
+                Spacer(minLength: 8)
+                if isLoading {
+                    HMLoadingSkeleton(width: 74, height: 16)
+                } else if !plans.isEmpty {
+                    Text("共 \(plans.count) 条")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            if isLoading {
+                MedicationLoadingRows()
+            } else if plans.isEmpty {
+                HMEmptyState(
+                    title: "尚无计划",
+                    message: "添加计划后，可以在这里记录实际动作；计划时间不会被当作已服用。",
+                    icon: "pills",
+                    tone: .neutral,
+                    primaryActionTitle: "新增计划",
+                    primaryActionIcon: "plus",
+                    primaryAction: onAddPlan,
+                    primaryActionIdentifier: "medication-empty-add"
+                )
+            } else {
+                VStack(spacing: 0) {
+                    ForEach(Array(plans.enumerated()), id: \.element.id) { index, plan in
+                        PlanRow(
+                            plan: plan,
+                            onTaken: {
+                                Task { await onRecord(plan) }
+                            },
+                            onEdit: { onPlanTap(plan) },
+                            onDelete: {
+                                Task { await onDeletePlan(plan) }
+                            }
+                        )
+                        .padding(.horizontal, 4)
+
+                        if index < plans.count - 1 {
+                            Divider().overlay(HMColors.separator)
+                        }
+                    }
+                }
+                .hmSurface(cornerRadius: 16)
+            }
+        }
+    }
+}
+
+private struct MedicationLogsPanel: View {
+    let isLoading: Bool
+    let logs: [MedicationLog]
+    let planName: (Int64?) -> String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("最近日志")
+                .font(.title3.weight(.semibold))
+
+            if isLoading {
+                MedicationLoadingRows()
+            } else if logs.isEmpty {
+                HMEmptyState(
+                    title: "尚无记录",
+                    message: "执行“记一次”、跳过或延后后，实际动作会显示在这里。",
+                    icon: "clock.arrow.circlepath",
+                    tone: .neutral
+                )
+            } else {
+                VStack(spacing: 0) {
+                    ForEach(Array(logs.enumerated()), id: \.element.id) { index, log in
+                        LogRow(log: log, planName: planName(log.planId))
+                            .padding(.horizontal, 4)
+
+                        if index < logs.count - 1 {
+                            Divider().overlay(HMColors.separator)
+                        }
+                    }
+                }
+                .hmSurface(cornerRadius: 16)
+            }
+        }
+    }
+}
+
+private struct MedicationLoadingRows: View {
+    var body: some View {
+        VStack(spacing: 8) {
+            HMLoadingSkeleton(height: 56)
+            HMLoadingSkeleton(height: 56)
+            HMLoadingSkeleton(height: 56)
+        }
+        .padding(12)
+        .hmSurface(cornerRadius: 16)
+    }
+}
+
 private struct PlanRow: View {
     let plan: MedicationPlan
     let onTaken: () -> Void
@@ -156,6 +485,7 @@ private struct PlanRow: View {
                 Button("记一次") { onTaken() }
                     .buttonStyle(.borderedProminent)
                     .controlSize(.small)
+                    .accessibilityIdentifier("medication-take-\(plan.id ?? -1)")
             }
             HStack(spacing: 12) {
                 if let d = plan.dosageMg {
@@ -180,7 +510,8 @@ private struct PlanRow: View {
         }
         .contentShape(Rectangle())
         .onTapGesture { onEdit() }
-        .padding(.vertical, 2)
+        .padding(.vertical, 12)
+        .accessibilityIdentifier(plan.id.flatMap { "medication-plan-row-\($0)" } ?? "medication-plan-row-new")
         .swipeActions(edge: .trailing) {
             Button(role: .destructive, action: onDelete) {
                 Label("删除", systemImage: "trash")
@@ -226,15 +557,18 @@ private struct LogRow: View {
             Text(dateLabel)
                 .font(.caption).foregroundStyle(.secondary)
         }
-        .padding(.vertical, 2)
+        .padding(.vertical, 8)
     }
 
     private var dateLabel: String {
         let f = DateFormatter()
         f.dateStyle = .short
         f.timeStyle = .short
-        let when = log.actionAt ?? log.scheduledAt
-        return f.string(from: Date(timeIntervalSince1970: TimeInterval(when)))
+        if let actionAt = log.actionAt {
+            return "动作 " + f.string(from: Date(timeIntervalSince1970: TimeInterval(actionAt)))
+        }
+        let scheduled = f.string(from: Date(timeIntervalSince1970: TimeInterval(log.scheduledAt)))
+        return "计划 \(scheduled) · 动作时刻未记录"
     }
 
     private var color: Color {
@@ -263,20 +597,60 @@ struct MedicationPlanEditView: View {
     @State private var pendingPermissionRequest: Bool = false
     @State private var permissionDenied: Bool = false
 
+    private var scheduleSummary: String {
+        guard reminderEnabled else {
+            return "本地提醒关闭；计划仍可保存，实际动作需另行记录。"
+        }
+
+        let weekdayText: String
+        if weekdays.isEmpty {
+            weekdayText = "尚未选择星期"
+        } else if weekdays == Set(1...7) {
+            weekdayText = "每天"
+        } else if weekdays == Set([2, 3, 4, 5, 6]) {
+            weekdayText = "工作日"
+        } else if weekdays == Set([1, 7]) {
+            weekdayText = "周末"
+        } else {
+            weekdayText = weekdays.sorted().map(weekdayLongName).joined(separator: "、")
+        }
+
+        let components = Calendar.current.dateComponents([.hour, .minute], from: reminderTime)
+        let time = String(format: "%02d:%02d", components.hour ?? 9, components.minute ?? 0)
+        return "\(frequency.label) · \(weekdayText) · \(time)"
+    }
+
     var body: some View {
         NavigationStack {
             Form {
-                Section("基本") {
+                Section {
+                    HMEditorGuide(
+                        title: "计划与动作分开",
+                        message: "这里设置未来安排；已服、跳过或延后仍以实际动作日志为准。",
+                        systemImage: "calendar.badge.clock",
+                        tone: .confirmed
+                    )
+                }
+
+                Section("基本信息") {
                     TextField("药物名称（如 Tirzepatide）", text: $name)
-                    LabeledTextField(label: "剂量 mg", text: $dosageMg, keyboard: .decimalPad)
+                        .accessibilityIdentifier("medication-plan-name")
+                    LabeledTextField(
+                        label: "剂量 mg",
+                        text: $dosageMg,
+                        keyboard: .decimalPad,
+                        accessibilityIdentifier: "medication-plan-dosage"
+                    )
                     Picker("频率", selection: $frequency) {
                         ForEach(MedicationPlan.Frequency.allCases, id: \.self) { f in
                             Text(f.label).tag(f)
                         }
                     }
+                    .accessibilityIdentifier("medication-plan-frequency")
                 }
                 Section {
                     Toggle("启用本地提醒", isOn: $reminderEnabled)
+                        .accessibilityIdentifier("medication-plan-reminder-enabled")
                         .onChange(of: reminderEnabled) { _, newValue in
                             if newValue {
                                 Task { await ensurePermission() }
@@ -289,19 +663,47 @@ struct MedicationPlanEditView: View {
                             selection: $reminderTime,
                             displayedComponents: .hourAndMinute
                         )
+                        .accessibilityIdentifier("medication-plan-time")
                     }
                     if permissionDenied {
-                        Text("系统通知权限被拒绝；前往「设置 → 通知 → 健康管理」开启后再保存。")
-                            .font(.footnote).foregroundStyle(.red)
+                        HMEditorCallout(
+                            title: "系统通知权限未开启",
+                            message: "当前不会发送提醒；可在系统“设置 → 通知 → 健康管理”中开启后再保存。",
+                            tone: .actionRequired,
+                            systemImage: "bell.slash.fill",
+                            accessibilityIdentifier: "medication-plan-permission-denied"
+                        )
                     }
                 } header: {
                     Text("提醒")
                 } footer: {
                     Text("提醒为本地通知（不联网）。修改后保存即生效；旧时间段的提醒会被替换。")
                 }
+
+                Section("计划预览") {
+                    HStack(alignment: .top, spacing: 12) {
+                        HMIconBadge(systemImage: "calendar", tone: .comparison, size: 38)
+                        VStack(alignment: .leading, spacing: 5) {
+                            HMEvidenceTag(
+                                tone: .comparison,
+                                text: "未来计划",
+                                systemImage: "clock"
+                            )
+                            Text(scheduleSummary)
+                                .font(.body.weight(.semibold))
+                                .fixedSize(horizontal: false, vertical: true)
+                            Text("这不是服药记录；实际动作需要在用药页另行确认。")
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                    .accessibilityIdentifier("medication-plan-preview")
+                }
                 Section("备注") {
                     TextField("备注", text: $notes, axis: .vertical)
                         .lineLimit(3...6)
+                        .accessibilityIdentifier("medication-plan-notes")
                 }
             }
             .navigationTitle(planToEdit == nil ? "添加用药计划" : "编辑计划")
@@ -309,6 +711,7 @@ struct MedicationPlanEditView: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("取消") { dismiss() }
+                        .accessibilityIdentifier("medication-plan-cancel")
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("保存") {
@@ -322,6 +725,8 @@ struct MedicationPlanEditView: View {
                         || (reminderEnabled && weekdays.isEmpty)
                         || pendingPermissionRequest
                     )
+                    .tint(HMColors.primaryAction)
+                    .accessibilityIdentifier("medication-plan-save")
                 }
             }
             .task {
@@ -331,6 +736,10 @@ struct MedicationPlanEditView: View {
                 }
             }
         }
+    }
+
+    private func weekdayLongName(_ day: Int) -> String {
+        ["周日", "周一", "周二", "周三", "周四", "周五", "周六"][max(0, min(6, day - 1))]
     }
 
     private static func defaultReminderTime() -> Date {
@@ -428,38 +837,87 @@ struct MedicationPlanEditView: View {
 
 private struct WeekdayPicker: View {
     @Binding var selected: Set<Int>
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 4) {
-                ForEach(1...7, id: \.self) { day in
-                    Button {
-                        toggle(day)
-                    } label: {
-                        Text(labelFor(day))
-                            .font(.footnote)
-                            .frame(minWidth: 32, minHeight: 32)
-                            .background(selected.contains(day) ? Color.accentColor : Color.gray.opacity(0.15))
-                            .foregroundStyle(selected.contains(day) ? Color.white : Color.primary)
-                            .clipShape(Circle())
-                    }
-                    .buttonStyle(.plain)
+        VStack(alignment: .leading, spacing: 12) {
+            Text("选择星期")
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(.secondary)
+
+            if dynamicTypeSize.isAccessibilitySize {
+                LazyVGrid(
+                    columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: 4),
+                    spacing: 8
+                ) {
+                    weekdayButtons
+                }
+            } else {
+                HStack(spacing: 2) {
+                    weekdayButtons
                 }
             }
-            HStack(spacing: 12) {
-                Button("每天") { selected = Set(1...7) }
-                    .font(.footnote)
-                Button("工作日") { selected = Set([2, 3, 4, 5, 6]) }
-                    .font(.footnote)
-                Button("周末") { selected = Set([1, 7]) }
-                    .font(.footnote)
+
+            if dynamicTypeSize.isAccessibilitySize {
+                VStack(alignment: .leading, spacing: 6) {
+                    presetButtons
+                }
+            } else {
+                HStack(spacing: 8) {
+                    presetButtons
+                }
             }
         }
         .padding(.vertical, 4)
     }
 
+    @ViewBuilder
+    private var weekdayButtons: some View {
+        ForEach(1...7, id: \.self) { day in
+            let isSelected = selected.contains(day)
+            Button {
+                toggle(day)
+            } label: {
+                Text(labelFor(day))
+                    .font(.footnote.weight(.semibold))
+                    .frame(width: 44, height: 44)
+                    .background(isSelected ? HMColors.confirmed : HMColors.neutral.opacity(0.12))
+                    .foregroundStyle(isSelected ? Color.white : Color.primary)
+                    .clipShape(Circle())
+                    .overlay {
+                        Circle()
+                            .stroke(isSelected ? HMColors.confirmed : HMColors.separator, lineWidth: 1)
+                    }
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(weekdayLongName(day))
+            .accessibilityValue(isSelected ? "已选择" : "未选择")
+            .accessibilityAddTraits(isSelected ? .isSelected : [])
+            .accessibilityIdentifier("medication-plan-weekday-\(day)")
+        }
+    }
+
+    @ViewBuilder
+    private var presetButtons: some View {
+        presetButton("每天", days: Set(1...7))
+        presetButton("工作日", days: Set([2, 3, 4, 5, 6]))
+        presetButton("周末", days: Set([1, 7]))
+    }
+
+    private func presetButton(_ title: String, days: Set<Int>) -> some View {
+        Button(title) { selected = days }
+            .font(.footnote.weight(.medium))
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .frame(minHeight: 44)
+    }
+
     private func labelFor(_ day: Int) -> String {
         ["日", "一", "二", "三", "四", "五", "六"][max(0, min(6, day - 1))]
+    }
+
+    private func weekdayLongName(_ day: Int) -> String {
+        ["周日", "周一", "周二", "周三", "周四", "周五", "周六"][max(0, min(6, day - 1))]
     }
 
     private func toggle(_ day: Int) {
@@ -469,4 +927,138 @@ private struct WeekdayPicker: View {
             selected.insert(day)
         }
     }
+}
+
+private enum MedicationPreviewFixtures {
+    static let now: Date = {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "Asia/Shanghai") ?? .current
+        calendar.locale = Locale(identifier: "zh_CN")
+
+        return calendar.date(from: DateComponents(year: 2026, month: 7, day: 16, hour: 9, minute: 20)) ?? Date()
+    }()
+
+    static let plans: [MedicationPlan] = [
+        MedicationPlan(
+            id: 1,
+            name: "奥美拉唑",
+            dosageMg: 20,
+            frequency: MedicationPlan.Frequency.weekly.rawValue,
+            scheduleJson: NotificationScheduler.Schedule(weekdays: [2, 4, 6], hour: 9, minute: 0).toJson(),
+            startDate: nil,
+            endDate: nil,
+            reminderEnabled: true,
+            notes: "早餐后服用",
+            createdAt: Int64(now.timeIntervalSince1970)
+        ),
+        MedicationPlan(
+            id: 2,
+            name: "维生素 D",
+            dosageMg: 1,
+            frequency: MedicationPlan.Frequency.weekly.rawValue,
+            scheduleJson: nil,
+            startDate: nil,
+            endDate: nil,
+            reminderEnabled: false,
+            notes: nil,
+            createdAt: Int64(now.timeIntervalSince1970) - 12 * 3_600
+        )
+    ]
+
+    static let logs: [MedicationLog] = [
+        MedicationLog(
+            id: 1,
+            planId: 1,
+            scheduledAt: Int64(now.timeIntervalSince1970) - 3_600,
+            action: .taken,
+            actionAt: Int64(now.timeIntervalSince1970) - 3_600,
+            dosageMg: 20,
+            sideEffects: nil,
+            notes: nil,
+            createdAt: Int64(now.timeIntervalSince1970) - 3_600
+        ),
+        MedicationLog(
+            id: 2,
+            planId: 1,
+            scheduledAt: Int64(now.timeIntervalSince1970) - 48_000,
+            action: .deferred,
+            actionAt: Int64(now.timeIntervalSince1970) - 48_000,
+            dosageMg: nil,
+            sideEffects: nil,
+            notes: "忙于出差",
+            createdAt: Int64(now.timeIntervalSince1970) - 48_000
+        ),
+        MedicationLog(
+            id: 3,
+            planId: 2,
+            scheduledAt: Int64(now.timeIntervalSince1970) - 86_400,
+            action: .skipped,
+            actionAt: Int64(now.timeIntervalSince1970) - 86_400,
+            dosageMg: 1,
+            sideEffects: nil,
+            notes: nil,
+            createdAt: Int64(now.timeIntervalSince1970) - 86_400
+        )
+    ]
+}
+
+private func medicationPlan(for id: Int64?) -> String {
+    guard let id else { return "未知计划" }
+    return MedicationPreviewFixtures.plans.first { $0.id == id }?.name ?? "未知计划"
+}
+
+#Preview("Medication loaded") {
+    MedicationScreenContent(
+        isLoading: false,
+        hasLoadedSnapshot: true,
+        loadError: nil,
+        plans: MedicationPreviewFixtures.plans,
+        recentLogs: MedicationPreviewFixtures.logs,
+        notifStatus: .authorized,
+        onAddPlan: {},
+        onPlanTap: { _ in },
+        onRecord: { _ in },
+        onDeletePlan: { _ in },
+        onRetry: {},
+        planName: medicationPlan(for:)
+    )
+    .environment(\.locale, Locale(identifier: "zh_CN"))
+}
+
+#Preview("Medication loaded (Dark)") {
+    MedicationScreenContent(
+        isLoading: false,
+        hasLoadedSnapshot: true,
+        loadError: nil,
+        plans: MedicationPreviewFixtures.plans,
+        recentLogs: MedicationPreviewFixtures.logs,
+        notifStatus: .authorized,
+        onAddPlan: {},
+        onPlanTap: { _ in },
+        onRecord: { _ in },
+        onDeletePlan: { _ in },
+        onRetry: {},
+        planName: medicationPlan(for:)
+    )
+    .environment(\.locale, Locale(identifier: "zh_CN"))
+    .preferredColorScheme(.dark)
+}
+
+#Preview("Medication loaded (Accessibility Large)") {
+    MedicationScreenContent(
+        isLoading: false,
+        hasLoadedSnapshot: true,
+        loadError: nil,
+        plans: MedicationPreviewFixtures.plans,
+        recentLogs: MedicationPreviewFixtures.logs,
+        notifStatus: .authorized,
+        onAddPlan: {},
+        onPlanTap: { _ in },
+        onRecord: { _ in },
+        onDeletePlan: { _ in },
+        onRetry: {},
+        planName: medicationPlan(for:)
+    )
+    .environment(\.locale, Locale(identifier: "zh_CN"))
+    .environment(\.dynamicTypeSize, .accessibility2)
 }

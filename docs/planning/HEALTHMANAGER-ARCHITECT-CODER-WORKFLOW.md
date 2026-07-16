@@ -2,7 +2,7 @@
 
 > 建立日期：2026-07-13
 >
-> 当前产品基线：v0.3.0（build 8）/ main
+> 当前产品状态：v0.4.0（build 9）发布候选已完成真机覆盖安装与数据保持验证；Git / GitHub 收尾进行中
 >
 > 角色约定：本会话负责架构、任务书、提示词和独立验收；Coder 会话只实现当前已批准 STAGE。
 
@@ -215,3 +215,38 @@ HealthManager 后续开发会跨会话、跨模型接力。为了避免便宜模
 - 最终复验为 unit 251/251、UI 7/7，Simulator Release 与真实 iPhone Release 构建均为 0 error / 0 warning。
 - Release 已以同一 Bundle ID / Team 覆盖安装到真实 iPhone；安装后 115 条餐次、43 条历史备注餐次、0 条测试餐次、0 个孤儿分项，数据库完整性 `ok`。
 - v0.4 必须重新从用户需求、价值假设与证据边界开始，不把竞品功能清单直接当成路线图；具体入口见 `NEXT_TASK.md`。
+
+## 12. 2026-07-16 全页面 UI 改版设计与实施入口
+
+用户明确要求在不增加无关功能的前提下升级全页面 UI，并经过多轮反馈确认“基线叙事 + 局部决策透镜”、克制但有辨识度、语义色略丰富的方向。设计阶段已经完成：
+
+- ADR-002 已 Accepted；
+- 29 张筛选后的视觉参考已复制到 `docs/design/assets/ui-redesign-2026-07-16/`；
+- 全页面、关键状态、事实边界、无障碍门和 010A～010H 阶段图见 `docs/design/2026-07-16-ui-redesign-design-contract.md`；
+- 设计阶段交接见 `docs/handoffs/UI-REDESIGN-DESIGN-HANDOFF-20260716.md`。
+
+STAGE-010A 已于 2026-07-16 由主架构师正式验收 PASS：四个根状态完成 12 张运行态、3 张同屏对照，正式 diff 上全量测试 258 / 258。
+
+STAGE-010B 已于同日正式验收 PASS：五个一级页面完成 light / dark / accessibility-large 共 18 张运行态、5 张 reference / runtime 同屏对照；修复 Diet 自定义容器破坏原生侧滑删除的真实回归后，全量测试 258 / 258。
+
+STAGE-010C 已于同日正式验收 PASS：四组编辑流程完成 12 张运行态、4 张 reference / runtime 同屏对照；修复两处由真实 UI 流程捕获的可达性回归后，定向 42 / 42、全量 258 / 258。
+
+STAGE-010D 已于同日正式验收 PASS：九类趋势 / 证据 / 运维详情完成 light 9 张、dark 6 张、accessibility 6 张和 9 张 reference / runtime 同屏对照；定向 73 / 73、全量 258 / 258。
+
+STAGE-010E 已于同日正式验收 PASS：设置、AI 双通道、兼容接口 / Profile 与 Apple 健康权限证据完成 light 6 张、dark 4 张、accessibility-extra-large 4 张和 4 张 reference / runtime 同屏对照；真实 UI 流程捕获并修复 Profile sheet 呈现回归；定向 77 / 77、全量 258 / 258。
+
+STAGE-010F 已于同日正式验收 PASS：卡片编辑器完成 light / dark default + hidden-change、accessibility-extra-large top + bottom 和 1 张 reference / runtime 同屏对照；真实 UI 流程覆盖隐藏、重新显示、恢复默认与返回；定向 18 / 18、全量 258 / 258。
+
+STAGE-010G 已于同日正式验收 PASS：完成 dark / accessibility-extra-large 各 8 张高密度页矩阵、dark 永久 Smoke 与系统 Reduce Motion=1 的永久 Smoke；修复长状态标签、trailing 信息行和可选动画的无障碍表现；定向 30 / 30、全量 258 / 258。
+
+STAGE-010H 已于同日正式验收 PASS：Standards / Spec 双轴审查捕获的事实时间、刷新竞态、初始状态、同步失败、活动图表可访问性、AI 双通道测试与权限证据分层问题全部收敛，最终复审无 P0～P2；正式构建成功、定向 87 / 87、视觉复验 1 / 1、清理后全量 258 / 258，且无临时 seam、无 `Core/` 改动。最终交接见 `docs/handoffs/UI-REDESIGN-IMPLEMENTATION-HANDOFF-20260716.md`。
+
+010D 的 Spark 实现因越界触碰业务语义被主架构师中止，主架构师按接管门完成后续实现与验收。010A～010H 已全部完成，当前没有可直接交给内部 Coder 的必做提示词。用户已在 2026-07-16 明确授权 v0.4.0 发布与手机更新；发布门和外部收尾由主架构师在 STAGE-011 内执行并验收。
+
+## 13. 2026-07-16 v0.4.0 发布门
+
+- 最终人工反馈已纳入：趋势页把“来源 / 整理 / 展示”移至页面底部，优先呈现今日数据与指标趋势；饮食页移除重复的大型新增 / 复用按钮，保留右上角原生快捷入口。
+- 版本提升为 `0.4.0 (9)`；Bundle ID `com.norte.HealthManager` 与 Team `K8RVJSC4NU` 保持不变。
+- 最终 Smoke 1 / 1、全量 258 / 258；iPhone 17 Simulator 与 iPhone Air 真机 Release 构建均成功。
+- 已在真实 iPhone 覆盖安装并启动 `0.4.0 (9)`；安装前后数据库 `quick_check=ok`、迁移 v1～v5 完整、餐次 119、分项 7、用药计划 1、用药日志 5、孤儿分项 0、活动同步任务 0。
+- Git commit、annotated tag、push 与 GitHub Release 的最终状态以 [STAGE-011](../stages/STAGE-011-v040-ui-release.md) 为准；未完成前不得提前写成已发布。

@@ -12,6 +12,7 @@ struct WorkoutsView: View {
     @State private var rows: [ActivityWorkoutRow] = []
     @State private var windowDays: Int = 30
     @State private var showingManualEntry: Bool = false
+    @State private var loadError: String?
 
     var body: some View {
         List {
@@ -19,19 +20,53 @@ struct WorkoutsView: View {
                 Stepper("过去 \(windowDays) 天", value: $windowDays, in: 7...180, step: 7)
                     .onChange(of: windowDays) { Task { await refresh() } }
             }
-            if rows.isEmpty {
+            if let loadError {
                 Section {
-                    Text("窗口内没有运动样本。先回补一次，或检查 Apple 健康是否有运动数据。")
-                        .foregroundStyle(.secondary)
+                    HMInlineRecovery(
+                        title: "运动记录加载失败",
+                        message: "现有记录没有被修改。可在当前页面重新读取。",
+                        technicalDetails: loadError,
+                        actionTitle: "重新读取"
+                    ) {
+                        Task { await refresh() }
+                    }
+                }
+            } else if rows.isEmpty {
+                Section {
+                    HMEmptyState(
+                        title: "窗口内暂无运动样本",
+                        message: "这不代表活动能量为 0。可先回补 Apple 健康数据，或补录一条估算活动。",
+                        icon: "figure.run",
+                        tone: .neutral,
+                        primaryActionTitle: "补录活动",
+                        primaryActionIcon: "plus",
+                        primaryAction: { showingManualEntry = true }
+                    )
                 }
             } else {
-                Section("最近运动（\(rows.count) 次）") {
+                Section("记录边界") {
+                    ViewThatFits(in: .horizontal) {
+                        HStack(spacing: 10) {
+                            evidenceTags
+                        }
+                        VStack(alignment: .leading, spacing: 8) {
+                            evidenceTags
+                        }
+                    }
+                }
+                Section {
                     ForEach(rows) { row in
                         ActivityWorkoutRowView(row: row)
                     }
+                } header: {
+                    Text("最近运动（\(rows.count) 次）")
+                } footer: {
+                    Text("补录记录的消耗来自 MET × 体重 × 小时估算；同步记录按原始来源展示。")
                 }
             }
         }
+        .scrollContentBackground(.hidden)
+        .background(HMColors.background)
         .navigationTitle("运动")
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
@@ -49,6 +84,20 @@ struct WorkoutsView: View {
         .onChange(of: sync.aggregationTick) { _, _ in
             Task { await refresh() }
         }
+    }
+
+    @ViewBuilder
+    private var evidenceTags: some View {
+                        HMEvidenceTag(
+                            tone: .confirmed,
+                            text: "同步 \(syncedCount)",
+                            systemImage: "checkmark.shield"
+                        )
+                        HMEvidenceTag(
+                            tone: .estimate,
+                            text: "补录 \(manualCount)",
+                            systemImage: "square.and.pencil"
+                        )
     }
 
     private func refresh() async {
@@ -69,11 +118,21 @@ struct WorkoutsView: View {
                     """, arguments: ["HKWorkoutTypeIdentifier", earliestEpoch])
                 return dbRows.map(ActivityWorkoutRow.make(from:))
             }
-            await MainActor.run { rows = loaded }
+            await MainActor.run {
+                rows = loaded
+                loadError = nil
+            }
         } catch {
+            await MainActor.run { loadError = error.localizedDescription }
             AppLogger.shared.error("Workouts refresh failed: \(error.localizedDescription)")
         }
     }
+
+    private var manualCount: Int {
+        rows.filter(\.isManualEstimate).count
+    }
+
+    private var syncedCount: Int { rows.count - manualCount }
 
     /// Subset of `HKWorkoutActivityType` raw values → Chinese label.
     /// Unknown values fall back to "运动 (#raw)".

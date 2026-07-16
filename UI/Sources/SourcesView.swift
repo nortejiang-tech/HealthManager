@@ -16,6 +16,7 @@ struct SourcesView: View {
     @State private var rows: [SourceRow] = []
     @State private var windowDays: Int = 14
     @State private var grouping: Grouping = .origin
+    @State private var loadError: String?
 
     enum Grouping: String, CaseIterable, Identifiable {
         case origin, bundle
@@ -57,18 +58,40 @@ struct SourcesView: View {
                 }
             }
 
-            if rows.isEmpty {
+            if let loadError {
                 Section {
-                    Text("尚无来源数据。先执行一次回补。").foregroundStyle(.secondary)
+                    HMInlineRecovery(
+                        title: "来源明细加载失败",
+                        message: "现有数据没有被修改。你可以在当前页面重新读取。",
+                        technicalDetails: loadError,
+                        actionTitle: "重新读取"
+                    ) {
+                        Task { await refresh() }
+                    }
+                }
+            } else if rows.isEmpty {
+                Section {
+                    HMEmptyState(
+                        title: "窗口内暂无来源样本",
+                        message: "这只表示所选时间范围内没有可归因的原始样本。可在同步中心回补后再回来查看。",
+                        icon: "tray",
+                        tone: .neutral
+                    )
                 }
             } else {
-                Section("来源") {
+                Section {
                     ForEach(rows) { row in
                         SourceRowView(row: row, windowDays: windowDays)
                     }
+                } header: {
+                    Text("来源")
+                } footer: {
+                    Text("Garmin、米家等来源通过 Apple 健康样本进入；本 App 不直接连接这些服务。")
                 }
             }
         }
+        .scrollContentBackground(.hidden)
+        .background(HMColors.background)
         .navigationTitle("数据来源")
         .refreshable { await refresh() }
         .task { await refresh() }
@@ -119,8 +142,12 @@ struct SourcesView: View {
                     )
                 }
             }
-            await MainActor.run { rows = mapped }
+            await MainActor.run {
+                rows = mapped
+                loadError = nil
+            }
         } catch {
+            await MainActor.run { loadError = error.localizedDescription }
             AppLogger.shared.error("Sources refresh failed: \(error.localizedDescription)")
         }
     }
@@ -131,44 +158,57 @@ private struct SourceRowView: View {
     let windowDays: Int
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack {
-                Text(row.label)
-                    .font(.body.bold())
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .top, spacing: 12) {
+                HMIconBadge(
+                    systemImage: isUnknown ? "questionmark.circle" : "checkmark.shield",
+                    tone: isUnknown ? .actionRequired : .confirmed,
+                    size: 38
+                )
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(row.label)
+                        .font(.body.weight(.semibold))
+                    Text(isUnknown ? "来源未归因" : "来源可追溯")
+                        .font(.caption)
+                        .foregroundStyle(isUnknown ? HMColors.actionRequired : .secondary)
+                    if let sourceName = row.sourceName, sourceName != row.label {
+                        Text(sourceName)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                }
                 Spacer()
                 Text("\(row.totalSamples) 样本")
-                    .foregroundStyle(.secondary)
-                    .font(.footnote)
+                    .font(.callout.weight(.medium).monospacedDigit())
             }
-            if let sname = row.sourceName, sname != row.label {
-                Text(sname)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
+
+            ProgressView(value: Double(row.daysActive), total: Double(max(windowDays, 1)))
+                .tint(isUnknown ? HMColors.actionRequired : HMColors.confirmed)
+
             HStack {
                 Text("活跃 \(row.daysActive) / \(windowDays) 天")
                 Spacer()
                 Text("上次：" + lastSeenLabel)
             }
             .font(.caption)
-            .foregroundStyle(daysActiveColor)
+            .foregroundStyle(.secondary)
         }
-        .padding(.vertical, 2)
+        .padding(.vertical, 6)
+        .accessibilityElement(children: .combine)
     }
 
-    private var daysActiveColor: Color {
-        let ratio = Double(row.daysActive) / Double(windowDays)
-        if ratio >= 0.7 { return .secondary }
-        if ratio >= 0.3 { return .orange }
-        return .red
-    }
+    private var isUnknown: Bool { row.key == "unknown" }
 
     private var lastSeenLabel: String {
         guard row.lastSeenAt > 0 else { return "—" }
         let date = Date(timeIntervalSince1970: TimeInterval(row.lastSeenAt))
+        return Self.lastSeenFormatter.string(from: date)
+    }
+
+    private static let lastSeenFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.dateStyle = .short
         formatter.timeStyle = .none
-        return formatter.string(from: date)
-    }
+        return formatter
+    }()
 }
