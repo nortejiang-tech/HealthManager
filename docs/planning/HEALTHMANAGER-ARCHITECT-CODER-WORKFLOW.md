@@ -2,7 +2,7 @@
 
 > 建立日期：2026-07-13
 >
-> 当前产品状态：v0.4.0（build 9）发布候选已完成真机覆盖安装与数据保持验证；Git / GitHub 收尾进行中
+> 当前产品基线：v0.4.0（build 9）/ main；已完成真实 iPhone 覆盖安装、数据保持与 GitHub Release
 >
 > 角色约定：本会话负责架构、任务书、提示词和独立验收；Coder 会话只实现当前已批准 STAGE。
 
@@ -249,4 +249,4 @@ STAGE-010H 已于同日正式验收 PASS：Standards / Spec 双轴审查捕获�
 - 版本提升为 `0.4.0 (9)`；Bundle ID `com.norte.HealthManager` 与 Team `K8RVJSC4NU` 保持不变。
 - 最终 Smoke 1 / 1、全量 258 / 258；iPhone 17 Simulator 与 iPhone Air 真机 Release 构建均成功。
 - 已在真实 iPhone 覆盖安装并启动 `0.4.0 (9)`；安装前后数据库 `quick_check=ok`、迁移 v1～v5 完整、餐次 119、分项 7、用药计划 1、用药日志 5、孤儿分项 0、活动同步任务 0。
-- Git commit、annotated tag、push 与 GitHub Release 的最终状态以 [STAGE-011](../stages/STAGE-011-v040-ui-release.md) 为准；未完成前不得提前写成已发布。
+- 产品提交 `b53acfe83095f4008bd85140e6bb6bd0afb109e0`、annotated tag `v0.4.0`、`main` / tag push 与 [GitHub Release](https://github.com/nortejiang-tech/HealthManager/releases/tag/v0.4.0) 均已完成；最终状态见 [STAGE-011](../stages/STAGE-011-v040-ui-release.md)。

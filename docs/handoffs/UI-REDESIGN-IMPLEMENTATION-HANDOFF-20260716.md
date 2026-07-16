@@ -6,7 +6,7 @@
 >
 > 实施状态：STAGE-010A～010H PASS
 >
-> 发布补记：用户已授权以 `v0.4.0`（build `9`）发布；发布候选验证与真机覆盖安装已完成，GitHub 发布收尾由 STAGE-011 记录
+> 发布结果：`v0.4.0`（build `9`）已发布；产品提交 `b53acfe83095f4008bd85140e6bb6bd0afb109e0`，真实 iPhone 覆盖安装完成，GitHub Release 由 STAGE-011 记录
 
 ## 1. 交付结论
 
@@ -106,8 +106,8 @@ Standards 与 Spec 两名独立审查者对固定点后的 tracked diff 和所�
 - 没有输入真实 API Key、发送真实健康摘要或真实餐食照片；只验证设置界面和中性连接测试路径。
 - `/tmp` 下的截图与 xcresult 是本机验收证据，可能被系统清理；关键结论已写入各阶段与本交接。
 - accessibility-extra-large 下系统 TabBar 的呈现遵循 iOS 自身行为；没有自绘底栏绕过系统。
-- v0.4.0（build 9）已在真实 iPhone 上覆盖安装、启动并完成数据保持验证；当前仅 Git 提交、tag、push 与 GitHub Release 收尾尚未完成。
+- v0.4.0（build 9）已在真实 iPhone 上覆盖安装、启动并完成数据保持验证；产品提交、annotated tag、push 与 GitHub Release 均已完成。
 
 ## 9. 发布收尾
 
-用户已明确授权发布并更新手机。STAGE-011 负责记录 v0.4.0（build 9）的版本提升、全量回归、Simulator / 真机 Release 构建、真实 iPhone 覆盖安装与数据保持，以及 Git 提交、annotated tag、push 和 GitHub Release 的最终结果。发布完成前，本段只表示授权与本机发布门已通过，不提前声称 GitHub Release 已存在。
+用户已明确授权发布并更新手机。STAGE-011 已完成 v0.4.0（build 9）的版本提升、全量回归、Simulator / 真机 Release 构建、真实 iPhone 覆盖安装与数据保持，以及 Git 提交、annotated tag、push 和 [GitHub Release](https://github.com/nortejiang-tech/HealthManager/releases/tag/v0.4.0)。

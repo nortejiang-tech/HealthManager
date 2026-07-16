@@ -2,7 +2,7 @@
 
 > 日期：2026-07-16
 >
-> 状态：RELEASE READY
+> 状态：RELEASED
 >
 > 版本：v0.4.0（build 9）
 >
@@ -33,9 +33,9 @@
 | 备份与安装前快照 | PASS | Finder backup finished、Manifest quick_check ok；1.4GB App 数据快照 |
 | 真实 iPhone 覆盖安装与启动 | PASS | iPhone Air / iOS 26.5.2；安装后 `0.4.0 (9)`；launch pid 7284 |
 | 安装后数据保持 | PASS | quick_check ok；迁移 v1～v5；餐次 119、分项 7、用药计划 1、用药日志 5、孤儿分项 0、活动同步任务 0 |
-| Git 产品提交 | PENDING | 发布提交创建后回填 |
-| annotated tag 与 push | PENDING | `v0.4.0` 创建并推送后回填 |
-| GitHub Release | PENDING | 私有仓库 Release 创建后回填 |
+| Git 产品提交 | PASS | `b53acfe83095f4008bd85140e6bb6bd0afb109e0` |
+| annotated tag 与 push | PASS | annotated `v0.4.0` 已指向产品提交；`main` 与 tag 已推送到 `origin` |
+| GitHub Release | PASS | [HealthManager v0.4.0](https://github.com/nortejiang-tech/HealthManager/releases/tag/v0.4.0)，非 draft / 非 prerelease |
 
 原始样本由安装前 3,354,427 自然增加至安装后 3,354,444；其余关键业务计数保持一致。安装后数据快照位于 `/tmp/healthmanager-v040-postinstall-device-20260716-attempt02/HealthManager`。
 
@@ -45,9 +45,6 @@
 - 本版是私有仓库 GitHub Release 加开发者签名 App 的真实 iPhone 覆盖安装，不是公开 App Store 分发。
 - `/tmp` 证据可能被系统清理，关键计数和结论已固化在本文件与 [v0.4.0 发布说明](../releases/v0.4.0.md)。
 
-## 5. 剩余发布动作
+## 5. 发布结论
 
-1. 创建产品发布提交并记录 SHA。
-2. 创建 annotated tag `v0.4.0`，push `main` 与 tag。
-3. 使用 [v0.4.0 发布说明](../releases/v0.4.0.md) 创建 GitHub Release。
-4. 重新启动手机上的 App，更新本文件为 `RELEASED`，并提交 / push 文档收尾。
+v0.4.0（build 9）发布门全部通过。产品提交、annotated tag、`main` / tag push 与 GitHub Release 已完成；真实 iPhone 上安装版本复核为 `0.4.0 (9)`。本文件的后续变更只用于发布记录收尾，不改变 `v0.4.0` tag 所指向的已验证产品提交。
