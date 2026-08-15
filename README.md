@@ -125,9 +125,10 @@ find App Core UI -name "*.swift" -print0 | xargs -0 swiftc -typecheck \
 
 - 所有数据存本地 SQLite（`Application Support/HealthManager/health.sqlite`，WAL）
 - 默认不向云端上传任何健康数据；用户配置 LLM 后，只会上传聚合摘要文本和用户主动选择的餐食图片
+- 数据备份（可选）：用户可在「设置 → 数据备份」选择一个文件夹（如 iCloud Drive），App 会把解析后数据的明文 JSONL 备份包写入该文件夹，退到后台时自动导出；App 自身不上传。重装后可在引导页/设置页从备份包恢复（只补缺、不覆盖）。备份包不包含照片与原始样本，格式契约见 `docs/export-schema.md` 与 ADR-003
 - 不接入第三方分析 / 崩溃收集
 - HealthKit 数据本身由 Apple 系统级加密
-- 卸载 App = 清除所有本地数据
+- 卸载 App = 清除所有本地数据（除非此前配置过数据备份）
 
 ## 后续开发
 

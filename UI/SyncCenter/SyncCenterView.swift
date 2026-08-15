@@ -49,7 +49,7 @@ struct SyncCenterView: View {
             }
 
             Section("历史回补") {
-                Stepper(value: $backfillDays, in: 7...90, step: 1) {
+                Stepper(value: $backfillDays, in: 7...365, step: 1) {
                     Text("回溯天数：\(backfillDays)")
                 }
                 Button {

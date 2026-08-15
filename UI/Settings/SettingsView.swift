@@ -5,11 +5,13 @@ import UserNotifications
 struct SettingsView: View {
     @EnvironmentObject private var environment: AppEnvironment
     @EnvironmentObject private var healthKit: HealthKitManager
+    @EnvironmentObject private var backup: BackupManager
     @Environment(\.openURL) private var openURL
 
     @State private var dbSizeBytes: Int64?
     @State private var sampleCount: Int?
     @State private var alertCount: Int?
+    @State private var tableCounts: [(table: String, count: Int)] = []
     @State private var showingResetConfirm: Bool = false
     @State private var showingResetThresholdsConfirm: Bool = false
     @State private var loadError: String?
@@ -103,6 +105,15 @@ struct SettingsView: View {
                 LabeledContent("文件大小", value: dbSizeBytes.map(formatBytes) ?? "—")
                 LabeledContent("有效样本数", value: sampleCount.map { String($0) } ?? "—")
                 LabeledContent("未确认告警", value: alertCount.map { String($0) } ?? "—")
+
+                if !tableCounts.isEmpty {
+                    DisclosureGroup("逐表行数（诊断）") {
+                        ForEach(tableCounts, id: \.table) { entry in
+                            LabeledContent(entry.table, value: String(entry.count))
+                                .font(.caption.monospaced())
+                        }
+                    }
+                }
 
                 Button {
                     Task { await exportDatabase() }
@@ -207,8 +218,10 @@ struct SettingsView: View {
                 }
             }
 
+            BackupSection()
+
             Section("隐私") {
-                Text("健康记录与应用记录默认存储在本地 SQLite 中。数据库导出不包含系统 Keychain 里的 API Key。")
+                Text("健康记录与应用记录默认存储在本地 SQLite 中。若你在「数据备份」中选择文件夹（含 iCloud Drive），App 会把解析后数据的明文备份包写入该文件夹；数据库导出不包含系统 Keychain 里的 API Key。")
                     .font(.footnote)
                 Text("若启用并实际使用 AI，外部文本服务会收到本地聚合后的日报 / 周报文本，外部图像服务会收到你在餐食编辑器主动选择的图片；不会自动上传原始 HealthKit 样本或整个照片库。")
                     .font(.footnote)
@@ -324,15 +337,21 @@ struct SettingsView: View {
             let attrs = try? FileManager.default.attributesOfItem(atPath: path)
             let size = (attrs?[.size] as? NSNumber)?.int64Value
 
-            let (samples, alerts) = try await environment.database.asyncRead { db -> (Int, Int) in
+            let (samples, alerts, counts) = try await environment.database.asyncRead { db -> (Int, Int, [(String, Int)]) in
                 let s = try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM health_samples_raw WHERE is_deleted = 0") ?? 0
                 let a = try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM missing_data_alerts WHERE acknowledged = 0") ?? 0
-                return (s, a)
+                var tables: [(String, Int)] = []
+                for spec in BackupExporter.tables {
+                    let c = try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM \(spec.table)") ?? 0
+                    tables.append((spec.table, c))
+                }
+                return (s, a, tables)
             }
             await MainActor.run {
                 dbSizeBytes = size
                 sampleCount = samples
                 alertCount = alerts
+                tableCounts = counts
                 loadError = nil
             }
         } catch {
@@ -365,6 +384,117 @@ struct SettingsView: View {
         let formatter = ByteCountFormatter()
         formatter.countStyle = .file
         return formatter.string(fromByteCount: bytes)
+    }
+}
+
+/// 数据备份区（独立子视图：选择位置 / 立即备份 / 恢复历史数据）。
+/// 契约见 docs/adr/ADR-003 与 docs/export-schema.md。
+private struct BackupSection: View {
+    @EnvironmentObject private var backup: BackupManager
+
+    @State private var showLocationPicker = false
+    @State private var showRestorePicker = false
+    @State private var locationError: String?
+
+    var body: some View {
+        Section {
+            LabeledContent(
+                "备份位置",
+                value: backup.configuredLocationURL?.lastPathComponent ?? "未设置"
+            )
+            if let lastExport = backup.lastExportAt {
+                LabeledContent(
+                    "上次备份",
+                    value: lastExport.formatted(date: .abbreviated, time: .shortened)
+                )
+            }
+
+            Button {
+                showLocationPicker = true
+            } label: {
+                Label(
+                    backup.configuredLocationURL == nil ? "选择备份文件夹…" : "更改备份文件夹…",
+                    systemImage: "folder.badge.gearshape"
+                )
+            }
+
+            if backup.configuredLocationURL != nil {
+                Button {
+                    Task { await backup.exportNow() }
+                } label: {
+                    if backup.isExporting {
+                        HStack(spacing: 8) {
+                            ProgressView()
+                            Text("备份中…")
+                        }
+                    } else {
+                        Label("立即备份", systemImage: "arrow.up.doc")
+                    }
+                }
+                .disabled(backup.isExporting)
+            }
+
+            Button {
+                showRestorePicker = true
+            } label: {
+                if backup.isRestoring {
+                    HStack(spacing: 8) {
+                        ProgressView()
+                        Text("恢复中…")
+                    }
+                } else {
+                    Label("恢复历史数据…", systemImage: "arrow.down.doc")
+                }
+            }
+            .disabled(backup.isRestoring)
+
+            if let error = backup.lastExportError {
+                Text(error)
+                    .font(.footnote)
+                    .foregroundStyle(HMColors.actionRequired)
+            }
+            if let error = backup.lastRestoreError {
+                Text(error)
+                    .font(.footnote)
+                    .foregroundStyle(HMColors.actionRequired)
+            }
+            if let summary = backup.lastRestoreSummary {
+                Text("恢复完成：新增 \(summary.totalImported) 行，已存在而跳过 \(summary.totalSkipped) 行。")
+                    .font(.footnote)
+                    .foregroundStyle(HMColors.confirmed)
+            }
+        } header: {
+            Text("数据备份")
+        } footer: {
+            Text("备份包写入你选择的文件夹（可放在 iCloud Drive，由你的 Apple 账号保护），内容为明文 JSONL，App 自身不上传；退到后台时自动备份。重装后可在引导页或此处恢复；恢复只补缺、不覆盖，可重复执行。照片与 Apple 健康原始样本不包含在备份包内。")
+        }
+        .sheet(isPresented: $showLocationPicker) {
+            FolderPicker { url in
+                do {
+                    try backup.setLocation(url)
+                    locationError = nil
+                    Task { await backup.exportNow() }
+                } catch {
+                    locationError = "无法保存备份位置：\(error.localizedDescription)"
+                }
+            }
+        }
+        .sheet(isPresented: $showRestorePicker) {
+            FolderPicker { url in
+                Task { await backup.restore(from: url) }
+            }
+        }
+        .alert(
+            "备份位置",
+            isPresented: .init(
+                get: { locationError != nil },
+                set: { if !$0 { locationError = nil } }
+            )
+        ) {
+            Button("确定", role: .cancel) { locationError = nil }
+        } message: {
+            Text(locationError ?? "")
+        }
     }
 }
 

@@ -18,6 +18,7 @@ final class AppEnvironment: ObservableObject {
     let mealPersistenceCoordinator: MealPersistenceCoordinator
     let backgroundScheduler: BackgroundTaskScheduler
     let healthKitObserver: HealthKitObserver
+    let backupManager: BackupManager
     @Published private(set) var localDataTick: Int = 0
     @Published private(set) var isSyncStartupReady: Bool = false
     private let aggregateProjectionVersionKey = "aggregates.projectionVersion"
@@ -39,6 +40,7 @@ final class AppEnvironment: ObservableObject {
         )
         let scheduler = BackgroundTaskScheduler(syncEngine: syncEngine)
         let observer = HealthKitObserver(healthKitManager: healthKit, syncEngine: syncEngine)
+        let backupManager = BackupManager(database: database)
 
         self.database = database
         self.mealStore = mealStore
@@ -47,6 +49,7 @@ final class AppEnvironment: ObservableObject {
         self.mealPersistenceCoordinator = coordinator
         self.backgroundScheduler = scheduler
         self.healthKitObserver = observer
+        self.backupManager = backupManager
     }
 
     /// Called once at app launch. Side effects only — no UI work here.
@@ -98,7 +101,9 @@ final class AppEnvironment: ObservableObject {
         let needs: Bool = (try? await database.asyncRead { db -> Bool in
             let rawCount = try Int.fetchOne(db,
                 sql: "SELECT COUNT(*) FROM health_samples_raw WHERE is_deleted = 0") ?? 0
-            if rawCount == 0 { return storedVersion < targetVersion }
+            // 没有原始样本时没有可投影的数据。此时绝不跑 DailyAggregator：
+            // 重装后若用户恢复备份，空投影行会挡住备份值（投影表按日期 UPSERT）。
+            if rawCount == 0 { return false }
             let actCount = try Int.fetchOne(db,
                 sql: "SELECT COUNT(*) FROM activity_metrics_daily") ?? 0
             let bodyCount = try Int.fetchOne(db,

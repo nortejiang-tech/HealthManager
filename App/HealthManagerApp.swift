@@ -16,9 +16,16 @@ struct HealthManagerApp: App {
                 .environmentObject(environment)
                 .environmentObject(environment.syncEngine)
                 .environmentObject(environment.healthKitManager)
+                .environmentObject(environment.backupManager)
         }
         .onChange(of: scenePhase) {
-            guard scenePhase == .active else { return }
+            guard scenePhase == .active else {
+                // 退后台：自动导出备份包（已配置位置时）。
+                if scenePhase == .background {
+                    Task { await environment.backupManager.exportIfConfigured() }
+                }
+                return
+            }
 
             // Manual-sync auto-ack: if a manual sync is parked waiting for the user to come
             // back from an external app (Garmin / 米家), resume it. Brief delay gives

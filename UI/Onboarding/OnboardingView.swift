@@ -2,6 +2,7 @@ import SwiftUI
 
 struct OnboardingView: View {
     @EnvironmentObject private var healthKit: HealthKitManager
+    @EnvironmentObject private var backup: BackupManager
     @State private var isRequesting = false
     @State private var localError: String?
 
@@ -9,6 +10,7 @@ struct OnboardingView: View {
         OnboardingContent(
             isRequesting: isRequesting,
             localError: localError,
+            backup: backup,
             onRequestAuth: {
                 await requestAuth()
             },
@@ -33,8 +35,11 @@ struct OnboardingView: View {
 private struct OnboardingContent: View {
     let isRequesting: Bool
     let localError: String?
+    @ObservedObject var backup: BackupManager
     let onRequestAuth: () async -> Void
     let onRetry: () async -> Void
+
+    @State private var showRestorePicker = false
 
     var body: some View {
         ScrollView {
@@ -103,6 +108,8 @@ private struct OnboardingContent: View {
 
                 actionButtons
 
+                restoreSection
+
                 Text("下一步由 iOS 展示具体数据类型，你可以在系统授权表中逐项选择。")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
@@ -115,6 +122,54 @@ private struct OnboardingContent: View {
             .padding(.bottom, 36)
         }
         .background(HMColors.background.ignoresSafeArea())
+    }
+
+    private var restoreSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("可选：恢复历史数据")
+                .font(.title3.weight(.semibold))
+                .accessibilityAddTraits(.isHeader)
+
+            HMInformationRow(
+                systemImage: "arrow.down.doc",
+                tone: .neutral,
+                title: "从备份文件夹恢复",
+                detail: "选择之前设置过的备份文件夹，导入解析后的历史数据；只补缺、不覆盖，可重复执行。"
+            )
+
+            Button {
+                showRestorePicker = true
+            } label: {
+                if backup.isRestoring {
+                    HStack(spacing: 8) {
+                        ProgressView()
+                        Text("恢复中…")
+                    }
+                } else {
+                    Label("选择备份文件夹并恢复…", systemImage: "folder.badge.questionmark")
+                }
+            }
+            .disabled(backup.isRestoring)
+            .accessibilityIdentifier("onboarding-restore-backup")
+
+            if let error = backup.lastRestoreError {
+                Text(error)
+                    .font(.footnote)
+                    .foregroundStyle(HMColors.actionRequired)
+            }
+            if let summary = backup.lastRestoreSummary {
+                Text("恢复完成：新增 \(summary.totalImported) 行，已存在而跳过 \(summary.totalSkipped) 行。")
+                    .font(.footnote)
+                    .foregroundStyle(HMColors.confirmed)
+            }
+        }
+        .padding(16)
+        .hmSurface(cornerRadius: 18)
+        .sheet(isPresented: $showRestorePicker) {
+            FolderPicker { url in
+                Task { await backup.restore(from: url) }
+            }
+        }
     }
 
     private var actionButtons: some View {
@@ -247,6 +302,7 @@ private struct OnboardingPathNode: View {
     OnboardingContent(
         isRequesting: false,
         localError: nil,
+        backup: BackupManager(database: DatabaseManager.makeInMemoryForTesting()),
         onRequestAuth: { },
         onRetry: { }
     )
@@ -257,6 +313,7 @@ private struct OnboardingPathNode: View {
     OnboardingContent(
         isRequesting: false,
         localError: nil,
+        backup: BackupManager(database: DatabaseManager.makeInMemoryForTesting()),
         onRequestAuth: { },
         onRetry: { }
     )
@@ -268,6 +325,7 @@ private struct OnboardingPathNode: View {
     OnboardingContent(
         isRequesting: false,
         localError: nil,
+        backup: BackupManager(database: DatabaseManager.makeInMemoryForTesting()),
         onRequestAuth: { },
         onRetry: { }
     )
@@ -279,6 +337,7 @@ private struct OnboardingPathNode: View {
     OnboardingContent(
         isRequesting: false,
         localError: "HealthKit 请求暂时未完成。",
+        backup: BackupManager(database: DatabaseManager.makeInMemoryForTesting()),
         onRequestAuth: { },
         onRetry: { }
     )
