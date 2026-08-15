@@ -621,13 +621,31 @@ struct TodayEvidenceLoader: Sendable {
         }
     }
 
+    /// 热路径（每餐/每用药记录调用一次）：formatter 按 calendar+timeZone 缓存，
+    /// 不再每次调用 new 一个 DateFormatter。
     private static func dayKey(for date: Date, calendar: Calendar) -> String {
-        let formatter = DateFormatter()
-        formatter.calendar = calendar
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.timeZone = calendar.timeZone
-        formatter.dateFormat = "yyyy-MM-dd"
-        return formatter.string(from: date)
+        dayKeyFormatterCache.formatter(for: calendar).string(from: date)
+    }
+
+    private static let dayKeyFormatterCache = DayKeyFormatterCache()
+
+    private final class DayKeyFormatterCache: @unchecked Sendable {
+        private let lock = NSLock()
+        private var cache: [String: DateFormatter] = [:]
+
+        func formatter(for calendar: Calendar) -> DateFormatter {
+            let key = "\(calendar.identifier)|\(calendar.timeZone.identifier)"
+            lock.lock()
+            defer { lock.unlock() }
+            if let existing = cache[key] { return existing }
+            let formatter = DateFormatter()
+            formatter.calendar = calendar
+            formatter.locale = Locale(identifier: "en_US_POSIX")
+            formatter.timeZone = calendar.timeZone
+            formatter.dateFormat = "yyyy-MM-dd"
+            cache[key] = formatter
+            return formatter
+        }
     }
 
     private static func validatedNonnegative(_ value: Int?) -> Int? {

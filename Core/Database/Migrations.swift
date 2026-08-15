@@ -311,6 +311,24 @@ enum Migrations {
             try db.create(index: "idx_meal_items_meal_sort_order", on: "meal_items", columns: ["meal_id", "sort_order"], unique: true)
         }
 
+        // 仪表盘热路径查询索引：
+        // - `SELECT COUNT(*) FROM health_samples_raw WHERE is_deleted = 0`
+        // - `SELECT MAX(ingested_at) FROM health_samples_raw`（+ is_deleted = 0）
+        // - `SELECT COUNT(*) FROM missing_data_alerts WHERE acknowledged = 0 [AND severity = 'critical']`
+        // 这些查询此前对最大的原始表做全表扫描，趋势页每次打开都重算。
+        migrator.registerMigration("v6_dashboard_partial_indexes") { db in
+            try db.execute(sql: """
+                CREATE INDEX idx_raw_ingested_active
+                ON health_samples_raw(ingested_at)
+                WHERE is_deleted = 0
+                """)
+            try db.execute(sql: """
+                CREATE INDEX idx_alert_unack_severity
+                ON missing_data_alerts(severity)
+                WHERE acknowledged = 0
+                """)
+        }
+
         return migrator
     }
 

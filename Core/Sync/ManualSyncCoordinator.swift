@@ -33,7 +33,7 @@ actor ManualSyncCoordinator {
     ) async throws -> SyncEngine.LastResult {
 
         let jobStart = Date()
-        let jobId = try insertJob(trigger: trigger, startedAt: jobStart)
+        let jobId = try SyncJobRecorder(database: database).openJob(jobType: .manual, trigger: trigger, startedAt: jobStart)
 
         progress("第 1 次拉取 HealthKit…")
         let pass1 = await incremental.executePass(progress: progress)
@@ -65,7 +65,7 @@ actor ManualSyncCoordinator {
         let endedAt = Date()
         let totalSamples = merged.values.reduce(0, +)
         let succeeded = (firstError == nil)
-        try finaliseJob(
+        try SyncJobRecorder(database: database).closeJob(
             id: jobId,
             endedAt: endedAt,
             succeeded: succeeded,
@@ -84,55 +84,5 @@ actor ManualSyncCoordinator {
             perTypeErrors: mergedErrors,
             errorMessage: firstError?.localizedDescription
         )
-    }
-
-    // MARK: - Job lifecycle (manual envelope)
-
-    private func insertJob(trigger: SyncJob.Trigger, startedAt: Date) throws -> Int64 {
-        var job = SyncJob(
-            id: nil,
-            jobType: .manual,
-            state: .running,
-            trigger: trigger,
-            startedAt: Int64(startedAt.timeIntervalSince1970),
-            endedAt: nil,
-            errorCode: nil,
-            errorMessage: nil,
-            statsJson: nil,
-            attempt: 1
-        )
-        try database.write { db in
-            try job.insert(db)
-        }
-        guard let id = job.id else {
-            throw NSError(domain: "ManualSyncCoordinator", code: -1)
-        }
-        return id
-    }
-
-    private func finaliseJob(
-        id: Int64,
-        endedAt: Date,
-        succeeded: Bool,
-        errorMessage: String?,
-        stats: [String: Int]
-    ) throws {
-        let statsData = try JSONSerialization.data(withJSONObject: stats, options: [.sortedKeys])
-        let statsJson = String(data: statsData, encoding: .utf8)
-        let state = succeeded ? "succeeded" : "failed"
-
-        try database.write { db in
-            try db.execute(sql: """
-                UPDATE sync_jobs
-                SET state = ?, ended_at = ?, error_message = ?, stats_json = ?
-                WHERE id = ?
-                """, arguments: [
-                    state,
-                    Int64(endedAt.timeIntervalSince1970),
-                    errorMessage,
-                    statsJson,
-                    id
-                ])
-        }
     }
 }

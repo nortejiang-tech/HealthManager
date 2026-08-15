@@ -270,14 +270,7 @@ struct MealItemEvidenceView: View {
     }
 
     private func evidenceTone(for kind: MealItemRecord.ProvenanceKind) -> HMSemanticTone {
-        switch kind {
-        case .manual:
-            return .neutral
-        case .aiEstimate:
-            return .estimate
-        case .nutritionDatabase, .nutritionLabel:
-            return .comparison
-        }
+        EvidenceTone.forProvenance(kind)
     }
 
     @ViewBuilder

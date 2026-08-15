@@ -552,7 +552,7 @@ private struct LogRow: View {
             HStack {
                 Text(planName).font(.body)
                 Spacer()
-                Text(log.action.label).font(.footnote).foregroundStyle(color)
+                Text(log.action.label).font(.footnote).foregroundStyle(tone.color)
             }
             Text(dateLabel)
                 .font(.caption).foregroundStyle(.secondary)
@@ -571,12 +571,9 @@ private struct LogRow: View {
         return "计划 \(scheduled) · 动作时刻未记录"
     }
 
-    private var color: Color {
-        switch log.action {
-        case .taken: return .green
-        case .skipped: return .red
-        case .deferred: return .orange
-        }
+    /// ADR-002 语义色：经 EvidenceTone 统一映射，不再使用系统色。
+    private var tone: HMSemanticTone {
+        EvidenceTone.forMedicationAction(log.action)
     }
 }
 

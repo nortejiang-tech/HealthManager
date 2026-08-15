@@ -615,29 +615,11 @@ struct MetricDetailView: View {
         }
     }
 
+    /// 纵轴随「当前可视窗口」自适应：滚动或切换周/月/年后，纵轴跟随窗口内
+    /// 数据的最小/最大值，而不是锁定整段期间的范围（旧行为会让窗口内曲线压平）。
+    /// 计算规则集中在 `MetricPresentation`，有单元测试保护。
     private var yDomain: ClosedRange<Double> {
-        let values = points.compactMap { $0.value }
-        guard let mn = values.min(), let mx = values.max() else { return 0...1 }
-
-        // Bar charts are drawn from a 0 baseline — the domain MUST include 0, otherwise
-        // every bar overflows past the visible plot and the chart reads as a solid block.
-        // (Line/area charts float freely, so they keep the tight padded domain below.)
-        if config.chartStyle == .bar {
-            let lo = min(0, mn)
-            let hi = max(0, mx)
-            let span = max(hi - lo, 1)
-            let pad = span * 0.12
-            return (lo == 0 ? 0 : lo - pad)...(hi == 0 ? 0 : hi + pad)
-        }
-
-        // Single value: pad ±5% (or 1 unit absolute if data is huge) so the dot lands mid-chart.
-        if mn == mx {
-            let pad = max(abs(mn) * 0.05, 0.5)
-            return (mn - pad)...(mx + pad)
-        }
-        let span = mx - mn
-        let pad = span * 0.15
-        return (mn - pad)...(mx + pad)
+        MetricPresentation.yDomain(points: visiblePoints, chartStyle: config.chartStyle)
     }
 
     // MARK: - Load

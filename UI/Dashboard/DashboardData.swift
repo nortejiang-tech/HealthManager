@@ -194,7 +194,8 @@ struct DashboardLoader {
     }()
 
     func loadSnapshot() async throws -> DashboardSnapshot {
-        try await database.asyncRead { db -> DashboardSnapshot in
+        let startedAt = CFAbsoluteTimeGetCurrent()
+        let snap = try await database.asyncRead { db -> DashboardSnapshot in
             var snap = DashboardSnapshot()
             let today = Self.dateKey.string(from: Date())
             let cal = Calendar.current
@@ -343,6 +344,13 @@ struct DashboardLoader {
 
             return snap
         }
+        let elapsedMs = (CFAbsoluteTimeGetCurrent() - startedAt) * 1000
+        if elapsedMs > 150 {
+            AppLogger.shared.database.info(
+                "Dashboard snapshot loaded in \(Int(elapsedMs))ms"
+            )
+        }
+        return snap
     }
 
     // MARK: - Period series for detail view

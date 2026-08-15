@@ -79,7 +79,7 @@ actor DailyReconciler {
     ) async throws -> Outcome {
 
         let start = Date()
-        let jobId = try insertJob(trigger: trigger, startedAt: start)
+        let jobId = try SyncJobRecorder(database: database).openJob(jobType: .reconcile, trigger: trigger, startedAt: start)
 
         var firstError: Error?
         var totalAlerts = 0
@@ -102,7 +102,7 @@ actor DailyReconciler {
 
         let end = Date()
         let succeeded = firstError == nil
-        try finaliseJob(
+        try SyncJobRecorder(database: database).closeJob(
             id: jobId,
             endedAt: end,
             succeeded: succeeded,
@@ -408,55 +408,5 @@ actor DailyReconciler {
 
     private func humanLabel(for hkType: String) -> String {
         Self.humanLabel(for: hkType)
-    }
-
-    // MARK: - Job lifecycle
-
-    private func insertJob(trigger: SyncJob.Trigger, startedAt: Date) throws -> Int64 {
-        var job = SyncJob(
-            id: nil,
-            jobType: .reconcile,
-            state: .running,
-            trigger: trigger,
-            startedAt: Int64(startedAt.timeIntervalSince1970),
-            endedAt: nil,
-            errorCode: nil,
-            errorMessage: nil,
-            statsJson: nil,
-            attempt: 1
-        )
-        try database.write { db in
-            try job.insert(db)
-        }
-        guard let id = job.id else {
-            throw NSError(domain: "DailyReconciler", code: -1)
-        }
-        return id
-    }
-
-    private func finaliseJob(
-        id: Int64,
-        endedAt: Date,
-        succeeded: Bool,
-        errorMessage: String?,
-        stats: [String: Int]
-    ) throws {
-        let statsData = try JSONSerialization.data(withJSONObject: stats, options: [.sortedKeys])
-        let statsJson = String(data: statsData, encoding: .utf8)
-        let state = succeeded ? "succeeded" : "failed"
-
-        try database.write { db in
-            try db.execute(sql: """
-                UPDATE sync_jobs
-                SET state = ?, ended_at = ?, error_message = ?, stats_json = ?
-                WHERE id = ?
-                """, arguments: [
-                    state,
-                    Int64(endedAt.timeIntervalSince1970),
-                    errorMessage,
-                    statsJson,
-                    id
-                ])
-        }
     }
 }

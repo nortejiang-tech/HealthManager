@@ -573,14 +573,7 @@ private struct TodayHeader: View {
     }
 
     private var qualityColor: Color {
-        switch presentation.qualityStyle {
-        case .unreconciled:
-            return HMColors.neutral
-        case .reconciledNoAlerts:
-            return HMColors.confirmed
-        case .hasAlerts:
-            return HMColors.actionRequired
-        }
+        EvidenceTone.forQualityStyle(presentation.qualityStyle).color
     }
 }
 
@@ -598,9 +591,10 @@ private struct TodayDecisionPanel: View {
     }
 
     private var lensTone: HMSemanticTone {
-        if presentation.qualityStyle == .hasAlerts { return .actionRequired }
-        if !presentation.timelineRows.isEmpty { return .confirmed }
-        return .neutral
+        EvidenceTone.forLens(
+            qualityStyle: presentation.qualityStyle,
+            hasTimelineRows: !presentation.timelineRows.isEmpty
+        )
     }
 
     private var lensIcon: String {

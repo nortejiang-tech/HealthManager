@@ -35,7 +35,7 @@ actor BackfillCoordinator {
         let jobStart = Date()
 
         // 1. Open sync job
-        let jobId = try insertJob(
+        let jobId = try SyncJobRecorder(database: database).openJob(
             jobType: .backfill,
             trigger: trigger,
             startedAt: jobStart
@@ -120,7 +120,7 @@ actor BackfillCoordinator {
         let endedAt = Date()
         let totalSamples = perTypeCounts.values.reduce(0, +)
         let succeeded = (firstError == nil)
-        try finaliseJob(
+        try SyncJobRecorder(database: database).closeJob(
             id: jobId,
             endedAt: endedAt,
             succeeded: succeeded,
@@ -142,32 +142,6 @@ actor BackfillCoordinator {
     }
 
     // MARK: - Persistence helpers
-
-    private func insertJob(
-        jobType: SyncJob.JobType,
-        trigger: SyncJob.Trigger,
-        startedAt: Date
-    ) throws -> Int64 {
-        var job = SyncJob(
-            id: nil,
-            jobType: jobType,
-            state: .running,
-            trigger: trigger,
-            startedAt: Int64(startedAt.timeIntervalSince1970),
-            endedAt: nil,
-            errorCode: nil,
-            errorMessage: nil,
-            statsJson: nil,
-            attempt: 1
-        )
-        try database.write { db in
-            try job.insert(db)
-        }
-        guard let id = job.id else {
-            throw NSError(domain: "BackfillCoordinator", code: -1)
-        }
-        return id
-    }
 
     private func persist(samples: [HKSample]) throws -> Int {
         guard !samples.isEmpty else { return 0 }
@@ -210,32 +184,6 @@ actor BackfillCoordinator {
         )
         try database.write { db in
             try report.insert(db)
-        }
-    }
-
-    private func finaliseJob(
-        id: Int64,
-        endedAt: Date,
-        succeeded: Bool,
-        errorMessage: String?,
-        stats: [String: Int]
-    ) throws {
-        let statsData = try JSONSerialization.data(withJSONObject: stats, options: [.sortedKeys])
-        let statsJson = String(data: statsData, encoding: .utf8)
-        let state = succeeded ? "succeeded" : "failed"
-
-        try database.write { db in
-            try db.execute(sql: """
-                UPDATE sync_jobs
-                SET state = ?, ended_at = ?, error_message = ?, stats_json = ?
-                WHERE id = ?
-                """, arguments: [
-                    state,
-                    Int64(endedAt.timeIntervalSince1970),
-                    errorMessage,
-                    statsJson,
-                    id
-                ])
         }
     }
 

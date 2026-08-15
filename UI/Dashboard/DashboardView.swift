@@ -13,6 +13,7 @@ struct DashboardView: View {
     @State private var isLoading: Bool = true
     @State private var hasLoadedSnapshot: Bool = false
     @State private var refreshGeneration: Int = 0
+    @State private var refreshTask: Task<Void, Never>?
     @State private var showAlerts: Bool = false
     @State private var showQuality: Bool = false
     @State private var showingEditor: Bool = false
@@ -64,13 +65,13 @@ struct DashboardView: View {
             .refreshable { await refresh() }
             .task { await refresh() }
             .onChange(of: sync.aggregationTick) { _, _ in
-                Task { await refresh() }
+                scheduleCoalescedRefresh()
             }
             .onChange(of: sync.lastResult) { _, _ in
-                Task { await refresh() }
+                scheduleCoalescedRefresh()
             }
             .onChange(of: environment.localDataTick) { _, _ in
-                Task { await refresh() }
+                scheduleCoalescedRefresh()
             }
         }
     }
@@ -134,6 +135,17 @@ struct DashboardView: View {
         default: zone = "肥胖"
         }
         return zone
+    }
+
+    /// 合并短时间内连续到达的刷新信号（一次同步会同时触发 aggregationTick /
+    /// lastResult / localDataTick 三个 onChange）：只保留最后一次，350ms 后执行。
+    private func scheduleCoalescedRefresh() {
+        refreshTask?.cancel()
+        refreshTask = Task {
+            try? await Task.sleep(nanoseconds: 350_000_000)
+            if Task.isCancelled { return }
+            await refresh()
+        }
     }
 
     private func refresh() async {

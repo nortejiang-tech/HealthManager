@@ -7,7 +7,7 @@ private func mealNutritionText(_ value: Double) -> String {
     value == value.rounded() ? String(format: "%.0f", value) : String(value)
 }
 
-private enum DietLoadState: Equatable {
+enum DietLoadState: Equatable {
     case loading
     case loaded
     case stale
@@ -188,21 +188,7 @@ private struct DietScreenContent: View {
     let onRetry: () async -> Void
 
     private var evidenceTone: HMSemanticTone {
-        switch loadState {
-        case .loading:
-            return .neutral
-        case .failed, .stale:
-            return .actionRequired
-        case .loaded:
-            switch todayNutrition?.calories {
-            case .incomplete:
-                return .estimate
-            case .complete:
-                return .confirmed
-            case .noMeals, .none:
-                return .neutral
-            }
-        }
+        EvidenceTone.forDietLoadState(loadState, calories: todayNutrition?.calories)
     }
 
     private var decisionText: String {
@@ -359,7 +345,7 @@ private struct DietEvidencePanel: View {
                             .font(.title3.weight(.semibold))
                         Spacer(minLength: 4)
                         HMEvidenceTag(
-                            tone: loadState == .failed ? .actionRequired : .comparison,
+                            tone: EvidenceTone.forDietLoadState(loadState, calories: nutrition?.calories),
                             text: statusHint,
                             systemImage: "chart.bar.doc.horizontal"
                         )
@@ -378,7 +364,7 @@ private struct DietEvidencePanel: View {
 
                     HMInformationRow(
                         systemImage: "list.bullet.rectangle",
-                        tone: loadState == .failed ? .actionRequired : .comparison,
+                        tone: EvidenceTone.forDietLoadState(loadState, calories: nutrition?.calories),
                         title: "今日餐次",
                         detail: loadState.hasUsableContent && (nutrition?.mealCount ?? 0) == 0
                             ? "等待你主动保存第一餐"
@@ -389,7 +375,7 @@ private struct DietEvidencePanel: View {
                        [totals.caloriesKcal, totals.proteinG, totals.fatG, totals.carbsG]
                         .contains(where: { $0 == nil }) {
                         HMEvidenceTag(
-                            tone: .estimate,
+                            tone: .actionRequired,
                             text: "部分营养字段缺失，未知值显示“—”。",
                             systemImage: "exclamationmark.triangle"
                         )
@@ -515,22 +501,37 @@ private struct MealRow: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
-            if let firstPath = meal.photoPaths.first,
-               let img = MealPhotoStore.shared.loadThumbnail(path: firstPath) {
-                ZStack(alignment: .bottomTrailing) {
-                    Image(uiImage: img)
-                        .resizable()
-                        .aspectRatio(contentMode: .fill)
-                        .frame(width: 56, height: 56)
-                        .clipShape(RoundedRectangle(cornerRadius: 8))
-                    if meal.photoPaths.count > 1 {
-                        Text("+\(meal.photoPaths.count - 1)")
-                            .font(.caption2.bold().monospacedDigit())
-                            .foregroundStyle(.white)
-                            .padding(.horizontal, 5).padding(.vertical, 1)
-                            .background(.black.opacity(0.6), in: Capsule())
-                            .padding(3)
+            if let firstPath = meal.photoPaths.first {
+                if let img = MealPhotoStore.shared.loadThumbnail(path: firstPath) {
+                    ZStack(alignment: .bottomTrailing) {
+                        Image(uiImage: img)
+                            .resizable()
+                            .aspectRatio(contentMode: .fill)
+                            .frame(width: 56, height: 56)
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                        if meal.photoPaths.count > 1 {
+                            Text("+\(meal.photoPaths.count - 1)")
+                                .font(.caption2.bold().monospacedDigit())
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 5).padding(.vertical, 1)
+                                .background(.black.opacity(0.6), in: Capsule())
+                                .padding(3)
+                        }
                     }
+                } else {
+                    // 照片文件不存在（例如从备份恢复后照片未随包导出）→ 明确占位，不静默消失。
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 8)
+                            .fill(.quaternary)
+                            .frame(width: 56, height: 56)
+                        VStack(spacing: 2) {
+                            Image(systemName: "photo.badge.exclamationmark")
+                            Text("照片已丢失")
+                                .font(.system(size: 8))
+                        }
+                        .foregroundStyle(.secondary)
+                    }
+                    .accessibilityLabel("照片已丢失")
                 }
             }
             VStack(alignment: .leading, spacing: 2) {
@@ -850,9 +851,9 @@ struct MealEditView: View {
                         .fill(.quaternary)
                         .overlay {
                             VStack(spacing: 4) {
-                                Image(systemName: "photo")
+                                Image(systemName: "photo.badge.exclamationmark")
                                     .font(.title2)
-                                Text("占位")
+                                Text("照片已丢失")
                                     .font(.caption2)
                             }
                             .foregroundStyle(.secondary)
