@@ -951,3 +951,35 @@ Simulator launch check:
 - 真机数据：115 条餐次、43 条历史备注餐次、0 条测试餐次、0 个孤儿分项，`integrity_check=ok`。
 
 发布说明见 `docs/releases/v0.3.0.md`，下一轮只从 `NEXT_TASK.md` 的 v0.4 产品/技术决策门开始。
+
+---
+
+## 架构体检整轮优化 — 2026-08-16（波次 ①-④）
+
+用户要求：按「风险小收益高」顺序连续实施四波次，开发完自测全部通过。前置：架构体检报告（11 张深化候选卡片，含 Core/UI 双路探索）与 ADR-003（备份包契约）已产出。
+
+**完成**
+- 波次①：EvidenceTone 语义色单点（修 2 个已证实 ADR-002 漂移：热量不完整→估算色、用药硬编码系统色）；趋势纵轴改为随可视窗口自适应（yDomain 基于 visiblePoints，抽 MetricPresentation 纯函数）；TodayEvidenceLoader.dayKey formatter 缓存。
+- 波次②：v6_dashboard_partial_indexes（raw 表 ingested_at / alerts severity 两个部分索引，消除趋势页全表扫描）；DashboardView 刷新信号 350ms 合并；loadSnapshot >150ms 耗时日志。
+- 波次③：SyncJobRecorder 收口 4 个 coordinator 的 insertJob/finaliseJob（-130 行复制）。
+- 波次④：Core/Backup 全套（Exporter 11 表 JSONL + manifest + SHA-256、Importer 依赖序/幂等/版本与校验防御、LocationStore 安全书签、BackupManager 门面）；设置页数据备份区 + 退后台自动导出；引导页恢复步骤；照片缺失占位；docs/export-schema.md + ADR-003 + README 隐私更新。
+
+**验证**
+```
+xcodebuild -scheme HealthManager -destination 'platform=iOS Simulator,name=iPhone 17 Pro' test
+  Unit: 290/290 passed（新增 39 个）
+  UI:   7/7 passed
+Release build（device）: BUILD SUCCEEDED，0 error / 0 warning
+```
+
+**真机修复闭环（本轮追加）**
+- iOS `fileImporter` 不支持选文件夹（点了没反应）→ `UI/Components/FolderPicker.swift`（UIDocumentPickerViewController）。
+- 重装后旧版启动补算写空投影行、挡住恢复的 30–90 天数据 → 投影表恢复改 INSERT OR REPLACE + 启动补算在无原始样本时跳过；真机再恢复后逐表行数与备份一致。
+- 配置（对账阈值/卡片布局/AI 非敏感项）随卸载丢失 → 备份包新增 `settings.json` 并自动应用；备份位置书签改存 Keychain（卸载重装后仍有效）。
+- 同步中心回补天数上限 7–90 → 7–365；设置页新增逐表行数诊断面板。
+
+**真机验收（NortePro的iPhone / iPhone Air）**
+- 文件夹选择、备份到 iCloud Drive（11 表 + settings.json + manifest 校验全过）、卸载重装、引导页恢复、数据补回、配置机制全部闭环。
+- v0.5.0（10）Release 已覆盖安装。
+
+发布说明见 `docs/releases/v0.5.0.md`。
