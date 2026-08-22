@@ -983,3 +983,22 @@ Release build（device）: BUILD SUCCEEDED，0 error / 0 warning
 - v0.5.0（10）Release 已覆盖安装。
 
 发布说明见 `docs/releases/v0.5.0.md`。
+
+## 多来源体重重复记录修复 — 2026-08-22（v7/v8）
+
+用户反馈：体重详情「当日全部测量」出现同一时间点、同一数值的重复条目（01:37 × 82.8、06:55 × 82.6 各两条），明显重复。
+
+**根因**
+- `health_samples_raw` 以 `sample_uuid` 为 PK，`INSERT OR IGNORE` 只在此列去重；两个数据源 App（小米体重秤/米家 与 小米运动/Zepp）把同一次称重写入 Apple 健康时会生成两条不同 UUID 的 sample。
+- 真机核实：跨 App 的同一读数在 float 低精度位上有差异（`82.84999847412109` vs `82.84999999999999`，都显示 82.8），精确 double 相等判不了 → v7 依赖的精确值匹配和唯一索引都漏掉。
+
+**修复**
+- `v7_collapse_duplicate_raw_samples`：按 `(hk_type, start_at, value, unit)` 精确值折叠既有重复 + 部分唯一索引。
+- `v8_round_dedup_raw_samples`：改为 `ROUND(value,3)` 容差判定同一读数，重建为 ROUND 表达式唯一索引，让同步层既有 `INSERT OR IGNORE` 从源头拒绝再次记录。
+- 折叠保留来源优先级更高（Garmin > Apple > 小米 > …）行，其余软删；不同时刻/确属不同取值仍各自保留，交 `conflict_score` 与归因层。
+
+**验证**
+- 单元测试：297/297 通过（新增 7 个去重迁移用例；修正 SourceOriginMigrationTests 一处被新唯一索引正确拒绝的种子）。
+- 真机（NortePro的iPhone / iPhone Air）：安装 + 启动后 v7/v8 自动执行；8 月 22 日当日测量由 4 次降为 2 次（01:37、07:30 各一条），全表活跃样本 3,394,338 → 3,394,282，ROUND 容差重复组数 0；日体重 82.6 = (82.85+82.45)/2 正确。
+
+发布说明见 `docs/releases/v0.5.1.md`。
