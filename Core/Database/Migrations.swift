@@ -329,6 +329,139 @@ enum Migrations {
                 """)
         }
 
+        // MARK: v7 — collapse clearly-duplicate raw samples (同一物理读数被多个 App 各自写入)
+        //
+        // `sample_uuid` 是 HealthKit 给每个 sample 的唯一值，`INSERT OR IGNORE` 只在
+        // sample_uuid 上兜重复。若两个数据源 App（例如 小米体重秤 与 小米运动/Zepp）把**同一
+        // 次称重**先后写入 Apple 健康，HealthKit 会生成两条 sample：UUID 不同，但
+        // hk_type / start_at / value / unit 完全相同。这两条会被当作独立样本落进
+        // `health_samples_raw`，在「当日全部测量」列表中表现为同一时间点的重复条目，
+        // 并让 body-metric 日聚合的“多次称重取平均”重复计次。
+        //
+        // v7 分两步：
+        // 1. 把已存在的重复活动样本折叠为一条——保留来源优先级更高（Garmin > Apple >
+        //    小米 > …，与 SourceAttribution.Origin.cumulativePriority 一致）的行，其余
+        //    软删除（is_deleted=1）。软删除而非物理删除，保持 raw 表“追加为主”的既有约定，
+        //    也让占位行不参与任何 is_deleted=0 的查询。
+        // 2. 建部分唯一索引 (hk_type, start_at, value, unit) WHERE is_deleted = 0：同步层
+        //    既有的 `INSERT OR IGNORE` 会在再次碰到同一读数时自动跳过，从源头阻止重复记录。
+        //    索引限定“未删除”行，软删除后的行不阻塞未来的重新同步。
+        migrator.registerMigration("v7_collapse_duplicate_raw_samples") { db in
+            // 1. 折叠既有重复：把“存在严格更优活跃孪生行”的每一行标记为已删除，仅保留每组最佳。
+            //    严格更优 = 更高来源优先级，其次更早 ingested_at，最后更小 sample_uuid（确定性）。
+            //    优先级 CASE 严格对齐 SourceAttribution.Origin.cumulativePriority。
+            try db.execute(sql: """
+                UPDATE health_samples_raw AS dup
+                SET is_deleted = 1
+                WHERE dup.is_deleted = 0
+                  AND EXISTS (
+                    SELECT 1 FROM health_samples_raw AS keep
+                    WHERE keep.is_deleted = 0
+                      AND keep.hk_type = dup.hk_type
+                      AND keep.start_at = dup.start_at
+                      AND keep.value = dup.value
+                      AND keep.unit = dup.unit
+                      AND (
+                        (CASE COALESCE(keep.source_origin, 'unknown')
+                           WHEN 'garmin' THEN 100 WHEN 'apple' THEN 50
+                           WHEN 'xiaomiSports' THEN 30 WHEN 'xiaomiMijia' THEN 30
+                           WHEN 'hutool' THEN 20 WHEN 'manual' THEN 10
+                           ELSE 0 END
+                        ) > (CASE COALESCE(dup.source_origin, 'unknown')
+                           WHEN 'garmin' THEN 100 WHEN 'apple' THEN 50
+                           WHEN 'xiaomiSports' THEN 30 WHEN 'xiaomiMijia' THEN 30
+                           WHEN 'hutool' THEN 20 WHEN 'manual' THEN 10
+                           ELSE 0 END)
+                        OR (
+                          (CASE COALESCE(keep.source_origin, 'unknown')
+                             WHEN 'garmin' THEN 100 WHEN 'apple' THEN 50
+                             WHEN 'xiaomiSports' THEN 30 WHEN 'xiaomiMijia' THEN 30
+                             WHEN 'hutool' THEN 20 WHEN 'manual' THEN 10
+                             ELSE 0 END
+                          ) = (CASE COALESCE(dup.source_origin, 'unknown')
+                             WHEN 'garmin' THEN 100 WHEN 'apple' THEN 50
+                             WHEN 'xiaomiSports' THEN 30 WHEN 'xiaomiMijia' THEN 30
+                             WHEN 'hutool' THEN 20 WHEN 'manual' THEN 10
+                             ELSE 0 END)
+                          AND (keep.ingested_at < dup.ingested_at
+                               OR (keep.ingested_at = dup.ingested_at AND keep.sample_uuid < dup.sample_uuid))
+                        )
+                      )
+                  )
+                """)
+            // 2. 部分唯一索引：每个仍在活跃状态的“规范读数” (hk_type, start_at, value, unit) 至多一条。
+            try db.execute(sql: """
+                CREATE UNIQUE INDEX idx_raw_active_reading_unique
+                ON health_samples_raw(hk_type, start_at, value, unit)
+                WHERE is_deleted = 0
+                """)
+        }
+
+        // MARK: v8 — 用 ROUND(value,3) 容差替代 v7 的精确 double 匹配
+        //
+        // v7 用 (hk_type, start_at, value, unit) 的 **精确 double 相等** 做去重，在真机上发现
+        // 仍拦不住“同一物理读数被两个 App 写入”的情况：两个 App（小米体重秤/米家 与 小米运动/Zepp）
+        // 记录**同一次称重**时，底层存的值在 float 低精度位上有细微差异（如 82.84999847412109 vs
+        // 82.84999999999999，都显示为 82.8），精确值不相等 → 唯一索引和折叠逻辑都漏掉，界面出现重复条目。
+        //
+        // v8 把“同一读数”的判定换成 ROUND(value, 3)（0.001 桶，足以吸收 ~1e-6 的浮点表示噪声，又不会
+        // 合并真正不同的取值），并重建唯一索引为 ROUND 表达式索引，让同步层既有的 `INSERT OR IGNORE`
+        // 在再次碰到同一物理读数时自动跳过。
+        //
+        // 注意：v7 已应用的库（或新装先跑 v7）先建了精确值索引，这里先折叠近重复，再 DROP 旧的精确索引
+        // 并换成 ROUND 表达式索引 —— 索引名保持一致以便只保留一份去重约束。
+        migrator.registerMigration("v8_round_dedup_raw_samples") { db in
+            // 1. 折叠既有近重复：把“存在严格更优活跃孪生行（同 hk_type + 同 start_at + 同 ROUND(value,3)
+            //    + 同 unit）”的每一行软删除，仅保留每组最佳（更高来源优先级 → 更早 ingested_at →
+            //    更小 sample_uuid）。优先级 CASE 与 v7 / SourceAttribution.Origin.cumulativePriority 一致。
+            try db.execute(sql: """
+                UPDATE health_samples_raw AS dup
+                SET is_deleted = 1
+                WHERE dup.is_deleted = 0
+                  AND EXISTS (
+                    SELECT 1 FROM health_samples_raw AS keep
+                    WHERE keep.is_deleted = 0
+                      AND keep.hk_type = dup.hk_type
+                      AND keep.start_at = dup.start_at
+                      AND ROUND(keep.value, 3) = ROUND(dup.value, 3)
+                      AND keep.unit = dup.unit
+                      AND (
+                        (CASE COALESCE(keep.source_origin, 'unknown')
+                           WHEN 'garmin' THEN 100 WHEN 'apple' THEN 50
+                           WHEN 'xiaomiSports' THEN 30 WHEN 'xiaomiMijia' THEN 30
+                           WHEN 'hutool' THEN 20 WHEN 'manual' THEN 10
+                           ELSE 0 END
+                        ) > (CASE COALESCE(dup.source_origin, 'unknown')
+                           WHEN 'garmin' THEN 100 WHEN 'apple' THEN 50
+                           WHEN 'xiaomiSports' THEN 30 WHEN 'xiaomiMijia' THEN 30
+                           WHEN 'hutool' THEN 20 WHEN 'manual' THEN 10
+                           ELSE 0 END)
+                        OR (
+                          (CASE COALESCE(keep.source_origin, 'unknown')
+                             WHEN 'garmin' THEN 100 WHEN 'apple' THEN 50
+                             WHEN 'xiaomiSports' THEN 30 WHEN 'xiaomiMijia' THEN 30
+                             WHEN 'hutool' THEN 20 WHEN 'manual' THEN 10
+                             ELSE 0 END
+                          ) = (CASE COALESCE(dup.source_origin, 'unknown')
+                             WHEN 'garmin' THEN 100 WHEN 'apple' THEN 50
+                             WHEN 'xiaomiSports' THEN 30 WHEN 'xiaomiMijia' THEN 30
+                             WHEN 'hutool' THEN 20 WHEN 'manual' THEN 10
+                             ELSE 0 END)
+                          AND (keep.ingested_at < dup.ingested_at
+                               OR (keep.ingested_at = dup.ingested_at AND keep.sample_uuid < dup.sample_uuid))
+                        )
+                      )
+                  )
+                """)
+            // 2. 用 ROUND 表达式唯一索引替换 v7 的精确值索引。
+            try db.execute(sql: "DROP INDEX IF EXISTS idx_raw_active_reading_unique")
+            try db.execute(sql: """
+                CREATE UNIQUE INDEX idx_raw_active_reading_unique
+                ON health_samples_raw(hk_type, start_at, ROUND(value, 3), unit)
+                WHERE is_deleted = 0
+                """)
+        }
+
         return migrator
     }
 

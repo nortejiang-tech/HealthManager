@@ -102,7 +102,7 @@ xcodebuild -target HealthManager \
 1. 本机未安装 iOS Simulator runtime（iOS 26.5），无法在 simulator 中实跑。Swift 已验证编译通过；用户在 Xcode UI 中走 Settings → Platforms 下载一次即可，约 6 GB。
 2. `HealthKit.statusForAuthorizationRequest` 不暴露读权限是否被授予；本轮使用「已请求过」标记 + `unnecessary` 判定近似 granted。如用户在系统设置里关闭部分读权限，App 只能通过查询返回 0 条来感知 —— 这是 Apple 平台的硬约束，Round 6 的对账逻辑里要加缺失告警弥补。
 3. `HKQuantityTypeIdentifier` 中无内脏脂肪等级 / 骨骼肌 / 体水分 / 蛋白率的标准类型；当前路径：先尝试从样本 `metadata` 抽（部分秤会写入），抽不到则在 Round 后期开放手动补录 UI（PRD §4.2 已留位 `body_metrics_daily.visceral_fat_level` 等列）。
-4. 多来源同时间同值样本目前以 `sample_uuid` 去重；HK 保证 uuid 唯一性，但如果两个 App 各自写入同一时刻不同值，会保留两条 —— 由 Round 2 的 `conflict_score` 与归因层处理，不在 raw 层强合并。
+4. 多来源同时间同值样本目前以 `sample_uuid` 去重；HK 保证 uuid 唯一性。v7 先按 `(hk_type, start_at, value, unit)` 精确值去重，但在真机发现两个 App（小米体重秤/米家 与 小米运动/Zepp）记录同一读数时底层 double 有 float 表示噪声（如 82.84999847 vs 82.85，都显示 82.8），精确匹配漏掉；v8 改为 `ROUND(value,3)` 容差判定同一读数并重建为 ROUND 表达式唯一索引，让 `INSERT OR IGNORE` 从源头拒绝再次记录。不同时刻/确属不同的取值仍各自保留，由 Round 2 的 `conflict_score` 与归因层处理。
 
 **下一步（最多 3 条）**
 1. Round 2 —— `IncrementalSyncCoordinator`：`HKAnchoredObjectQuery` + `HKObserverQuery`，把每类型 anchor 持久化到 `sync_anchors`，与 `BackgroundTaskScheduler.handleIncremental` 真正打通；同时 `SyncEngine.runIncremental` 状态机走完整路径。

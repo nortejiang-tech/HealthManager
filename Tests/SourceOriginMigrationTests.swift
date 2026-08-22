@@ -24,13 +24,18 @@ final class SourceOriginMigrationTests: XCTestCase {
         // back-fill UPDATE — so directly NULL out the column on every row, then re-run
         // a back-fill (we re-apply the same SQL the migration uses).
         try db.write { db in
-            for c in cases {
+            for (index, c) in cases.enumerated() {
+                // Each case needs a distinct canonical-reading signature (hk_type, start_at,
+                // value, unit) — v7's partial unique index now forbids two active rows sharing
+                // one. These rows are only exercising source_origin back-fill, so the value is
+                // irrelevant; vary start_at so each is a distinct reading.
+                let s = Int64(index)
                 try db.execute(sql: """
                     INSERT INTO health_samples_raw
                       (sample_uuid, hk_type, kind, value, unit, start_at, end_at,
                        source_name, source_bundle_id, ingested_at, is_deleted, source_origin)
-                    VALUES (?, ?, 'quantity', 0, 'count', 0, 1, ?, ?, 0, 0, NULL)
-                    """, arguments: [c.uuid, "HKQuantityTypeIdentifierBodyMass", c.name, c.bundle])
+                    VALUES (?, ?, 'quantity', 0, 'count', ?, ?, ?, ?, 0, 0, NULL)
+                    """, arguments: [c.uuid, "HKQuantityTypeIdentifierBodyMass", s, s + 1, c.name, c.bundle])
             }
             // Replay the migration's back-fill UPDATE.
             try db.execute(sql: """

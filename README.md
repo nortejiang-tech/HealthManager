@@ -112,7 +112,7 @@ find App Core UI -name "*.swift" -print0 | xargs -0 swiftc -typecheck \
 ## 关键技术点（看代码前先了解）
 
 - **HealthKit 不预过滤来源**（PRD §4.1）：`allReadSampleTypes` 全集订阅；归因只在采集后用 `SourceAttribution` 标签化，不删样本
-- **去重**：`health_samples_raw.sample_uuid` 是 PK，`INSERT OR IGNORE` 兜重复
+- **去重**：`health_samples_raw.sample_uuid` 是 PK，`INSERT OR IGNORE` 兜重复；v7/v8 起再按「规范读数」`(hk_type, start_at, ROUND(value,3), unit)` 加部分唯一索引（`WHERE is_deleted = 0`），两个 App 各自写入的**同一物理读数**（含 float 表示噪声，如 82.84999847 vs 82.85）也只保留一条（保留来源优先级更高者）
 - **删除**：HK 删的 UUID → `is_deleted = 1`（软删，不物理删除）
 - **Anchor 持久化**：`HKQueryAnchor` 走 `NSKeyedArchiver.archivedData(requiringSecureCoding: true)` 存 `sync_anchors.anchor_data` BLOB
 - **状态机**：`SyncStateMachine` 是 PRD §5 状态机；backfill / incremental / manual 三条路径都通过它
