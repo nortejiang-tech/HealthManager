@@ -37,29 +37,6 @@ enum EvidenceTone {
         }
     }
 
-    // MARK: - 今日页
-
-    static func forQualityStyle(_ style: TodayEvidencePresentation.QualityPillStyle) -> HMSemanticTone {
-        switch style {
-        case .unreconciled:
-            return .neutral
-        case .reconciledNoAlerts:
-            return .confirmed
-        case .hasAlerts:
-            return .actionRequired
-        }
-    }
-
-    /// 今日决策透镜：有告警 → 需要处理；无告警但有今日记录 → 已确认；否则中性。
-    static func forLens(
-        qualityStyle: TodayEvidencePresentation.QualityPillStyle,
-        hasTimelineRows: Bool
-    ) -> HMSemanticTone {
-        if qualityStyle == .hasAlerts { return .actionRequired }
-        if hasTimelineRows { return .confirmed }
-        return .neutral
-    }
-
     // MARK: - 用药
 
     /// 用药动作 → 语义色。taken=已确认；skipped/deferred=未按计划完成、需要处理。
@@ -74,14 +51,15 @@ enum EvidenceTone {
 
     // MARK: - 餐食分项来源
 
-    /// 分项来源 → 语义色。manual=中性；AI=估算；数据库/标签=可比较的参考。
+    /// 分项来源 → 语义色。manual=中性；AI=估算；
+    /// 数据库/标签/配方计算=有来源的参考（comparison，ADR-004）。
     static func forProvenance(_ kind: MealItemRecord.ProvenanceKind) -> HMSemanticTone {
         switch kind {
         case .manual:
             return .neutral
         case .aiEstimate:
             return .estimate
-        case .nutritionDatabase, .nutritionLabel:
+        case .nutritionDatabase, .nutritionLabel, .recipeCalculation:
             return .comparison
         }
     }

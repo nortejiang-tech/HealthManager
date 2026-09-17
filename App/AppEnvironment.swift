@@ -13,6 +13,7 @@ final class AppEnvironment: ObservableObject {
 
     let database: DatabaseManager
     let mealStore: MealStore
+    let personalFoodStore: PersonalFoodStore
     let healthKitManager: HealthKitManager
     let syncEngine: SyncEngine
     let mealPersistenceCoordinator: MealPersistenceCoordinator
@@ -27,6 +28,7 @@ final class AppEnvironment: ObservableObject {
     private init() {
         let database = DatabaseManager.makeDefault()
         let mealStore = MealStore(databaseManager: database)
+        let personalFoodStore = PersonalFoodStore(databaseManager: database)
         let healthKit = HealthKitManager(database: database)
         let syncEngine = SyncEngine(
             database: database,
@@ -44,6 +46,7 @@ final class AppEnvironment: ObservableObject {
 
         self.database = database
         self.mealStore = mealStore
+        self.personalFoodStore = personalFoodStore
         self.healthKitManager = healthKit
         self.syncEngine = syncEngine
         self.mealPersistenceCoordinator = coordinator

@@ -42,6 +42,9 @@ struct AlertsView: View {
                         )
                     }
                 } else {
+                    if !showingAcked {
+                        currentIssuesSection
+                    }
                     Section {
                         HMEditorGuide(
                             title: "提醒只描述数据状态",
@@ -82,6 +85,67 @@ struct AlertsView: View {
     private var groupedByDate: [(String, [MissingDataAlert])] {
         let grouped = Dictionary(grouping: alerts, by: { $0.date })
         return grouped.sorted(by: { $0.key > $1.key })
+    }
+
+    /// 「有 N 类数据待检查」：未确认告警按当前问题（指标）归组；
+    /// 分组只是视图聚合，不删除、不自动确认，历史详情仍在下方按日期保留（§6.2）。
+    private var currentIssues: [(metric: String, count: Int, hasCritical: Bool)] {
+        let unack = alerts.filter { !$0.acknowledged }
+        let grouped = Dictionary(grouping: unack, by: \.metric)
+        return grouped
+            .map { metric, items in
+                (metric: metric,
+                 count: items.count,
+                 hasCritical: items.contains { $0.severity == .critical })
+            }
+            .sorted { $0.count > $1.count }
+    }
+
+    @ViewBuilder
+    private var currentIssuesSection: some View {
+        let issues = currentIssues
+        if !issues.isEmpty {
+            Section("当前待检查（\(issues.count) 类）") {
+                ForEach(issues, id: \.metric) { issue in
+                    HStack(alignment: .center, spacing: 12) {
+                        Image(systemName: issue.hasCritical ? "exclamationmark.triangle.fill" : "exclamationmark.circle.fill")
+                            .foregroundStyle(HMColors.actionRequired)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(DailyReconciler.humanLabel(for: issue.metric))
+                                .font(.body.weight(.medium))
+                            Text("未确认 \(issue.count) 条")
+                                .font(.caption.monospacedDigit())
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        Button("确认此类") {
+                            Task { await acknowledgeMetric(issue.metric) }
+                        }
+                        .buttonStyle(.bordered)
+                        .tint(HMColors.comparison)
+                        .frame(minHeight: 44)
+                    }
+                    .accessibilityElement(children: .combine)
+                    .accessibilityIdentifier("alerts-issue-\(issue.metric)")
+                }
+            }
+        }
+    }
+
+    private func acknowledgeMetric(_ metric: String) async {
+        do {
+            try await environment.database.asyncWrite { db in
+                try db.execute(
+                    sql: "UPDATE missing_data_alerts SET acknowledged = 1 WHERE acknowledged = 0 AND metric = ?",
+                    arguments: [metric]
+                )
+            }
+            await MainActor.run { operationError = nil }
+            await refresh()
+        } catch {
+            await MainActor.run { operationError = error.localizedDescription }
+            AppLogger.shared.error("Acknowledge metric failed: \(error.localizedDescription)")
+        }
     }
 
     private func refresh() async {

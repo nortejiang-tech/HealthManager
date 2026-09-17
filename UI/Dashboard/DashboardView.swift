@@ -193,10 +193,7 @@ private struct DashboardScreenContent: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                Text(HMDateText.fullWeekday())
-                    .font(.body)
-                    .foregroundStyle(.secondary)
-
+                // 日期只在 HeroHeader 出现一次（§6.2：删除重复日期与大段来源流程说明）。
                 if isLoading {
                     DashboardLoadingHero()
                 } else if hasLoadedSnapshot {
@@ -241,13 +238,6 @@ private struct DashboardScreenContent: View {
 
                 DashboardQuickLinksSection(onQualityTap: onQualityTap)
 
-                if hasLoadedSnapshot {
-                    HMProvenanceRail(
-                        title: "指标从哪里来",
-                        steps: provenanceSteps
-                    )
-                }
-
                 Spacer(minLength: 12)
             }
             .padding(.horizontal, 20)
@@ -256,32 +246,6 @@ private struct DashboardScreenContent: View {
         }
         .background(HMColors.background.ignoresSafeArea())
         .accessibilityIdentifier("dashboard-screen")
-    }
-
-    private var provenanceSteps: [HMProvenanceRail.Step] {
-        [
-            .init(
-                title: "来源",
-                detail: "Apple 健康与手工记录",
-                tone: .confirmed,
-                systemImage: "dot.radiowaves.left.and.right",
-                accessibilityIdentifier: "dashboard-provenance-steps-healthkit"
-            ),
-            .init(
-                title: "整理",
-                detail: "在本机按日汇总",
-                tone: .comparison,
-                systemImage: "square.stack.3d.down.right",
-                accessibilityIdentifier: "dashboard-provenance-steps-aggregation"
-            ),
-            .init(
-                title: "展示",
-                detail: "进入趋势与明细",
-                tone: .comparison,
-                systemImage: "scope",
-                accessibilityIdentifier: "dashboard-provenance-steps-presentation"
-            )
-        ]
     }
 }
 

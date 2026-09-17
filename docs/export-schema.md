@@ -1,7 +1,7 @@
 # HealthManager 备份包字段字典（export schema）
 
-> 契约版本：formatVersion 1（对应 `BackupManifest.currentFormatVersion`）
-> 决策记录：`docs/adr/ADR-003-backup-package-export-restore.md`
+> 契约版本：formatVersion 2（对应 `BackupManifest.currentFormatVersion`）
+> 决策记录：`docs/adr/ADR-003-backup-package-export-restore.md`、`docs/adr/ADR-004-offline-food-catalog-and-personal-recipe-data-contracts.md`
 > 本文件是备份包与外部读取方（例如电脑上的 agent）之间的稳定契约。
 
 ## 通用规则
@@ -12,10 +12,11 @@
 4. **主键/唯一键**：导入侧按数据库主键与唯一索引执行 `INSERT OR IGNORE`——恢复只补缺、不覆盖，可重复执行。
 5. **文件与行序**：每行一条 JSON，键按字母序输出；行按主键升序。行序不是契约，读取方不得依赖。
 6. **manifest.json**：`{ formatVersion, appVersion, exportedAt, files: [{ file, recordCount, bytes, sha256 }] }`。每个数据文件的 SHA-256 必须与 manifest 一致才导入。
+7. **版本兼容**：v2 新增个人配方/映射三文件；v0.5.x App（supported 1...1）遇 v2 包明确拒绝导入（提示升级 App），不静默丢数据；v0.6+ App 兼容导入 v1 包（缺新文件按空表处理）。
 
 ## 表清单
 
-11 张解析后数据表 + 1 个配置快照。**不包含**：`health_samples_raw`（原始样本，由 Apple 健康同步）、`sync_jobs`、`backfill_report`、`sync_anchors`（运维数据）、照片文件。
+11 张解析后数据表 + 3 张个人创作表（v2 起）+ 1 个配置快照。**不包含**：`health_samples_raw`（原始样本，由 Apple 健康同步）、`sync_jobs`、`backfill_report`、`sync_anchors`（运维数据）、照片文件、只读营养目录资源（随 App 打包，可重建）。
 
 | 文件 | 表 | 主键 / 唯一键 | 导入冲突策略 |
 |---|---|---|---|
@@ -30,7 +31,12 @@
 | missing_data_alerts.jsonl | missing_data_alerts | id | **覆盖** |
 | daily_summaries.jsonl | daily_summaries | date | 只补缺 |
 | weekly_summaries.jsonl | weekly_summaries | week_start_date | 只补缺 |
+| personal_recipes.jsonl | personal_recipes | id | 只补缺 |
+| personal_recipe_versions.jsonl | personal_recipe_versions | id；(recipe_id, version) 唯一 | 只补缺 |
+| personal_foods.jsonl | personal_foods | id | 只补缺 |
 | settings.json | （App 配置快照） | — | 整体应用（见下） |
+
+恢复依赖顺序按上表自上而下：配方主体先于版本、版本先于引用它们的个人映射；重复导入幂等。恢复端目录资源中找不到对应条目时，餐次快照照常显示（不丢餐、不变 0）。
 
 **为什么投影表用「覆盖」**：这五张表是由原始样本派生的数据（非用户创作）。重装后 App 在无原始样本时的启动补算可能先写入空投影行，若恢复只补缺，这些空行会挡住备份里的真实值。覆盖语义保证备份值生效；之后同步回补原始样本时，投影会按正常管线重新计算。
 
@@ -69,7 +75,7 @@
 | grams | number\|null | 克数；null = 未知（未知不是 0） |
 | preparation_state | string | unknown / raw / cooked |
 | calories_kcal / protein_g / fat_g / carbs_g | number\|null | 营养快照 |
-| provenance_kind | string | manual / ai_estimate / nutrition_database / nutrition_label |
+| provenance_kind | string | manual / ai_estimate / nutrition_database / nutrition_label / recipe_calculation（v2，ADR-004） |
 | provenance_ref | string\|null | 来源条目/模型引用 |
 | provenance_version | string\|null | 数据集/模型版本快照 |
 | confidence | string\|null | low / medium / high；无证据为 null |
@@ -111,6 +117,38 @@ date · summary_text · key_findings_json · quality_score · generated_at
 ### weekly_summaries.jsonl
 
 week_start_date · summary_text · findings_json · quality_score · generated_at
+
+### personal_recipes.jsonl（v2）
+
+id · display_name · current_version（当前版本号）· created_at · updated_at
+
+### personal_recipe_versions.jsonl（v2）
+
+| 字段 | 类型 | 含义 |
+|---|---|---|
+| id | int | 主键 |
+| recipe_id | int | 所属配方（外键 personal_recipes.id） |
+| version | int | 版本号，从 1 递增；(recipe_id, version) 唯一 |
+| ingredients_json | string | 原料数组 JSON：`[{catalogEntryId, catalogVersion, nameZh, basis, preparationState, grams, amountStatus}]`；amountStatus ∈ weighed/estimated/notUsed/unknown |
+| output_grams | number\|null | 最终可食成品重量；null = 待补（不产出每 100 g） |
+| output_weight_basis | string\|null | weighed / estimated / null |
+| note | string\|null | 做法/比例假设说明 |
+| created_at | int | 版本创建时间（不可变版本：修订生成新行，旧行不改） |
+
+### personal_foods.jsonl（v2）
+
+| 字段 | 类型 | 含义 |
+|---|---|---|
+| id | int | 主键 |
+| kind | string | catalog（映射官方条目）/ recipe（映射个人配方） |
+| display_name | string | 展示名 |
+| match_keys_json | string | 覆盖的候选规范名数组（JSON 字符串） |
+| catalog_entry_id | string\|null | kind=catalog 时的目录条目 id（如 mext-01088） |
+| catalog_version | string\|null | 确认时的目录数据集版本 |
+| recipe_id | int\|null | kind=recipe 时的配方 id |
+| default_grams | number\|null | 用户确认的默认份量；null = 未确认 |
+| pinned | bool | 置顶 |
+| confirmed_at / created_at / updated_at | int | Unix 秒 |
 
 ## 版本演进
 

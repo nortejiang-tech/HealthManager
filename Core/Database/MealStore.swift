@@ -162,6 +162,86 @@ final class MealStore: @unchecked Sendable {
         }
     }
 
+    // MARK: - 历史查询（分页 / 搜索 / 日期筛选，验收 A14）
+
+    /// 饮食历史分页查询。只读、后台执行；不漏不重由 (eaten_at, id) 稳定排序 + offset 保证。
+    /// - searchText：匹配备注或分项名称（LIKE，大小写不敏感）；
+    /// - localDay：限定某个本地自然日；nil = 全部日期。
+    func historyPage(
+        limit: Int,
+        offset: Int,
+        searchText: String?,
+        localDay: Date?,
+        calendar: Calendar = .current
+    ) async throws -> [MealRecord] {
+        guard limit > 0, offset >= 0 else { return [] }
+        let trimmed = searchText?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+
+        return try await databaseManager.asyncRead { db in
+            var request = MealRecord.all()
+                .order(Column("eaten_at").desc, Column("id").desc)
+
+            if !trimmed.isEmpty {
+                let pattern = "%\(trimmed.replacingOccurrences(of: "%", with: "\\%").replacingOccurrences(of: "_", with: "\\_"))%"
+                let itemMatch = MealItemRecord
+                    .select(Column("meal_id"))
+                    .filter(Column("name").like(pattern, escape: Character("\\")))
+                request = request.filter(
+                    Column("notes").like(pattern, escape: Character("\\")) ||
+                    itemMatch.contains(Column("id"))
+                )
+            }
+
+            if let localDay {
+                let dayStart = calendar.startOfDay(for: localDay)
+                guard let dayEnd = calendar.date(byAdding: .day, value: 1, to: dayStart) else {
+                    return []
+                }
+                request = request.filter(
+                    Column("eaten_at") >= Int64(dayStart.timeIntervalSince1970) &&
+                    Column("eaten_at") < Int64(dayEnd.timeIntervalSince1970)
+                )
+            }
+
+            return try request
+                .limit(limit, offset: offset)
+                .fetchAll(db)
+        }
+    }
+
+    /// 与 historyPage 相同筛选条件下的总条数（“共 N 条”展示用）。
+    func historyTotalCount(
+        searchText: String?,
+        localDay: Date?,
+        calendar: Calendar = .current
+    ) async throws -> Int {
+        let trimmed = searchText?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return try await databaseManager.asyncRead { db in
+            var request = MealRecord.all()
+            if !trimmed.isEmpty {
+                let pattern = "%\(trimmed.replacingOccurrences(of: "%", with: "\\%").replacingOccurrences(of: "_", with: "\\_"))%"
+                let itemMatch = MealItemRecord
+                    .select(Column("meal_id"))
+                    .filter(Column("name").like(pattern, escape: Character("\\")))
+                request = request.filter(
+                    Column("notes").like(pattern, escape: Character("\\")) ||
+                    itemMatch.contains(Column("id"))
+                )
+            }
+            if let localDay {
+                let dayStart = calendar.startOfDay(for: localDay)
+                guard let dayEnd = calendar.date(byAdding: .day, value: 1, to: dayStart) else {
+                    return 0
+                }
+                request = request.filter(
+                    Column("eaten_at") >= Int64(dayStart.timeIntervalSince1970) &&
+                    Column("eaten_at") < Int64(dayEnd.timeIntervalSince1970)
+                )
+            }
+            return try request.fetchCount(db)
+        }
+    }
+
     func commonGramSuggestions(
         forName rawName: String,
         preparationState: MealItemRecord.PreparationState?,

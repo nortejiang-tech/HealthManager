@@ -118,6 +118,30 @@ struct MealEditorDraft {
         self.loadState = .ready
     }
 
+    /// 以预填分项创建新餐草稿（营养表「加入饮食」、常吃模板、配方加入共用）。
+    /// 只产生编辑器草稿，最终保存仍走 MealStore + 协调器既有链路。
+    init(
+        draftItems: [MealItemDraft],
+        mealType: MealRecord.MealType = .suggested(),
+        eatenAt: Date = Date()
+    ) {
+        self.id = nil
+        self.mealType = mealType
+        self.eatenAt = eatenAt
+        self.caloriesText = ""
+        self.proteinText = ""
+        self.fatText = ""
+        self.carbsText = ""
+        self.notes = ""
+        self.nutritionItems = draftItems
+        self.photoDrafts = []
+        self.itemTotals = Self.projectTotals(from: draftItems)
+        self.originalPhotoPaths = []
+        self.createdAt = Int64(Date().timeIntervalSince1970)
+        self.hkSyncId = nil
+        self.loadState = .ready
+    }
+
     var canSave: Bool {
         loadState == .ready
     }

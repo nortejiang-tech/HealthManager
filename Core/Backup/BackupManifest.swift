@@ -11,7 +11,10 @@ struct BackupFileEntry: Codable, Equatable, Sendable {
 
 struct BackupManifest: Codable, Equatable, Sendable {
     /// 当前导出格式版本。格式只增不改（字段名永不改名/删除，只追加）。
-    static let currentFormatVersion = 1
+    /// v2（ADR-004 §2.5）：新增个人配方/映射三文件 personal_recipes /
+    /// personal_recipe_versions / personal_foods；旧 App（supported 1...1）遇 v2
+    /// 按 ADR-003 既有策略明确拒绝，不静默丢数据。
+    static let currentFormatVersion = 2
     static let supportedFormatVersions = 1...currentFormatVersion
 
     let formatVersion: Int

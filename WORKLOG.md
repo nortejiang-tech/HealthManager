@@ -1002,3 +1002,30 @@ Release build（device）: BUILD SUCCEEDED，0 error / 0 warning
 - 真机（NortePro的iPhone / iPhone Air）：安装 + 启动后 v7/v8 自动执行；8 月 22 日当日测量由 4 次降为 2 次（01:37、07:30 各一条），全表活跃样本 3,394,338 → 3,394,282，ROUND 容差重复组数 0；日体重 82.6 = (82.85+82.45)/2 正确。
 
 发布说明见 `docs/releases/v0.5.1.md`。
+
+## 营养表、常吃食物与导航改版 — 2026-09-17（v0.6.0 开发轮）
+
+依据 `docs/planning/2026-09-17-营养表与体验迭代/`（ASTRA 方案）与 ADR-004。基线 v0.5.1（2a8edcb）。
+
+**信息架构（阶段二）**
+- 五栏改为 趋势/饮食/用药/营养表/更多，冷启动默认趋势；移除 TodayView 一级页及默认选择，删除 `UI/Today/`、`Core/Today/TodayEvidenceLoader`、`TodayEvidencePresentation` 与对应测试（无其他模块复用，已全库核对）；`EvidenceTone` 移除今日页两个映射。
+- 新增 `UI/Nutrition/`：营养表页（参考食材/我的常吃两段切换并记忆）、搜索（中文名/审核别名/原文名）、分类筛选、详情（每100g 与「本次 X g」并排换算、废弃率/推定/微量/未测定分别表达、查看来源）、「加入饮食」只生成编辑器草稿。
+- SmokeTests 重写为 v0.6 导航契约。
+
+**离线官方目录（阶段一）**
+- `Resources/FoodCatalog/food_catalog_v1.json`：41 条 MEXT《八订增补2023》人工核对条目（含 2026-03-27 勘误版本与 SHA-256），构建脚本与记录见 `docs/food-catalog/`；种子条目（01088/12005/04052）与方案附件数值逐项一致。
+- `Core/FoodCatalog/`：FoodCatalogStore（离线查询/搜索/分类）、FoodServingCalculator（比例换算、0/负/非有限拒绝、缺失语义不缩放）。
+
+**数据与配方（阶段三）**
+- v9 迁移：重建 meal_items 扩展 `provenance_kind` CHECK 新增 `recipe_calculation`（既有行逐列保留）；新增 personal_recipes / personal_recipe_versions / personal_foods / ignored_candidates。
+- `Core/PersonalFood/`：FrequentFoodsQuery（本地自然日窗口、每餐去重、规范名归并）、PersonalFoodStore（候选确认/忽略/置顶/默认份量、配方创建与不可变版本、provenance_ref `recipe:<id>:v<n>`）、RecipeCalculator（同状态贡献求和 ÷ 成品重、缺失按营养素传播、未知用量不按 0、notUsed 不参与）。
+- 备份 formatVersion 2：新增 personal_recipes/personal_recipe_versions/personal_foods 三文件，恢复顺序=配方→版本→映射；v1 包兼容导入；旧 App 遇 v2 按 ADR-003 既有策略拒绝。
+- MealItemDraft 新增 fromCatalogEntry / fromMatchedFood / fromRecipe；MealEditorDraft/MealEditView 新增预填入口；保存统一走 MealStore + MealPersistenceCoordinator（HealthKit 链路不变）。
+
+**体验精简（阶段四）**
+- 饮食页：历史查询改分页（50/页，id 去重不漏不重）+ 菜名/备注搜索（防抖、LIKE 转义）+ 日期筛选（今天/选日期）；`MealStore.historyPage/historyTotalCount`。
+- 饮食页说明合并：移除与证据面板重复的决策透镜与「今日餐次」说明行；空列表文案区分「无匹配」。
+- 趋势首页：移除与卡片重复的四个今日大数、重复日期行与「指标从哪里来」流程说明（来源能力保留在更多页）；铃铛角标改为「N 类待检查」（COUNT DISTINCT metric）。
+- 告警页：新增「当前待检查（N 类）」按指标归组 + 「确认此类」；历史详情按日期保留，分组不删除不自动确认。
+
+**版本**：0.6.0（12）。**验证状态**：代码完成；⚠️ 本轮开发机 Xcode 27 许可未接受，`xcodebuild/swiftc` 全部被阻塞，构建与全部单测（含新增 FoodCatalog/RecipeCalculator/PersonalFoodStore/MealHistoryQuery/PersonalFoodDraftAndBackup/v9 迁移用例）**尚未执行**——接受许可后须先跑 `xcodebuild test` 再真机验收。

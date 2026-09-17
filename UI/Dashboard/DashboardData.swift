@@ -105,6 +105,8 @@ struct DashboardSnapshot: Sendable, Equatable {
     var quality: DataQualityDaily?
     var unackAlertCount: Int = 0
     var criticalAlertCount: Int = 0
+    /// 未确认告警涉及的指标类数（“有 N 类数据待检查”，不展示历史长串总数）。
+    var unackMetricCount: Int = 0
 
     var rawSampleCount: Int = 0
     var lastIngest: Date?
@@ -341,6 +343,8 @@ struct DashboardLoader {
                 sql: "SELECT COUNT(*) FROM missing_data_alerts WHERE acknowledged = 0") ?? 0
             snap.criticalAlertCount = try Int.fetchOne(db,
                 sql: "SELECT COUNT(*) FROM missing_data_alerts WHERE acknowledged = 0 AND severity = 'critical'") ?? 0
+            snap.unackMetricCount = try Int.fetchOne(db,
+                sql: "SELECT COUNT(DISTINCT metric) FROM missing_data_alerts WHERE acknowledged = 0") ?? 0
 
             return snap
         }

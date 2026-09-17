@@ -1,9 +1,7 @@
 import XCTest
 
-/// Boots the app with onboarding bypassed, taps every primary tab and a couple of
-/// detail screens, asserts the navigation title or a known label appears. Failures
-/// surface as test failures in the V2 acceptance run; on pass each screen yields
-/// an XCTest attachment screenshot.
+/// v0.6 信息架构冒烟：冷启动落趋势页（今日一级页已移除），五个 Tab 依次可达，
+/// 营养表展示官方目录条目；各主页面给出可访问性标记与截图。
 final class SmokeTests: XCTestCase {
 
     override func setUpWithError() throws {
@@ -15,39 +13,21 @@ final class SmokeTests: XCTestCase {
         app.launchArguments = ["-HM_DEBUG_BYPASS_ONBOARDING"]
         app.launch()
 
+        // 冷启动第一栏 = 趋势（A01）；不再有「今日」一级页。
         XCTAssertTrue(
-            anyDescendant(in: app, matching: "today-screen").waitForExistence(timeout: 20),
-            "Today screen marker missing — onboarding bypass or tab mounting failed."
+            anyDescendant(in: app, matching: "dashboard-screen").waitForExistence(timeout: 20),
+            "Dashboard screen marker missing — onboarding bypass or tab mounting failed."
         )
-        XCTAssertTrue(
-            anyDescendant(in: app, matching: "today-summary-sleep").waitForExistence(timeout: 12),
-            "Today loaded summary: today-summary-sleep missing."
-        )
-        XCTAssertTrue(
-            anyDescendant(in: app, matching: "today-timeline").waitForExistence(timeout: 12),
-            "Today loaded summary: today-timeline missing."
-        )
-        XCTAssertTrue(
-            anyDescendant(in: app, matching: "today-source-coverage").waitForExistence(timeout: 12),
-            "Today loaded summary: today-source-coverage missing."
-        )
-        XCTAssertFalse(
-            anyDescendant(in: app, matching: "today-load-error").exists,
-            "Today load error should not appear after loaded assertions."
-        )
-        if descendants(in: app, matching: "today-timeline-").count == 0 {
-            XCTAssertTrue(app.staticTexts["今天还没有餐食或用药记录"].waitForExistence(timeout: 3))
-        }
-        attachScreenshot(named: "01-today")
-
-        XCTAssertTrue(app.tabBars.buttons["今日"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.tabBars.buttons["趋势"].waitForExistence(timeout: 10))
         XCTAssertTrue(app.tabBars.buttons["饮食"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.tabBars.buttons["用药"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.tabBars.buttons["趋势"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.tabBars.buttons["营养表"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.tabBars.buttons["更多"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.tabBars.buttons["今日"].exists, "今日一级页应已移除")
         XCTAssertFalse(app.tabBars.buttons["仪表盘"].exists)
         XCTAssertFalse(app.tabBars.buttons["来源"].exists)
         XCTAssertFalse(app.tabBars.buttons["同步中心"].exists)
+        attachScreenshot(named: "01-trends-home")
 
         // Tab 2: 饮食
         app.tabBars.buttons["饮食"].tap()
@@ -71,13 +51,42 @@ final class SmokeTests: XCTestCase {
         attachScreenshot(named: "03b-med-edit")
         app.navigationBars["添加用药计划"].buttons["取消"].tap()
 
-        // Tab 4: 趋势
+        // Tab 4: 营养表（参考食材段展示官方目录）
+        app.tabBars.buttons["营养表"].tap()
+        XCTAssertTrue(
+            anyDescendant(in: app, matching: "nutrition-screen").waitForExistence(timeout: 8),
+            "Nutrition screen marker missing."
+        )
+        XCTAssertTrue(
+            anyDescendant(in: app, matching: "nutrition-search").waitForExistence(timeout: 8),
+            "Nutrition search field missing."
+        )
+        XCTAssertTrue(
+            anyDescendant(in: app, matching: "nutrition-entry-mext-01088").waitForExistence(timeout: 8),
+            "Catalog entry (熟白米饭) missing from reference list."
+        )
+        attachScreenshot(named: "04-nutrition")
+
+        // 营养表 → 详情 → 关闭（不落任何数据）。
+        anyDescendant(in: app, matching: "nutrition-entry-mext-01088").tap()
+        XCTAssertTrue(
+            anyDescendant(in: app, matching: "nutrition-add-to-meal").waitForExistence(timeout: 5),
+            "Nutrition detail (加入饮食) missing."
+        )
+        attachScreenshot(named: "04b-nutrition-detail")
+        anyDescendant(in: app, matching: "nutrition-detail-close").tap()
+
+        // 我的常吃段可达（空数据时展示空状态而非崩溃）。
+        app.tabBars.buttons["营养表"].tap()
+        let frequentSegment = app.segmentedControls.buttons["我的常吃"]
+        if frequentSegment.waitForExistence(timeout: 3) {
+            frequentSegment.tap()
+            attachScreenshot(named: "04c-nutrition-frequent")
+        }
+
+        // Tab 5: 趋势页卡片编辑仍可用。
         app.tabBars.buttons["趋势"].tap()
         XCTAssertTrue(app.navigationBars["趋势"].waitForExistence(timeout: 8))
-        attachScreenshot(named: "04-dashboard")
-
-        // Trends -> card editor. Reset first so the interaction is deterministic,
-        // then prove hide/show are reversible and leave the default layout behind.
         anyDescendant(in: app, matching: "dashboard-edit-cards").tap()
         XCTAssertTrue(
             anyDescendant(in: app, matching: "dashboard-card-editor").waitForExistence(timeout: 5),
@@ -86,21 +95,21 @@ final class SmokeTests: XCTestCase {
         revealBySwipingUp("dashboard-card-reset", in: app).tap()
         revealBySwipingDown("dashboard-card-hide-activity", in: app).tap()
         let showActivity = revealBySwipingUp("dashboard-card-show-activity", in: app)
-        attachScreenshot(named: "04b-dashboard-card-editor-hidden-change")
+        attachScreenshot(named: "05-dashboard-card-editor-hidden-change")
         showActivity.tap()
         revealBySwipingUp("dashboard-card-reset", in: app).tap()
         _ = revealBySwipingDown("dashboard-card-hide-activity", in: app)
-        attachScreenshot(named: "04c-dashboard-card-editor-default")
+        attachScreenshot(named: "05b-dashboard-card-editor-default")
         anyDescendant(in: app, matching: "dashboard-card-done").tap()
         XCTAssertTrue(app.navigationBars["趋势"].waitForExistence(timeout: 5))
 
-        // Tab 5: 更多
+        // Tab 6: 更多
         app.tabBars.buttons["更多"].tap()
         XCTAssertTrue(
             anyDescendant(in: app, matching: "more-screen").waitForExistence(timeout: 8),
             "More root marker missing."
         )
-        attachScreenshot(named: "05-more")
+        attachScreenshot(named: "06-more")
 
         // More -> 数据来源
         anyDescendant(in: app, matching: "more-sources").tap()

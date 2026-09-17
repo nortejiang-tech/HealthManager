@@ -8,14 +8,16 @@ final class MealItemEvidencePresentationTests: XCTestCase {
             .manual: "手工录入",
             .aiEstimate: "AI 估算",
             .nutritionDatabase: "营养数据库",
-            .nutritionLabel: "包装标签"
+            .nutritionLabel: "包装标签",
+            .recipeCalculation: "配方计算"
         ]
 
         let expectedSymbolByKind: [MealItemRecord.ProvenanceKind: String] = [
             .manual: "pencil",
             .aiEstimate: "sparkles",
             .nutritionDatabase: "book",
-            .nutritionLabel: "tag"
+            .nutritionLabel: "tag",
+            .recipeCalculation: "function"
         ]
 
         XCTAssertEqual(expectedTitleByKind.count, MealItemRecord.ProvenanceKind.allCases.count)
@@ -191,7 +193,8 @@ final class MealItemEvidencePresentationTests: XCTestCase {
             .manual: "此条目由你手工录入；未附加独立数据来源。",
             .aiEstimate: "AI 结果是估算，置信度来自模型输出且未经过校准；保存前请核对菜名、份量和营养值。",
             .nutritionDatabase: "数据库来源名称或引用不等于该条目已经独立验证；请结合引用、版本和营养字段判断。",
-            .nutritionLabel: "包装标签可能采用每份或每 100g 口径；当前未保存份量单位证据，不能视为已核对。"
+            .nutritionLabel: "包装标签可能采用每份或每 100g 口径；当前未保存份量单位证据，不能视为已核对。",
+            .recipeCalculation: "由个人配方与官方食材条目计算，属于简化估算（未含未量化的烹调损失）；保存后为快照，不随配方修订改变。"
         ]
 
         XCTAssertEqual(expectedCautionByKind.count, MealItemRecord.ProvenanceKind.allCases.count)

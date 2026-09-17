@@ -26,38 +26,30 @@ struct RootView: View {
 
 struct MainTabView: View {
     enum MainTab: Hashable {
-        case today
+        case trends
         case diet
         case medication
-        case trends
+        case nutrition
         case more
     }
 
-    @State private var selection: MainTab = .today
+    /// 冷启动默认落在趋势页（v0.6 信息架构：原「今日」一级页移除）。
+    @State private var selection: MainTab = .trends
 
     var body: some View {
         TabView(selection: $selection) {
-            TodayView { destination in
-                switch destination {
-                case .diet:
-                    selection = .diet
-                case .medication:
-                    selection = .medication
-                case .trends:
-                    selection = .trends
-                }
-            }
-            .tabItem { Label("今日", systemImage: "calendar") }
-            .tag(MainTab.today)
+            DashboardView()
+                .tabItem { Label("趋势", systemImage: "chart.bar.fill") }
+                .tag(MainTab.trends)
             DietView()
                 .tabItem { Label("饮食", systemImage: "fork.knife") }
                 .tag(MainTab.diet)
             MedicationView()
                 .tabItem { Label("用药", systemImage: "pills") }
                 .tag(MainTab.medication)
-            DashboardView()
-                .tabItem { Label("趋势", systemImage: "chart.bar.fill") }
-                .tag(MainTab.trends)
+            NutritionView()
+                .tabItem { Label("营养表", systemImage: "tablecells") }
+                .tag(MainTab.nutrition)
             MoreView()
                 .tabItem { Label("更多", systemImage: "ellipsis") }
                 .tag(MainTab.more)

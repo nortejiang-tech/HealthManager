@@ -15,6 +15,9 @@ struct MealItemRecord: Codable, FetchableRecord, MutablePersistableRecord, Ident
         case aiEstimate = "ai_estimate"
         case nutritionDatabase = "nutrition_database"
         case nutritionLabel = "nutrition_label"
+        /// 个人配方 × 官方食材条目按可食重量计算（ADR-004）。保存时冻结为快照，
+        /// 不随配方或目录后续修订而改变。
+        case recipeCalculation = "recipe_calculation"
     }
 
     enum Confidence: String, Codable, CaseIterable {

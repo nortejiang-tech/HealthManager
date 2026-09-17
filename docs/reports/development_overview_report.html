@@ -1,0 +1,644 @@
+<style>
+  :root{
+    --ink:#1c2024; --ink-soft:#5a6167; --ink-faint:#8b9297;
+    --paper:#f1f3f4; --paper-raised:#ffffff; --paper-sunken:#e4e8e9;
+    --line:#d7dcde;
+    --cobalt:#2f5fa0; --cobalt-soft:#e2eaf5;
+    --teal:#188a72; --teal-soft:#dcf0ea;
+    --coral:#c9673d; --coral-soft:#f7e3d6;
+    --violet:#7c5ea8; --violet-soft:#ece3f5;
+    --critical:#b7423a; --critical-soft:#f6dcd9;
+    --font-display:ui-serif,"New York","Iowan Old Style","Georgia",serif;
+    --font-body:-apple-system,ui-sans-serif,"Segoe UI",Roboto,Arial,sans-serif;
+    --font-mono:ui-monospace,"SF Mono","JetBrains Mono",Menlo,Consolas,monospace;
+    --shadow:0 1px 2px rgba(28,32,36,.05),0 6px 18px rgba(28,32,36,.06);
+    --radius:16px;
+  }
+  @media (prefers-color-scheme:dark){
+    :root{
+      --ink:#eceeef; --ink-soft:#a3aab0; --ink-faint:#666d72;
+      --paper:#0d0f11; --paper-raised:#17191c; --paper-sunken:#0a0c0d;
+      --line:#26292c;
+      --cobalt:#7fa8dd; --cobalt-soft:#182233;
+      --teal:#5ec2a8; --teal-soft:#12261f;
+      --coral:#e28f61; --coral-soft:#33231a;
+      --violet:#b79bdb; --violet-soft:#241c2e;
+      --critical:#e08a80; --critical-soft:#33201d;
+      --shadow:0 1px 2px rgba(0,0,0,.4),0 8px 22px rgba(0,0,0,.4);
+    }
+  }
+  :root[data-theme="dark"]{
+    --ink:#eceeef; --ink-soft:#a3aab0; --ink-faint:#666d72;
+    --paper:#0d0f11; --paper-raised:#17191c; --paper-sunken:#0a0c0d;
+    --line:#26292c;
+    --cobalt:#7fa8dd; --cobalt-soft:#182233;
+    --teal:#5ec2a8; --teal-soft:#12261f;
+    --coral:#e28f61; --coral-soft:#33231a;
+    --violet:#b79bdb; --violet-soft:#241c2e;
+    --critical:#e08a80; --critical-soft:#33201d;
+    --shadow:0 1px 2px rgba(0,0,0,.4),0 8px 22px rgba(0,0,0,.4);
+  }
+  :root[data-theme="light"]{
+    --ink:#1c2024; --ink-soft:#5a6167; --ink-faint:#8b9297;
+    --paper:#f1f3f4; --paper-raised:#ffffff; --paper-sunken:#e4e8e9;
+    --line:#d7dcde;
+    --cobalt:#2f5fa0; --cobalt-soft:#e2eaf5;
+    --teal:#188a72; --teal-soft:#dcf0ea;
+    --coral:#c9673d; --coral-soft:#f7e3d6;
+    --violet:#7c5ea8; --violet-soft:#ece3f5;
+    --critical:#b7423a; --critical-soft:#f6dcd9;
+    --shadow:0 1px 2px rgba(28,32,36,.05),0 6px 18px rgba(28,32,36,.06);
+  }
+
+  *{box-sizing:border-box;}
+  html{background:var(--paper);}
+  body{ background:var(--paper); color:var(--ink); font-family:var(--font-body); font-size:16px; line-height:1.65; -webkit-font-smoothing:antialiased; }
+  @media (prefers-reduced-motion:no-preference){ html{scroll-behavior:smooth;} }
+  ::selection{ background:var(--coral-soft); color:var(--ink); }
+  a{ color:var(--cobalt); text-decoration-thickness:1px; text-underline-offset:2px; }
+  a:focus-visible, button:focus-visible, summary:focus-visible{ outline:2px solid var(--coral); outline-offset:2px; border-radius:3px; }
+  code,.mono{ font-family:var(--font-mono); font-variant-numeric:tabular-nums; }
+  h1,h2,h3,h4{ font-family:var(--font-display); font-weight:600; text-wrap:balance; color:var(--ink); }
+  p{ margin:0 0 1em; max-width:70ch; }
+  .wrap{ max-width:1180px; margin:0 auto; padding:0 1.25rem; }
+
+  .topbar{ border-bottom:1px solid var(--line); background:var(--paper-raised); position:sticky; top:0; z-index:40; }
+  .topbar-inner{ max-width:1180px; margin:0 auto; padding:.7rem 1.25rem; display:flex; align-items:center; gap:.75rem; justify-content:space-between; }
+  .brand{ display:flex; align-items:center; gap:.55rem; font-family:var(--font-mono); font-size:.85rem; color:var(--ink-soft); }
+  .brand b{ color:var(--ink); font-family:var(--font-body); font-weight:700; letter-spacing:.01em; }
+  .brand .sep{ color:var(--line); }
+  .version-badge{ font-family:var(--font-mono); font-size:.78rem; padding:.2rem .5rem; border-radius:6px; background:var(--teal-soft); color:var(--teal); border:1px solid color-mix(in srgb, var(--teal) 35%, transparent); }
+
+  .hero{ border-bottom:1px solid var(--line); overflow:hidden; }
+  .hero-inner{ max-width:1180px; margin:0 auto; padding:3rem 1.25rem 2.4rem; display:grid; grid-template-columns:1.25fr .9fr; gap:2.5rem; align-items:center; }
+  .eyebrow{ font-family:var(--font-mono); font-size:.78rem; letter-spacing:.07em; text-transform:uppercase; color:var(--coral); margin-bottom:.9rem; display:flex; align-items:center; gap:.5rem; }
+  .eyebrow::before{ content:""; width:1.4rem; height:1px; background:var(--coral); display:inline-block; }
+  .hero h1{ font-size:clamp(1.8rem,1.4rem + 1.8vw,2.6rem); line-height:1.16; margin:0 0 .7rem; }
+  .hero .dek{ font-size:1.06rem; color:var(--ink-soft); max-width:54ch; margin-bottom:0; }
+
+  .badge-card{
+    border:1px solid var(--line); background:var(--paper-raised); border-radius:20px; padding:1.3rem 1.4rem; box-shadow:var(--shadow);
+  }
+  .badge-card .bc-top{ display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:1rem; }
+  .badge-card .bc-ring{
+    width:52px; height:52px; border-radius:50%; display:flex; align-items:center; justify-content:center;
+    background:conic-gradient(var(--teal) 0deg 360deg); position:relative; flex:none;
+  }
+  .badge-card .bc-ring::after{ content:"✓"; position:absolute; inset:5px; border-radius:50%; background:var(--paper-raised); color:var(--teal); display:flex; align-items:center; justify-content:center; font-weight:700; font-size:1.1rem; }
+  .badge-card .bc-label{ font-family:var(--font-mono); font-size:.7rem; color:var(--ink-faint); text-transform:uppercase; letter-spacing:.05em; }
+  .badge-card .bc-build{ font-family:var(--font-mono); font-weight:700; font-size:1.3rem; margin-top:.15rem; }
+  .badge-card .bc-rows{ display:flex; flex-direction:column; gap:.5rem; }
+  .badge-card .bc-row{ display:flex; justify-content:space-between; font-size:.85rem; border-top:1px solid var(--line); padding-top:.5rem; }
+  .badge-card .bc-row span:last-child{ font-family:var(--font-mono); font-weight:600; }
+
+  .stats-row{ display:grid; grid-template-columns:repeat(6,1fr); gap:.7rem; margin-top:2.2rem; }
+  .stat-card{
+    background:var(--paper-raised); border:1px solid var(--line); border-radius:14px; padding:.9rem .95rem; min-width:0; position:relative;
+  }
+  .stat-card .dot{ width:.5rem; height:.5rem; border-radius:99px; display:inline-block; margin-bottom:.4rem; }
+  .stat-card .n{ font-family:var(--font-mono); font-weight:700; font-size:1.25rem; color:var(--ink); display:block; font-variant-numeric:tabular-nums; }
+  .stat-card .l{ font-size:.74rem; color:var(--ink-soft); margin-top:.15rem; display:block; }
+
+  @media (max-width:900px){ .hero-inner{ grid-template-columns:1fr; } .stats-row{ grid-template-columns:repeat(2,1fr); } }
+  @media (max-width:560px){ .stats-row{ grid-template-columns:repeat(2,1fr); } }
+
+  .shell{ max-width:1180px; margin:0 auto; padding:2.6rem 1.25rem 6rem; display:grid; grid-template-columns:220px minmax(0,1fr); gap:3rem; align-items:start; }
+  nav.toc{ display:none; }
+  @media (min-width:1000px){ nav.toc{ display:block; position:sticky; top:4.2rem; max-height:calc(100vh - 5rem); overflow-y:auto; font-size:.86rem; padding-right:.5rem; } }
+  nav.toc ol{ list-style:none; margin:0; padding:0; border-left:2px solid var(--line); }
+  nav.toc li a{ display:block; padding:.32rem 0 .32rem .85rem; color:var(--ink-soft); text-decoration:none; border-left:2px solid transparent; margin-left:-2px; }
+  nav.toc li a:hover{ color:var(--ink); }
+  nav.toc li a.active{ color:var(--coral); border-left-color:var(--coral); font-weight:600; }
+
+  main{ min-width:0; }
+  section.section{ padding-top:1rem; margin-bottom:3.6rem; scroll-margin-top:4.5rem; }
+  .kicker{ font-family:var(--font-mono); font-size:.78rem; color:var(--coral); letter-spacing:.04em; margin-bottom:.35rem; display:block; }
+  section.section h2{ font-size:clamp(1.35rem,1.15rem + .6vw,1.75rem); margin:0 0 .9rem; }
+  .lede{ color:var(--ink-soft); font-size:1.02rem; max-width:66ch; }
+
+  /* origin */
+  .origin-grid{ display:grid; grid-template-columns:1fr 1fr; gap:1.4rem; margin-top:1.4rem; }
+  @media (max-width:800px){ .origin-grid{ grid-template-columns:1fr; } }
+  .quote-card{ background:var(--paper-raised); border:1px solid var(--line); border-radius:var(--radius); padding:1.5rem 1.6rem; box-shadow:var(--shadow); }
+  .quote-card blockquote{ font-family:var(--font-display); font-size:1.2rem; line-height:1.5; margin:0 0 .8rem; color:var(--ink); }
+  .quote-card .attrib{ font-size:.8rem; color:var(--ink-faint); font-family:var(--font-mono); }
+  .principle-card{ background:var(--coral-soft); border:1px solid color-mix(in srgb, var(--coral) 35%, transparent); border-radius:var(--radius); padding:1.5rem 1.6rem; }
+  .principle-card h4{ color:var(--coral); font-size:1rem; margin:0 0 .5rem; }
+  .principle-card p{ font-size:.92rem; margin:0; max-width:none; }
+
+  /* EKG timeline */
+  .ekg-card{ background:var(--paper-raised); border:1px solid var(--line); border-radius:var(--radius); padding:1.4rem 1.5rem 1rem; box-shadow:var(--shadow); margin:1.4rem 0; }
+  .ekg-card svg{ width:100%; height:auto; display:block; }
+  .ekg-labels{ display:flex; justify-content:space-between; font-family:var(--font-mono); font-size:.72rem; color:var(--ink-faint); margin-top:.3rem; padding:0 .2rem; }
+  .ekg-legend{ display:flex; gap:1.2rem; flex-wrap:wrap; margin-top:.8rem; font-size:.8rem; color:var(--ink-soft); }
+  .ekg-legend span.sw{ display:inline-block; width:.7rem; height:.7rem; border-radius:2px; margin-right:.35rem; vertical-align:-1px; }
+
+  .era-list{ display:flex; flex-direction:column; gap:.9rem; margin-top:1.4rem; }
+  .era-item{ display:grid; grid-template-columns:150px 1fr; gap:1.2rem; border-top:1px solid var(--line); padding-top:.9rem; }
+  .era-item:first-child{ border-top:none; padding-top:0; }
+  .era-item .era-when{ font-family:var(--font-mono); font-size:.78rem; color:var(--ink-faint); }
+  .era-item .era-when b{ display:block; font-family:var(--font-body); font-size:.95rem; color:var(--ink); font-weight:700; margin-bottom:.15rem; }
+  .era-item .era-body p{ font-size:.92rem; margin:0 0 .4rem; max-width:none; }
+  @media (max-width:700px){ .era-item{ grid-template-columns:1fr; } }
+
+  /* architecture */
+  .arch-diagram{ display:grid; gap:.6rem; margin:1.4rem 0 1.8rem; }
+  .arch-row{ display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:.6rem; }
+  .arch-box{ border:1px solid var(--line); background:var(--paper-raised); border-radius:12px; padding:.75rem .85rem; }
+  .arch-box .t{ font-weight:700; font-size:.88rem; display:block; margin-bottom:.15rem; }
+  .arch-box .d{ font-size:.78rem; color:var(--ink-soft); }
+  .arch-box.accent{ border-color:color-mix(in srgb, var(--cobalt) 40%, transparent); background:var(--cobalt-soft); }
+  .arch-box.accent .t{ color:var(--cobalt); }
+  .arch-arrow{ text-align:center; color:var(--ink-faint); font-size:.85rem; font-family:var(--font-mono); }
+  .table-scroll{ overflow-x:auto; border:1px solid var(--line); border-radius:10px; }
+  table.stack{ width:100%; border-collapse:collapse; font-size:.86rem; }
+  table.stack th{ text-align:left; padding:.5rem .7rem; background:var(--paper-sunken); font-size:.72rem; text-transform:uppercase; letter-spacing:.03em; color:var(--ink-soft); white-space:nowrap; }
+  table.stack td{ padding:.5rem .7rem; border-top:1px solid var(--line); vertical-align:top; }
+  table.stack td:first-child{ font-weight:600; white-space:nowrap; }
+  table.stack tr:hover td{ background:color-mix(in srgb, var(--cobalt-soft) 45%, transparent); }
+
+  /* difficulty cards */
+  .diff-card{ border:1px solid var(--line); border-radius:var(--radius); background:var(--paper-raised); box-shadow:var(--shadow); padding:1.5rem 1.6rem; margin-bottom:1.4rem; scroll-margin-top:4.5rem; }
+  .diff-head{ display:flex; align-items:flex-start; gap:1rem; margin-bottom:1rem; flex-wrap:wrap; }
+  .diff-num{ font-family:var(--font-mono); font-size:1.5rem; font-weight:700; color:var(--line); line-height:1; }
+  .diff-head h3{ font-size:1.1rem; margin:0 0 .3rem; }
+  .diff-meta{ display:flex; gap:.5rem; flex-wrap:wrap; }
+  .tagv{ font-family:var(--font-mono); font-size:.72rem; padding:.1rem .45rem; border-radius:5px; background:var(--coral-soft); color:var(--coral); }
+  .tagera{ font-family:var(--font-mono); font-size:.72rem; padding:.1rem .45rem; border-radius:5px; background:var(--paper-sunken); color:var(--ink-soft); }
+  .diff-sub{ margin-top:.9rem; }
+  .diff-sub h4{ font-size:.74rem; text-transform:uppercase; letter-spacing:.05em; color:var(--ink-faint); margin:0 0 .3rem; font-family:var(--font-mono); font-weight:600; }
+  .diff-sub p{ font-size:.92rem; max-width:none; }
+
+  .stat-pair{ display:flex; align-items:stretch; gap:.7rem; margin:.9rem 0; flex-wrap:wrap; }
+  .stat-block{ flex:1; min-width:170px; border-radius:10px; padding:.7rem .9rem; }
+  .stat-block.before{ background:var(--critical-soft); }
+  .stat-block.after{ background:var(--teal-soft); }
+  .stat-block .stat-label{ display:block; font-size:.72rem; color:var(--ink-soft); margin-bottom:.2rem; }
+  .stat-block .stat-value{ display:block; font-family:var(--font-mono); font-weight:700; font-size:1rem; }
+  .stat-block.before .stat-value{ color:var(--critical); }
+  .stat-block.after .stat-value{ color:var(--teal); }
+  .stat-arrow{ align-self:center; color:var(--ink-faint); font-size:1.2rem; }
+
+  /* semantic colors demo */
+  .semantic-grid{ display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:.9rem; margin:1.3rem 0; }
+  .semantic-card{ border-radius:var(--radius); padding:1rem 1.1rem; border:1px solid var(--line); }
+  .semantic-card .sw{ width:1.6rem; height:1.6rem; border-radius:50%; margin-bottom:.6rem; }
+  .semantic-card h5{ margin:0 0 .3rem; font-size:.92rem; font-family:var(--font-body); font-weight:700; }
+  .semantic-card p{ font-size:.82rem; color:var(--ink-soft); margin:0; max-width:none; }
+
+  /* capability grid */
+  .cap-grid{ display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:1rem; margin-top:1.3rem; }
+  .cap-card{ border:1px solid var(--line); border-radius:var(--radius); background:var(--paper-raised); padding:1.1rem 1.2rem; }
+  .cap-card h4{ font-size:.95rem; margin:0 0 .5rem; display:flex; align-items:center; gap:.5rem; }
+  .cap-card h4 .dot{ width:.55rem; height:.55rem; border-radius:99px; background:var(--cobalt); display:inline-block; flex:none; }
+  .cap-card p{ font-size:.85rem; color:var(--ink-soft); margin:0; }
+
+  /* quality */
+  .gate-table-wrap .pill{ display:inline-block; font-family:var(--font-mono); font-size:.72rem; font-weight:700; padding:.1rem .5rem; border-radius:99px; white-space:nowrap; }
+  .pill-good{ background:var(--teal-soft); color:var(--teal); }
+  .pill-warn{ background:var(--coral-soft); color:var(--coral); }
+  .pill-critical{ background:var(--critical-soft); color:var(--critical); }
+
+  .gate-banner{ display:flex; align-items:center; gap:1rem; flex-wrap:wrap; border-radius:var(--radius); padding:1rem 1.3rem; background:var(--coral-soft); border:1px solid color-mix(in srgb, var(--coral) 35%, transparent); margin:1.3rem 0; }
+  .gate-banner .big{ font-family:var(--font-mono); font-weight:700; font-size:1.05rem; color:var(--coral); }
+  .gate-banner p{ margin:0; font-size:.88rem; color:var(--ink); max-width:none; }
+
+  .road-cols{ display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:1.1rem; margin-top:1.2rem; }
+  .road-col h4{ font-size:.9rem; margin:0 0 .6rem; padding-bottom:.4rem; border-bottom:2px solid var(--line); }
+  .road-col ul{ margin:0; padding-left:1.1rem; }
+  .road-col li{ font-size:.87rem; color:var(--ink-soft); margin-bottom:.55rem; }
+
+  footer{ border-top:1px solid var(--line); margin-top:4rem; }
+  footer .wrap{ padding:2rem 1.25rem 3rem; display:flex; justify-content:space-between; gap:1rem; flex-wrap:wrap; align-items:center; }
+  footer p{ margin:0; font-size:.82rem; color:var(--ink-faint); }
+</style>
+
+<div class="topbar">
+  <div class="topbar-inner">
+    <div class="brand"><b>HealthManager</b><span class="sep">/</span>开发全景报告</div>
+    <span class="version-badge">v0.4.0 (build 9) · 真机已发布</span>
+  </div>
+</div>
+
+<header class="hero">
+  <div class="hero-inner">
+    <div>
+      <span class="eyebrow">开发任务汇报 · 产品与技术全景</span>
+      <h1>本地优先的健康数据产品：64 天，中间躺平了 35 天</h1>
+      <p class="dek">一个面向 Apple 生态的 iOS 健康数据聚合应用：把「不知道」与「0」严格分开的产品纪律、Claude Code 与 Codex 双工具协作、以及一次由真实数据倒逼出的治理流程。</p>
+    </div>
+    <div class="badge-card">
+      <div class="bc-top">
+        <div><span class="bc-label">当前构建</span><div class="bc-build">v0.4.0 (9)</div></div>
+        <div class="bc-ring" aria-hidden="true"></div>
+      </div>
+      <div class="bc-rows">
+        <div class="bc-row"><span>单元测试</span><span>251/251</span></div>
+        <div class="bc-row"><span>UI 测试</span><span>7/7</span></div>
+        <div class="bc-row"><span>真机 Release 构建</span><span>0 error / 0 warning</span></div>
+        <div class="bc-row"><span>分发方式</span><span>私有 Release · 非 App Store</span></div>
+      </div>
+    </div>
+  </div>
+  <div class="wrap">
+    <div class="stats-row">
+      <div class="stat-card"><span class="dot" style="background:var(--cobalt)"></span><span class="n">64 天</span><span class="l">开发跨度（05-13→07-16）</span></div>
+      <div class="stat-card"><span class="dot" style="background:var(--coral)"></span><span class="n">35 天</span><span class="l">中段完全沉寂</span></div>
+      <div class="stat-card"><span class="dot" style="background:var(--teal)"></span><span class="n">0 → 258</span><span class="l">自动化测试增长</span></div>
+      <div class="stat-card"><span class="dot" style="background:var(--violet)"></span><span class="n">22,230 行</span><span class="l">生产代码（88 个 Swift 文件）</span></div>
+      <div class="stat-card"><span class="dot" style="background:var(--cobalt)"></span><span class="n">99 次</span><span class="l">提交</span></div>
+      <div class="stat-card"><span class="dot" style="background:var(--teal)"></span><span class="n">2</span><span class="l">协作 AI 工具（Claude Code + Codex）</span></div>
+    </div>
+  </div>
+</header>
+
+<div class="shell">
+  <nav class="toc" aria-label="目录">
+    <ol>
+      <li><a href="#origin">一、起点：一句诊断，不是一份文档</a></li>
+      <li><a href="#timeline">二、开发节律：两次冲刺，一次躺平</a></li>
+      <li><a href="#architecture">三、技术架构现状</a></li>
+      <li><a href="#difficulties">四、关键难点全纪录</a></li>
+      <li><a href="#collab">五、双 AI 工具协作与治理协议</a></li>
+      <li><a href="#capabilities">六、当前产品能力全景</a></li>
+      <li><a href="#quality">七、质量与验证体系</a></li>
+      <li><a href="#roadmap">八、遗留问题与后续规划</a></li>
+      <li><a href="#summary">九、总结</a></li>
+    </ol>
+  </nav>
+
+  <main>
+
+    <section id="origin" class="section">
+      <span class="kicker">01</span>
+      <h2>一、起点：一句诊断，不是一份文档</h2>
+      <p class="lede">HealthManager 没有留下一份类似"独立需求文档"的东西——第一轮提交（2026-05-13）就已经对照内部 PRD 直接交付了 12 张数据表结构，说明产品判断在写代码之前就想清楚了。真正的起点，是一句诊断和一条随之而来的产品纪律。</p>
+      <div class="origin-grid">
+        <div class="quote-card">
+          <blockquote>"健康数据分散在饮食记录、Apple Health、Apple Watch、运动 App、体重秤和热量计算工具里。数据不少，用户却仍然难以回答最日常的问题：今天摄入了多少？消耗了多少？当前热量缺口是多少？"</blockquote>
+          <div class="attrib">—— 项目自述「问题」</div>
+        </div>
+        <div class="principle-card">
+          <h4>核心产品纪律：「不知道」≠「0」</h4>
+          <p>任何一项输入未知时，宁可显式说明"当前不能计算热量缺口"，也不把未知静默补成 0 制造一个假的精确数字——这条纪律不是一句口号，本报告 §四 的 STAGE-007B 案例会展示它如何被系统性地落实到 7 条具体代码路径里。</p>
+        </div>
+      </div>
+    </section>
+
+    <section id="timeline" class="section">
+      <span class="kicker">02</span>
+      <h2>二、开发节律：两次冲刺，一次躺平</h2>
+      <p class="lede">99 次提交按天分布画出来，是一条真实的心电图——不是隐喻，是这个健康类项目自己的开发节律恰好长成了这个形状：起步冲刺、迭代期、35 天完全沉寂、然后是决定项目质量走向的治理化冲刺。</p>
+      <div class="ekg-card">
+        <svg viewBox="0 0 620 130" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="逐日提交次数走势图">
+          <line x1="0" y1="112" x2="620" y2="112" stroke="var(--line)" stroke-width="1"/>
+          <polyline points="5,84 14.5,84 24,72 33.5,108 43,112 119,112 128.5,88 138,112 157,112 166.5,96 176,112 204.5,112 214,92 223.5,112 233,100 242.5,100 252,112 575,112 584.5,76 594,20 603.5,36 613,104"
+            fill="none" stroke="var(--coral)" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round"/>
+          <circle cx="594" cy="20" r="3.5" fill="var(--coral)"/>
+          <text x="594" y="12" text-anchor="middle" font-family="ui-monospace,monospace" font-size="9" fill="var(--ink)">7/14 单日 23 次提交</text>
+          <text x="330" y="105" text-anchor="middle" font-family="ui-monospace,monospace" font-size="9" fill="var(--ink-faint)">35 天沉寂（06-08 → 07-12）</text>
+        </svg>
+        <div class="ekg-labels"><span>05-13</span><span>06-01</span><span>07-01</span><span>07-16</span></div>
+        <div class="ekg-legend">
+          <div><span class="sw" style="background:var(--coral)"></span>每日提交次数</div>
+        </div>
+      </div>
+
+      <div class="era-list">
+        <div class="era-item">
+          <div class="era-when"><b>起步冲刺</b>05-13 → 05-16 · 4 天 25 commits</div>
+          <div class="era-body">
+            <p>Round 1～8：工程骨架、HealthKit 授权、12 张 PRD 表 + 2 张辅助表、自动增量同步(F-001)、手动一键同步(F-002)、每日对账(R-001)、数据质量 UI、V1 收尾（38 个 Swift 文件，0 errors/0 warnings）。Round 8 当天在真机实测中发现并修复了一次 MainActor 死锁（详见 §四）。05-14 深夜到 05-15，又以 V2～V6 连续交付了对账阈值可编辑、用药提醒、饮食拍照识别、Vision 标签、LLM 文本摘要接入，单元测试从 0 冲到 74。</p>
+          </div>
+        </div>
+        <div class="era-item">
+          <div class="era-when"><b>v0.2.x 迭代期</b>05-16 → 06-07 · 6 个零散工作日</div>
+          <div class="era-body">
+            <p>活动能量口径重做、体重均值展示、AI 多接口配置（DeepSeek/豆包/Qwen/GLM/Moonshot/Gemini 陆续接入又收敛）、多图饮食识别、Apple Developer Program 团队 ID 接入解决 7 天签名过期问题、修复思考型模型解析失败与网络瞬断重试、修复本地推理提示词缓存导致的空返回（详见 §四"两次不同的失败"）。06-19 补打 <code>v0.2.5-backup</code> 标签后，项目进入完全静默期。</p>
+          </div>
+        </div>
+        <div class="era-item">
+          <div class="era-when"><b>35 天沉寂</b>06-08 → 07-12</div>
+          <div class="era-body">
+            <p>零提交。这不是被隐藏的空窗，而是本报告刻意保留的真实节律——个人项目的开发本就不是匀速的。</p>
+          </div>
+        </div>
+        <div class="era-item">
+          <div class="era-when"><b>v0.3.0 治理化冲刺</b>07-13 → 07-15 · 3 天 51 commits</div>
+          <div class="era-body">
+            <p>重新拾起项目的第一件事，不是加功能，而是引入正式的 <strong>Architect-Coder 协作协议</strong>（详见 §五）、写下 ADR-001（餐食历史快照）、跑通 STAGE-001～009 九个阶段，其中 STAGE-007B 是本项目最系统的一次数据完整性整改。07-15 傍晚，STAGE-009 真机验收门七项全部过关，v0.3.0（build 8）正式发布：251/251 单元测试、7/7 UI 测试。</p>
+          </div>
+        </div>
+        <div class="era-item">
+          <div class="era-when"><b>v0.4.0 UI 改版</b>07-16 · 单日 8 个子阶段全部完成</div>
+          <div class="era-body">
+            <p>ADR-002 确立"基线叙事 + 局部决策透镜"的界面语言，STAGE-010A～011 当天全部跑完并双轴复核（Standards + Spec 独立审查），258/258 测试复验通过，21:27 打标 <code>v0.4.0</code>，真机覆盖安装 + GitHub Release。</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="architecture" class="section">
+      <span class="kicker">03</span>
+      <h2>三、技术架构现状</h2>
+      <p class="lede">Swift / Xcode 原生 iOS 应用，HealthKit 为数据入口，GRDB/SQLite 本地持久化，不做账户系统，未配置 LLM 时不上传任何健康数据。</p>
+      <div class="arch-diagram">
+        <div class="arch-row">
+          <div class="arch-box accent"><span class="t">HealthKit（Apple Watch / Garmin / 米家 / 华为 / 手工）</span><span class="d">HKObserverQuery 全集 + enableBackgroundDelivery(.immediate)</span></div>
+        </div>
+        <div class="arch-arrow">▼</div>
+        <div class="arch-row">
+          <div class="arch-box"><span class="t">SyncEngine（@MainActor）</span><span class="d">单工状态发布，实际读写全部委派给 4 个 actor</span></div>
+        </div>
+        <div class="arch-row">
+          <div class="arch-box"><span class="t">BackfillCoordinator</span><span class="d">30 天回补</span></div>
+          <div class="arch-box"><span class="t">IncrementalSyncCoordinator</span><span class="d">Anchor 增量</span></div>
+          <div class="arch-box"><span class="t">ManualSyncCoordinator</span><span class="d">两阶段 envelope</span></div>
+          <div class="arch-box"><span class="t">DailyReconciler</span><span class="d">完整度/新鲜度/冲突度三分</span></div>
+        </div>
+        <div class="arch-arrow">▼</div>
+        <div class="arch-row">
+          <div class="arch-box accent"><span class="t">GRDB / SQLite（WAL）</span><span class="d">DatabasePool + asyncRead/asyncWrite；12 张 PRD 表起步，只追加不改写迁移</span></div>
+        </div>
+      </div>
+      <div class="table-scroll">
+        <table class="stack">
+          <thead><tr><th>层</th><th>规模 / 选型</th><th>说明</th></tr></thead>
+          <tbody>
+            <tr><td>App/</td><td>3 文件 · 410 行</td><td>@main + AppEnvironment + RootView</td></tr>
+            <tr><td>Core/</td><td>44 文件 · 7,896 行</td><td>数据层、同步、聚合、LLM、通知，10 个子目录</td></tr>
+            <tr><td>UI/</td><td>41 文件 · 13,924 行</td><td>16 个子目录：今日/饮食/用药/趋势/更多五栏导航</td></tr>
+            <tr><td>Tests + UITests</td><td>32 文件 · 8,318 行</td><td>占生产代码体量 37%</td></tr>
+            <tr><td>数据模型</td><td>12 张模型文件</td><td>v1 起 12 表，历经 v2-v5 只追加式迁移，v5 新增 meal_items 规范化快照（ADR-001）</td></tr>
+            <tr><td>LLM 接入</td><td>OpenAI 兼容 /chat/completions</td><td>文本/视觉双通道独立配置；曾接入 DeepSeek/豆包/Qwen/GLM/Moonshot/Gemini，也曾经 Tailscale 接本机 Ollama/oMLX 跑 qwen3-vl 本地模型</td></tr>
+            <tr><td>持久化</td><td>GRDB 6.29.x</td><td>DatabasePool WAL 模式；测试用独立内存库</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="difficulties" class="section">
+      <span class="kicker">04</span>
+      <h2>四、关键难点全纪录</h2>
+      <p class="lede">从 64 天里挑出最有代表性的技术难点——每一个都不是"改一行代码"式的小修补，而是带来了架构或纪律上的调整。</p>
+
+      <div class="diff-card">
+        <div class="diff-head">
+          <span class="diff-num">01</span>
+          <div><h3>Round 8 的 MainActor 死锁：点完对账回仪表盘会卡住</h3>
+            <div class="diff-meta"><span class="tagv">05-14</span><span class="tagera">并发架构</span></div>
+          </div>
+        </div>
+        <div class="diff-sub"><h4>现象</h4><p>真机实测发现三类问题：回补/手动同步报错信息模糊；anchor 解码失败后同步无法自愈；点「立即对账」后回到仪表盘有概率卡住。</p></div>
+        <div class="diff-sub"><h4>根因</h4><p><code>SyncEngine</code> 是 <code>@MainActor</code>，而四个 coordinator 当时是普通 class，因此继承调用方 actor——内部对数据库的同步读写调用直接卡死主线程；7 天对账 × N 个类型 × 数十次 SQL 会冻结 Dashboard 的刷新队列。</p></div>
+        <div class="diff-sub"><h4>解法</h4><p>四个 coordinator 全部改为独立 <code>actor</code>，<code>SyncEngine</code> 只保留 <code>@MainActor</code> 发布状态；<code>DatabaseManager</code> 新增 async 包装；anchor 解码失败改为自愈——捕获异常后清空该类型的锚点，下次自动走全量同步，而不是卡死在坏状态里。</p></div>
+      </div>
+
+      <div class="diff-card">
+        <div class="diff-head">
+          <span class="diff-num">02</span>
+          <div><h3>跨源指标被错误相加：步数怎么比 Apple 健康多一倍</h3>
+            <div class="diff-meta"><span class="tagv">v0.2.x</span><span class="tagera">数据聚合</span></div>
+          </div>
+        </div>
+        <div class="diff-sub"><h4>现象与根因</h4><p>用户真机实测发现步数明显偏高。根因是 <code>SummaryGenerator</code> 对累计型指标（步数、距离、活动能量等）直接跨来源 <code>SUM</code>——Apple Watch 和 Garmin 各自记录的同一份运动事实被当成两份独立数据加总。</p></div>
+        <div class="diff-sub"><h4>解法</h4><p>引入 dominant-source 优先级策略：累计型指标按来源优先级只取一个主来源的值（用户明确要求"步数优先用佳明的"），非累计型指标（心率、体重）继续保持均值语义。单测锁定语义：Garmin 10000 vs Apple 8000 → 报 10000，不会 cross-sum 成 18000。</p></div>
+      </div>
+
+      <div class="diff-card">
+        <div class="diff-head">
+          <span class="diff-num">03</span>
+          <div><h3>本地 AI 推理栈的两次不同失败：先错怪了客户端解析</h3>
+            <div class="diff-meta"><span class="tagv">06 月</span><span class="tagera">诊断方法论</span></div>
+          </div>
+        </div>
+        <div class="diff-sub"><h4>第一层假设（错误）</h4><p>"AI 摘要对思考型模型报 cannot parse response"最初被当作纯客户端 JSON 解析问题处理，代码加了容忍 <code>content=null</code>、剥离 <code>&lt;think&gt;</code> 块等逻辑——治标不治本。</p></div>
+        <div class="diff-sub"><h4>真根因·第一层</h4><p>服务端日志显示 oMLX 0.4.1 存在 VLM 崩溃回归（<code>There is no Stream(gpu, 1) in current thread.</code>），返回 500 被 App 误判为解析失败。解法：降级到 oMLX 0.3.12。</p></div>
+        <div class="diff-sub"><h4>真根因·第二层（降级后才暴露）</h4><p>oMLX 0.3.12 存在提示词缓存 bug——重复请求同一个大 system prompt 时命中缓存但返回空内容（<code>completion_tokens=0</code>）。用完全相同的 prompt 直接对本地服务器发请求复现后才定位到。解法：给 system prompt 加唯一 nonce 强制 cache miss。</p></div>
+        <div class="diff-sub"><h4>教训</h4><p>项目自己的复盘原话："未来调试应先查服务端日志，而非假设只是客户端解析问题"——这条经验后来被沿用，避免同类现象被反复误判为客户端 bug。</p></div>
+      </div>
+
+      <div class="diff-card">
+        <div class="diff-head">
+          <span class="diff-num">04</span>
+          <div><h3>STAGE-007B：把"不知道≠0"钉进 7 条代码路径</h3>
+            <div class="diff-meta"><span class="tagv">07-14</span><span class="tagera">数据完整性</span></div>
+          </div>
+        </div>
+        <div class="diff-sub"><h4>审计发现</h4><p>架构师审计代码，发现 7 条会制造"错误确定性"的路径——从 Dashboard 今日餐次读取用 <code>?? 0</code> 累加营养素，到日报/周报把不完整餐次汇总成确定摄入，甚至可能作为 LLM 输入放大错误确定性。同一天的数据在 Dashboard、活动详情页、Diet 主页三处可能给出相互矛盾的结论。</p></div>
+        <div class="diff-sub"><h4>解法</h4><p>新建 <code>MealNutritionEvidence</code> 深模块，定义 <code>noMeals</code>/<code>incomplete</code>/<code>complete(Double)</code> 三态，作为所有消费者的唯一读取入口，杜绝各处重复实现完整性判断。</p></div>
+        <div class="stat-pair">
+          <div class="stat-block before"><span class="stat-label">红灯 · 针对双轴审查新增测试后</span><span class="stat-value">32 项中 30 通过、2 失败</span></div>
+          <div class="stat-arrow">→</div>
+          <div class="stat-block after"><span class="stat-label">绿灯 · 修复后</span><span class="stat-value">32/32 全过</span></div>
+        </div>
+        <div class="diff-sub"><h4>协作插曲</h4><p>过程中，一个低成本 Coder 会话在约 132k tokens 的纯只读盘点后仍未产生一行实现 diff，主架构师按既定升级规则中止执行并直接接管完成实现——这是 §五 治理协议里"总体状态取最弱子项"原则的真实触发案例。</p></div>
+      </div>
+
+      <div class="diff-card">
+        <div class="diff-head">
+          <span class="diff-num">05</span>
+          <div><h3>ADR-001：为什么放弃"省事"的 items_json 方案</h3>
+            <div class="diff-meta"><span class="tagv">07-13</span><span class="tagera">数据建模决策</span></div>
+          </div>
+        </div>
+        <div class="diff-sub"><h4>背景</h4><p><code>MealRecord</code> 原本只存一餐的营养汇总，每个食物的名称/克数/来源全部在保存后丢失——用户修正后重新打开会看到重新估算的结果，而不是自己保存过的分项。</p></div>
+        <div class="diff-sub"><h4>被否决的两个方案</h4><p>方案 A（加 <code>items_json</code> 列）："降低了眼前代码量，却把长期复杂度留给每一个消费者"——难以查询索引，JSON 解析会散落到各处。方案 C（立即建完整食品目录）："现在实施会把尚未验证的假设固化成核心 schema，属于过度设计"——没有确定的数据许可、版本策略和真实使用证据。</p></div>
+        <div class="diff-sub"><h4>最终方案 B</h4><p><code>meal_items</code> 作为历史快照而非对可变食品目录的实时引用；<code>provenance_kind</code>/<code>confidence</code>/<code>is_user_edited</code> 记录来源与置信度；字段全部 nullable，汇总规则是"一餐有分项时，任一分项某指标未知，该指标就是 NULL，不是 0"。旧库从 v4 无损升级，117 个单测通过。</p></div>
+      </div>
+
+      <div class="diff-card">
+        <div class="diff-head">
+          <span class="diff-num">06</span>
+          <div><h3>STAGE-008：主动删掉一个已经写在 schema 里的指标</h3>
+            <div class="diff-meta"><span class="tagv">07-14</span><span class="tagera">诚实边界</span></div>
+          </div>
+        </div>
+        <div class="diff-sub"><h4>现象</h4><p><code>sleep_efficiency</code> 字段一直存在，但 <code>DailyAggregator</code> 只写 NULL，没有任何界面显示它——一条"无效且容易被未来误用"的隐式数据路径。真实审计 Simulator 库：98 条记录里 <code>sleep_efficiency</code> 非空 0 条，没有任何数据能验证这个算法。</p></div>
+        <div class="diff-sub"><h4>根因</h4><p>真实计算睡眠效率需要 inBed/asleep 成对夜间窗口，但当时代码回答不了 5 个关键问题：跨午夜一晚归属哪天、多来源同晚记录怎么选、缺 inBed 时是否该展示……</p></div>
+        <div class="diff-sub"><h4>解法</h4><p>保守方案——UPSERT 显式清除历史非空值，从卡片彻底删除这个展示项，只保留已验证的睡眠时长。测试证明清除效率没有破坏时长计算本身。宁可少一个功能，也不展示一个无法验证的数字。</p></div>
+      </div>
+
+      <div class="diff-card">
+        <div class="diff-head">
+          <span class="diff-num">07</span>
+          <div><h3>STAGE-009 真机门抓出的具体缺陷：僵尸同步任务与"假删除"</h3>
+            <div class="diff-meta"><span class="tagv">07-15</span><span class="tagera">真机验收</span></div>
+          </div>
+        </div>
+        <div class="diff-sub"><h4>僵尸同步任务</h4><p>从真机数据容器审计出 <code>sync_jobs</code> 表里有 19 条 <code>running</code> 状态记录，最早遗留于 2026-06-10——这些不可能仍然有效，是跨进程/跨启动残留的僵尸任务。解法：新增 <code>SyncJobRecovery</code>，在任何同步/BGTask/observer 启动前，同一事务内把遗留的 pending/running 原子转 failed，且恢复失败时 fail-closed（不开放任何同步入口）。真机复跑验证：19 条全部转 failed，重复执行幂等。</p></div>
+        <div class="diff-sub"><h4>HealthKit 营养"假删除"</h4><p><code>syncMealNutrition</code> 在四项营养全为空时直接返回，但底层删除函数返回值是 <code>Void</code>——调用方拿不到"删除是否真的成功"的信息，导致 SQLite 已清空但 Apple 健康里的旧样本仍然残留。解法：删除结果改为可观察类型，只有全部类型删除成功才清空本地同步标记，否则保留并向用户报告"检查 Apple 健康权限后重试"。</p></div>
+        <div class="diff-sub"><h4>诚实标注的未完成项</h4><p>后台 observer 增量同步有 845 个自然真机成功作业（横跨 40 天）作为证据，STAGE-009 判定 PASS；但受控的"手工在 Health App 增删 marker、观察响应"探针实验因本机钥匙串在锁屏状态下报错而未能完成——报告原文明确要求"不将自然事件证据表述为该受控探针"，没有把未完成的验证写成已完成。</p></div>
+      </div>
+
+    </section>
+
+    <section id="collab" class="section">
+      <span class="kicker">05</span>
+      <h2>五、双 AI 工具协作与治理协议</h2>
+      <p class="lede">这个项目由 Claude Code 和 OpenAI Codex 两个工具协作开发，且 Claude Code 一度用 git worktree 拉出三条并行分支——这本身是一次"多 Agent 协作复杂产品开发"的真实样本。</p>
+      <div class="era-list">
+        <div class="era-item">
+          <div class="era-when"><b>并行分支</b>3 条 worktree</div>
+          <div class="era-body">
+            <p><code>great-thompson-f97a96</code>（Round 8 稳定性修复 + Apple Health 风格仪表盘重写）、<code>condescending-hoover-bb4b86</code>（V2～V5 阈值/通知/相机/LLM 交付）、<code>clever-swirles-86f66e</code>（v7 活动能量口径+图表修复）分别完成后合并回 main。真实发生过一次分支心智混乱：dashboard 重写完成后用户第一次测试看不到新 UI，根因是仍在测试旧 main checkout 而新代码在独立 worktree 里，靠 <code>git log</code> 对比才定位。</p>
+          </div>
+        </div>
+        <div class="era-item">
+          <div class="era-when"><b>Codex 的独立分工</b>6 类工作</div>
+          <div class="era-body">
+            <p>Tailscale + 本地 Ollama/oMLX 接入（纯 DevOps 配置）；LLM 多 provider 架构重构；oMLX 服务端诊断（需要直接读服务端日志的运维性调试）；发布/tag 纪律；Obsidian 项目库同步（把仓库状态写回用户的个人知识管理系统）；公开发布与微信小程序可行性评估（纯分析性任务，不改一行代码）。这些工作与 Claude Code 的连续功能迭代形成清晰的专业分工。</p>
+          </div>
+        </div>
+        <div class="era-item">
+          <div class="era-when"><b>Architect-Coder 治理协议</b>建立于 07-13</div>
+          <div class="era-body">
+            <p><code>docs/planning/HEALTHMANAGER-ARCHITECT-CODER-WORKFLOW.md</code> 确立了明确分工：架构师写 ADR/STAGE 任务书和自包含 Coder 提示词，Coder 只实现指定范围、不自行扩大、不提交/tag/push；架构师独立验收给出 PASS/FAIL/INCOMPLETE 三态结论，"总体状态取最弱子项"。文档还写明优先用更便宜的模型承担 Coder 角色，架构师角色本身用更强模型，且允许架构师在 Coder 表现不达标时直接接管——这条规则在 STAGE-007B（132k tokens 无 diff）里被真实触发过。</p>
+          </div>
+        </div>
+      </div>
+      <div class="principle-card" style="margin-top:1.2rem;">
+        <h4>协作文化侧写</h4>
+        <p>多份 Codex 会话记录反复出现用户原话"自己把整个项目连续进行到完成，包含测试和迭代部分"、"不要再问我了"——长期倾向于放权自主执行 + 事后验收的协作模式。35 天沉寂后重新拾起项目时，第一反应不是接着写功能，而是先把治理流程立起来，用协议替代逐次请示——这与沉寂前"连续 Round 式迭代"的松散节奏形成明显对比。</p>
+      </div>
+    </section>
+
+    <section id="capabilities" class="section">
+      <span class="kicker">06</span>
+      <h2>六、当前产品能力全景</h2>
+      <p class="lede">v0.4.0 五栏导航：今日 / 饮食 / 用药 / 趋势 / 更多。设计系统用四种语义色贯穿全部界面，与既有的指标家族配色分层共存。</p>
+      <div class="semantic-grid">
+        <div class="semantic-card" style="background:var(--cobalt-soft)"><div class="sw" style="background:var(--cobalt)"></div><h5>钴蓝 · 比较</h5><p>跨时间段/跨来源的对比语境</p></div>
+        <div class="semantic-card" style="background:var(--teal-soft)"><div class="sw" style="background:var(--teal)"></div><h5>青绿 · 已确认事实</h5><p>数据完整、可直接展示的结论</p></div>
+        <div class="semantic-card" style="background:var(--coral-soft)"><div class="sw" style="background:var(--coral)"></div><h5>珊瑚橙 · 缺失/待处理</h5><p>不完整数据与需要用户关注的告警</p></div>
+        <div class="semantic-card" style="background:var(--violet-soft)"><div class="sw" style="background:var(--violet)"></div><h5>柔紫 · AI 估算</h5><p>视觉识别/文本估算等外部可选结果</p></div>
+      </div>
+      <div class="cap-grid">
+        <div class="cap-card"><h4><span class="dot"></span>今日</h4><p>睡眠、用药、活动、餐食证据整合于同一时间线，含缺失提示。</p></div>
+        <div class="cap-card"><h4><span class="dot"></span>饮食</h4><p>规范化分项快照、最近餐/常用克数复用、多图 AI 识别、来源与置信度标注。</p></div>
+        <div class="cap-card"><h4><span class="dot"></span>用药</h4><p>计划管理、排程提醒、服用/跳过/推迟日志。</p></div>
+        <div class="cap-card"><h4><span class="dot"></span>趋势</h4><p>周/月/年可切换图表，卡片可自定义隐藏/排序。</p></div>
+        <div class="cap-card"><h4><span class="dot"></span>更多</h4><p>来源归因、同步中心、数据质量对账、告警、日/周报、AI 双通道配置。</p></div>
+        <div class="cap-card"><h4><span class="dot"></span>无障碍</h4><p>深色模式、Dynamic Type、Reduce Motion、VoiceOver 描述全面支持，真机门禁逐项验收。</p></div>
+      </div>
+    </section>
+
+    <section id="quality" class="section">
+      <span class="kicker">07</span>
+      <h2>七、质量与验证体系</h2>
+      <p class="lede">测试规模随版本增长的曲线,本身就是一部工程纪律演进史。</p>
+      <div class="table-scroll">
+        <table class="stack">
+          <thead><tr><th>阶段</th><th>单元测试</th><th>UI 测试</th></tr></thead>
+          <tbody>
+            <tr><td>V2</td><td>40</td><td>1</td></tr>
+            <tr><td>V5</td><td>74</td><td>1</td></tr>
+            <tr><td>Codex Round（05-16）</td><td>89 → 90</td><td>1</td></tr>
+            <tr><td>STAGE-007B 阶段</td><td>218</td><td>6</td></tr>
+            <tr><td>STAGE-007D</td><td>242</td><td>6</td></tr>
+            <tr><td>v0.3.0 发布</td><td><span class="pill pill-good">251</span></td><td><span class="pill pill-good">7</span></td></tr>
+            <tr><td>v0.4.0（当前）</td><td colspan="2"><span class="pill pill-good">258/258 合计</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <h3 style="margin-top:2rem;font-size:1.05rem;">STAGE-009 真机验收门（v0.3.0）</h3>
+      <div class="table-scroll">
+        <table class="stack">
+          <thead><tr><th>验收项</th><th>结果</th><th>证据</th></tr></thead>
+          <tbody>
+            <tr><td>数据库/HealthKit 升级无损</td><td><span class="pill pill-good">PASS</span></td><td>v1→v5 迁移全量回归</td></tr>
+            <tr><td>HealthKit 写入/编辑/删除</td><td><span class="pill pill-good">PASS</span></td><td>—</td></tr>
+            <tr><td>清空营养后旧样本删除</td><td><span class="pill pill-good">PASS</span></td><td>STAGE-009R2 独立闭环</td></tr>
+            <tr><td>照片生命周期</td><td><span class="pill pill-good">PASS</span></td><td>文件 133→133、引用 63→63，净变化 0</td></tr>
+            <tr><td>VoiceOver/最大字号/命中区</td><td><span class="pill pill-good">PASS</span></td><td>真机 Smoke 51.5s；途中修复 More 列表文本裁切</td></tr>
+            <tr><td>跨午夜睡眠/多来源</td><td><span class="pill pill-good">PASS</span></td><td>UI 5.1/6.0/3.6h 与 DB 5.12/6.04/3.58h 四舍五入一致</td></tr>
+            <tr><td>后台 observer/增量同步</td><td><span class="pill pill-warn">PASS（附条件）</span></td><td>845 个自然真机作业证据充分；受控 marker 探针未完成，如实标注</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="gate-banner">
+        <span class="big">诚实边界原则</span>
+        <p>自然真机证据满足 PASS 条件，但报告原文明确要求"不将自然事件证据表述为受控探针实验"——已完成的和未完成的验证被清楚分开写，不用一种证据的份量冒充另一种。</p>
+      </div>
+    </section>
+
+    <section id="roadmap" class="section">
+      <span class="kicker">08</span>
+      <h2>八、遗留问题与后续规划</h2>
+      <div class="road-cols">
+        <div class="road-col">
+          <h4>已知局限</h4>
+          <ul>
+            <li>未上架 App Store，仅私有 GitHub Release + 开发者签名直装</li>
+            <li>v0.4.0 UI 改版后未重新做全流程真机 VoiceOver/触觉验证</li>
+            <li>受控 Health App marker 探针实验仍未完成</li>
+            <li>隐私文案与实际 LLM 行为的一致性需要在下一版核实收口</li>
+          </ul>
+        </div>
+        <div class="road-col">
+          <h4>v0.4 已规划未做</h4>
+          <ul>
+            <li>新 ADR：食品数据源、许可与离线策略</li>
+            <li>食品目录与用户自建条目统一候选模型</li>
+            <li>营养标签 OCR、条码候选</li>
+            <li>本地个人纠正记忆（复用用户历史修订）</li>
+          </ul>
+        </div>
+        <div class="road-col">
+          <h4>v0.5 门控候选（需验证通过才启动）</h4>
+          <ul>
+            <li>用户主动开启的热量/宏量目标建议</li>
+            <li>训练日/休息日模板与采购清单</li>
+            <li>跨睡眠/活动/饮食相关性提示（只写同期出现,不写因果）</li>
+          </ul>
+        </div>
+        <div class="road-col">
+          <h4>明确排除</h4>
+          <ul>
+            <li>社区、排行榜、电商、广告、健康评分/诊断、自动用药建议、账号体系</li>
+            <li>微信小程序：评估结论为不建议完整迁移（无法读取 HealthKit，仅能拿 31 天步数，后台易被销毁）</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section id="summary" class="section">
+      <span class="kicker">09</span>
+      <h2>九、总结</h2>
+      <p>64 天，35 天完全沉寂，剩下的 29 天里做完了从工程骨架到真机发布的全部工作——这条节律本身就是这份报告最诚实的一条线索：个人项目不靠匀速堆时间，而是在重新拾起时用治理纪律换回质量。Architect-Coder 协议、"总体状态取最弱子项"的验收原则、"不知道≠0"贯穿始终的数据纪律，共同构成了一种和纯粹"功能堆叠"完全不同的工程文化。</p>
+      <p>项目当前的诚实定位：一个尚未上架 App Store 的个人本地健康产品，不提供医疗诊断建议；它已经证明的，是消费级产品设计、本地数据架构、Apple 生态开发与真机验收闭环，可以由一个人在两个 AI 工具的协作下走完，并且工程纪律不缩水。</p>
+    </section>
+
+  </main>
+</div>
+
+<footer>
+  <div class="wrap">
+    <p>HealthManager 开发全景报告 · 数据截至 v0.4.0（2026-07-16）</p>
+    <p class="mono">来源：git log · WORKLOG.md · ADR/STAGE 文档 · Codex 会话记录</p>
+  </div>
+</footer>
+
+<script>
+(function(){
+  var links = Array.prototype.slice.call(document.querySelectorAll('nav.toc a[href^="#"]'));
+  var targets = links.map(function(a){ return document.querySelector(a.getAttribute('href')); }).filter(Boolean);
+  if (!('IntersectionObserver' in window) || !targets.length) return;
+  var byId = {};
+  links.forEach(function(a){ byId[a.getAttribute('href').slice(1)] = a; });
+  var current = null;
+  var io = new IntersectionObserver(function(entries){
+    entries.forEach(function(entry){
+      if (entry.isIntersecting){
+        var a = byId[entry.target.id];
+        if (a && a !== current){
+          if (current) current.classList.remove('active');
+          a.classList.add('active');
+          current = a;
+        }
+      }
+    });
+  }, { rootMargin: '-15% 0px -70% 0px', threshold: 0 });
+  targets.forEach(function(t){ io.observe(t); });
+})();
+</script>

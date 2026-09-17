@@ -462,6 +462,108 @@ enum Migrations {
                 """)
         }
 
+        // MARK: v9 — 配方计算来源枚举 + 个人常吃/配方表（ADR-004）
+        //
+        // meal_items 的 provenance_kind CHECK 约束（v5 建立）无法 ALTER：SQLite 修改 CHECK
+        // 只能重建表。重建逐列复制既有行（保持 id），不改动既有四种取值的含义，仅新增
+        // 'recipe_calculation'——个人配方 × 官方食材条目计算出的分项来源，不得伪装成
+        // nutrition_database。
+        //
+        // 同一迁移创建个人创作数据表：个人映射（personal_foods，含候选匹配键、默认份量、
+        // 置顶）、忽略候选（ignored_candidates）、配方与不可变版本（personal_recipes /
+        // personal_recipe_versions）。这些是用户数据（ADR-004 §2.1），随备份包
+        // formatVersion 2 导出；与只读目录资源、餐次历史快照（ADR-001）三者性质分开。
+        migrator.registerMigration("v9_recipe_provenance_and_personal_foods") { db in
+            // 1. 重建 meal_items 扩展 provenance CHECK。
+            try db.create(table: "meal_items_v9") { t in
+                t.autoIncrementedPrimaryKey("id")
+                t.column("meal_id", .integer).notNull().references("meal_records", onDelete: .cascade)
+                t.column("sort_order", .integer).notNull().check(sql: "sort_order >= 0")
+                t.column("name", .text).notNull().check(sql: "TRIM(name) != ''")
+                t.column("grams", .double).check(sql: "grams IS NULL OR grams > 0")
+                t.column("preparation_state", .text).notNull()
+                    .check(sql: "preparation_state IN ('unknown', 'raw', 'cooked')")
+                t.column("calories_kcal", .double).check(sql: "calories_kcal IS NULL OR calories_kcal >= 0")
+                t.column("protein_g", .double).check(sql: "protein_g IS NULL OR protein_g >= 0")
+                t.column("fat_g", .double).check(sql: "fat_g IS NULL OR fat_g >= 0")
+                t.column("carbs_g", .double).check(sql: "carbs_g IS NULL OR carbs_g >= 0")
+                t.column("provenance_kind", .text).notNull()
+                    .check(sql: "provenance_kind IN ('manual', 'ai_estimate', 'nutrition_database', 'nutrition_label', 'recipe_calculation')")
+                t.column("provenance_ref", .text)
+                t.column("provenance_version", .text)
+                t.column("confidence", .text)
+                    .check(sql: "confidence IS NULL OR confidence IN ('low', 'medium', 'high')")
+                t.column("is_user_edited", .boolean).notNull().defaults(to: false)
+                t.column("created_at", .integer).notNull()
+                t.column("updated_at", .integer).notNull()
+            }
+            try db.execute(sql: """
+                INSERT INTO meal_items_v9
+                    (id, meal_id, sort_order, name, grams, preparation_state,
+                     calories_kcal, protein_g, fat_g, carbs_g, provenance_kind,
+                     provenance_ref, provenance_version, confidence, is_user_edited,
+                     created_at, updated_at)
+                SELECT
+                    id, meal_id, sort_order, name, grams, preparation_state,
+                    calories_kcal, protein_g, fat_g, carbs_g, provenance_kind,
+                    provenance_ref, provenance_version, confidence, is_user_edited,
+                    created_at, updated_at
+                FROM meal_items
+                ORDER BY id
+                """)
+            try db.drop(table: "meal_items")
+            try db.rename(table: "meal_items_v9", to: "meal_items")
+            try db.create(
+                index: "idx_meal_items_meal_sort_order",
+                on: "meal_items",
+                columns: ["meal_id", "sort_order"],
+                unique: true
+            )
+
+            // 2. 配方与不可变版本：修改配方生成新版本，旧餐继续引用旧快照。
+            try db.create(table: "personal_recipes") { t in
+                t.autoIncrementedPrimaryKey("id")
+                t.column("display_name", .text).notNull().check(sql: "TRIM(display_name) != ''")
+                t.column("current_version", .integer).notNull()
+                t.column("created_at", .integer).notNull()
+                t.column("updated_at", .integer).notNull()
+            }
+            try db.create(table: "personal_recipe_versions") { t in
+                t.autoIncrementedPrimaryKey("id")
+                t.column("recipe_id", .integer).notNull().references("personal_recipes", onDelete: .cascade)
+                t.column("version", .integer).notNull()
+                t.column("ingredients_json", .text).notNull()
+                t.column("output_grams", .double).check(sql: "output_grams IS NULL OR output_grams >= 0")
+                t.column("output_weight_basis", .text)
+                    .check(sql: "output_weight_basis IS NULL OR output_weight_basis IN ('weighed', 'estimated')")
+                t.column("note", .text)
+                t.column("created_at", .integer).notNull()
+                t.uniqueKey(["recipe_id", "version"])
+            }
+
+            // 3. 个人映射：候选名 → 官方条目/配方；含默认份量与置顶。
+            try db.create(table: "personal_foods") { t in
+                t.autoIncrementedPrimaryKey("id")
+                t.column("kind", .text).notNull().check(sql: "kind IN ('catalog', 'recipe')")
+                t.column("display_name", .text).notNull().check(sql: "TRIM(display_name) != ''")
+                t.column("match_keys_json", .text).notNull().defaults(to: "[]")
+                t.column("catalog_entry_id", .text)
+                t.column("catalog_version", .text)
+                t.column("recipe_id", .integer).references("personal_recipes", onDelete: .cascade)
+                t.column("default_grams", .double).check(sql: "default_grams IS NULL OR default_grams > 0")
+                t.column("pinned", .boolean).notNull().defaults(to: false)
+                t.column("confirmed_at", .integer).notNull()
+                t.column("created_at", .integer).notNull()
+                t.column("updated_at", .integer).notNull()
+            }
+
+            // 4. 被忽略的候选：不再在「我的常吃」重现。
+            try db.create(table: "ignored_candidates") { t in
+                t.column("candidate_key", .text).primaryKey()
+                t.column("created_at", .integer).notNull()
+            }
+        }
+
         return migrator
     }
 

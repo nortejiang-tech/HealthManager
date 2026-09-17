@@ -102,6 +102,12 @@ struct MealItemEvidencePresentation: Equatable {
                 symbolName: "tag",
                 cautionText: "包装标签可能采用每份或每 100g 口径；当前未保存份量单位证据，不能视为已核对。"
             )
+        case .recipeCalculation:
+            return SourceMetadata(
+                title: "配方计算",
+                symbolName: "function",
+                cautionText: "由个人配方与官方食材条目计算，属于简化估算（未含未量化的烹调损失）；保存后为快照，不随配方修订改变。"
+            )
         }
     }
 

@@ -48,6 +48,10 @@ struct BackupExporter {
         .init(table: "missing_data_alerts", fileName: "missing_data_alerts.jsonl", orderBy: "id", replaceOnConflict: true),
         .init(table: "daily_summaries", fileName: "daily_summaries.jsonl", orderBy: "date", replaceOnConflict: false),
         .init(table: "weekly_summaries", fileName: "weekly_summaries.jsonl", orderBy: "week_start_date", replaceOnConflict: false),
+        // v2 个人创作数据（ADR-004 §2.5）：恢复顺序 = 配方主体 → 版本 → 引用两者的映射。
+        .init(table: "personal_recipes", fileName: "personal_recipes.jsonl", orderBy: "id", replaceOnConflict: false),
+        .init(table: "personal_recipe_versions", fileName: "personal_recipe_versions.jsonl", orderBy: "recipe_id, version", replaceOnConflict: false),
+        .init(table: "personal_foods", fileName: "personal_foods.jsonl", orderBy: "id", replaceOnConflict: false),
     ]
 
     static let settingsFileName = "settings.json"
@@ -65,6 +69,7 @@ struct BackupExporter {
     - `manifest.json`：格式版本、App 版本、导出时间、每文件记录数、SHA-256 校验和。
     - `*.jsonl`：每行一条 JSON 记录，字段名与 `docs/export-schema.md` 一致。
     - 字段只增不改：新版本只会追加字段，不会改名或删除已有字段。
+    - v2 起包含个人配方与常吃映射（personal_recipes / personal_recipe_versions / personal_foods）。
     - 此备份包不包含照片与 Apple 健康原始样本；原始健康数据由 Apple 健康自身同步。
 
     导入（恢复）由 HealthManager 的引导页或设置页完成，重复导入安全（只补缺、不覆盖）。

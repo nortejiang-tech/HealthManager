@@ -38,29 +38,6 @@ final class EvidenceToneTests: XCTestCase {
         XCTAssertEqual(EvidenceTone.forDietLoadState(.loaded, calories: .noMeals), .neutral)
     }
 
-    // MARK: - 今日页
-
-    func test_qualityStyle_mapping() {
-        XCTAssertEqual(
-            EvidenceTone.forQualityStyle(.unreconciled), .neutral)
-        XCTAssertEqual(
-            EvidenceTone.forQualityStyle(.reconciledNoAlerts), .confirmed)
-        XCTAssertEqual(
-            EvidenceTone.forQualityStyle(.hasAlerts), .actionRequired)
-    }
-
-    func test_lens_prefersAlertsOverTimeline() {
-        XCTAssertEqual(
-            EvidenceTone.forLens(qualityStyle: .hasAlerts, hasTimelineRows: true),
-            .actionRequired)
-        XCTAssertEqual(
-            EvidenceTone.forLens(qualityStyle: .reconciledNoAlerts, hasTimelineRows: true),
-            .confirmed)
-        XCTAssertEqual(
-            EvidenceTone.forLens(qualityStyle: .reconciledNoAlerts, hasTimelineRows: false),
-            .neutral)
-    }
-
     // MARK: - 用药动作（回归：曾直接使用系统 .green/.red/.orange）
 
     func test_medicationAction_taken_isConfirmed() {
@@ -79,5 +56,6 @@ final class EvidenceToneTests: XCTestCase {
         XCTAssertEqual(EvidenceTone.forProvenance(.aiEstimate), .estimate)
         XCTAssertEqual(EvidenceTone.forProvenance(.nutritionDatabase), .comparison)
         XCTAssertEqual(EvidenceTone.forProvenance(.nutritionLabel), .comparison)
+        XCTAssertEqual(EvidenceTone.forProvenance(.recipeCalculation), .comparison)
     }
 }

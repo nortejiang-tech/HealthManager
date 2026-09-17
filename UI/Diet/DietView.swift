@@ -25,12 +25,23 @@ enum DietLoadState: Equatable {
 struct DietView: View {
     @EnvironmentObject private var environment: AppEnvironment
 
+    private static let pageSize = 50
+
     @State private var meals: [MealRecord] = []
     @State private var activeSheet: DietSheetKind?
     @State private var todayNutrition: MealNutritionEvidenceWindow?
     @State private var loadState: DietLoadState = .loading
     @State private var refreshGeneration: Int = 0
     @State private var deleteErrorMessage: String?
+
+    // 历史查询（A14）：搜索、日期筛选与分页——超过 50 条的旧餐可直达。
+    @State private var searchText: String = ""
+    @State private var filterDay: Date?
+    @State private var showingDayPicker: Bool = false
+    @State private var totalCount: Int?
+    @State private var hasMore: Bool = false
+    @State private var isLoadingMore: Bool = false
+    @State private var searchDebounce: Task<Void, Never>?
 
     private enum DietSheetKind: Identifiable, Equatable {
         case add
@@ -54,6 +65,28 @@ struct DietView: View {
                 loadState: loadState,
                 meals: meals,
                 todayNutrition: todayNutrition,
+                searchText: $searchText,
+                filterDay: filterDay,
+                totalCount: totalCount,
+                hasMore: hasMore,
+                isLoadingMore: isLoadingMore,
+                onSearchTextChanged: {
+                    scheduleSearchReload()
+                },
+                onClearDayFilter: {
+                    filterDay = nil
+                    Task { await reloadFirstPage() }
+                },
+                onPickToday: {
+                    filterDay = Date()
+                    Task { await reloadFirstPage() }
+                },
+                onOpenDayPicker: {
+                    showingDayPicker = true
+                },
+                onLoadMore: {
+                    await loadMore()
+                },
                 onAdd: { activeSheet = .add },
                 onReuse: { activeSheet = .reuse },
                 onMealTap: { meal in
@@ -95,6 +128,18 @@ struct DietView: View {
                     MealReuseView()
                 }
             }
+            .sheet(isPresented: $showingDayPicker) {
+                DietDayPickerSheet(
+                    onConfirm: { day in
+                        filterDay = day
+                        showingDayPicker = false
+                        Task { await reloadFirstPage() }
+                    },
+                    onCancel: {
+                        showingDayPicker = false
+                    }
+                )
+            }
             .task { await refresh() }
             .refreshable { await refresh() }
             .alert("删除失败", isPresented: .init(
@@ -110,6 +155,9 @@ struct DietView: View {
         }
     }
 
+    // MARK: - 数据加载
+
+    /// 全量刷新：今日营养证据 + 历史第一页。
     private func refresh() async {
         let (hadUsableContent, generation) = await MainActor.run {
             refreshGeneration += 1
@@ -119,27 +167,19 @@ struct DietView: View {
             await MainActor.run { loadState = .loading }
         }
         do {
-            let (list, nutrition) = try await environment.database.asyncRead {
-                db -> ([MealRecord], MealNutritionEvidenceWindow) in
-                let rows = try MealRecord
-                    .order(Column("eaten_at").desc)
-                    .limit(50)
-                    .fetchAll(db)
-
+            let evidence: MealNutritionEvidenceWindow = try await environment.database.asyncRead { db in
                 let calendar = Calendar.current
                 let dayStart = calendar.startOfDay(for: Date())
-                let evidence = try MealNutritionEvidenceQuery.load(
+                return try MealNutritionEvidenceQuery.load(
                     db: db,
                     fromLocalDay: dayStart,
                     throughLocalDay: dayStart,
                     calendar: calendar
                 )
-                return (rows, evidence)
             }
             await MainActor.run {
                 guard generation == refreshGeneration else { return }
-                meals = list
-                todayNutrition = nutrition
+                todayNutrition = evidence
                 loadState = .loaded
             }
         } catch {
@@ -153,6 +193,67 @@ struct DietView: View {
                 }
             }
             AppLogger.shared.error("Diet refresh failed: \(error.localizedDescription)")
+        }
+        await reloadFirstPage(generation: generation)
+    }
+
+    /// 按当前搜索/筛选重查第一页与总数（不改今日营养证据状态）。
+    private func reloadFirstPage(generation: Int? = nil) async {
+        do {
+            let rows = try await environment.mealStore.historyPage(
+                limit: Self.pageSize,
+                offset: 0,
+                searchText: searchText,
+                localDay: filterDay
+            )
+            let count = try await environment.mealStore.historyTotalCount(
+                searchText: searchText,
+                localDay: filterDay
+            )
+            await MainActor.run {
+                if let generation, generation != refreshGeneration { return }
+                meals = rows
+                totalCount = count
+                hasMore = rows.count >= Self.pageSize && count > rows.count
+            }
+        } catch {
+            AppLogger.shared.error("Diet history reload failed: \(error.localizedDescription)")
+        }
+    }
+
+    private func loadMore() async {
+        guard hasMore, !isLoadingMore else { return }
+        await MainActor.run { isLoadingMore = true }
+        defer { Task { await MainActor.run { isLoadingMore = false } } }
+        do {
+            let existingIds = Set(await MainActor.run { meals.compactMap(\.id) })
+            let rows = try await environment.mealStore.historyPage(
+                limit: Self.pageSize,
+                offset: await MainActor.run { meals.count },
+                searchText: searchText,
+                localDay: filterDay
+            )
+            await MainActor.run {
+                // 分页不重：按 id 去重后追加。
+                let appended = rows.filter { meal in
+                    guard let id = meal.id else { return true }
+                    return !existingIds.contains(id)
+                }
+                meals.append(contentsOf: appended)
+                hasMore = rows.count >= Self.pageSize
+            }
+        } catch {
+            AppLogger.shared.error("Diet load-more failed: \(error.localizedDescription)")
+        }
+    }
+
+    /// 搜索输入防抖：停顿 350ms 后重查第一页。
+    private func scheduleSearchReload() {
+        searchDebounce?.cancel()
+        searchDebounce = Task {
+            try? await Task.sleep(nanoseconds: 350_000_000)
+            if Task.isCancelled { return }
+            await reloadFirstPage()
         }
     }
 
@@ -177,52 +278,61 @@ struct DietView: View {
     }
 }
 
+/// 日期筛选选择器：确认后按所选本地自然日过滤历史。
+private struct DietDayPickerSheet: View {
+    @State private var selected: Date = Date()
+    let onConfirm: (Date) -> Void
+    let onCancel: () -> Void
+
+    var body: some View {
+        NavigationStack {
+            DatePicker(
+                "选择日期",
+                selection: $selected,
+                displayedComponents: [.date]
+            )
+            .datePickerStyle(.graphical)
+            .padding(20)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("取消") { onCancel() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("按此日期筛选") { onConfirm(selected) }
+                }
+            }
+            .navigationTitle("按日期查看")
+            .navigationBarTitleDisplayMode(.inline)
+        }
+        .presentationDetents([.medium])
+    }
+}
+
 private struct DietScreenContent: View {
     let loadState: DietLoadState
     let meals: [MealRecord]
     let todayNutrition: MealNutritionEvidenceWindow?
+    @Binding var searchText: String
+    let filterDay: Date?
+    let totalCount: Int?
+    let hasMore: Bool
+    let isLoadingMore: Bool
+    let onSearchTextChanged: () -> Void
+    let onClearDayFilter: () -> Void
+    let onPickToday: () -> Void
+    let onOpenDayPicker: () -> Void
+    let onLoadMore: () async -> Void
     let onAdd: () -> Void
     let onReuse: () -> Void
     let onMealTap: (MealRecord) -> Void
     let onDeleteMeal: (MealRecord) async -> Void
     let onRetry: () async -> Void
 
-    private var evidenceTone: HMSemanticTone {
-        EvidenceTone.forDietLoadState(loadState, calories: todayNutrition?.calories)
-    }
-
-    private var decisionText: String {
-        switch loadState {
-        case .loading:
-            return "正在读取今天的营养汇总与最近餐次。"
-        case .failed:
-            return "暂时无法更新营养汇总；已经保存的餐次不会因此被删除。"
-        case .stale:
-            return "本次更新失败；下方保留上一次成功读取的餐次与营养证据。"
-        case .loaded:
-            guard let nutrition = todayNutrition else {
-                return "今天还没有可汇总的餐次。"
-            }
-            if nutrition.mealCount == 0 {
-                return "今天还没有可汇总的餐次；这里仅显示你主动保存的记录。"
-            }
-            return "已记录 \(nutrition.mealCount) 餐。完整营养项进入汇总，未提供的字段保留为“—”。"
-        }
-    }
-
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                Text(HMDateText.fullWeekday())
-                    .font(.body)
-                    .foregroundStyle(.secondary)
-
-                HMDecisionLens(
-                    title: "今日营养基线",
-                    text: decisionText,
-                    tone: evidenceTone,
-                    systemImage: "fork.knife"
-                )
+                searchField
+                dayFilterChips
 
                 if loadState.hasUsableContent, !meals.isEmpty {
                     mealList
@@ -236,8 +346,8 @@ private struct DietScreenContent: View {
                     HMInlineRecovery(
                         title: "饮食读取失败",
                         message: loadState == .stale
-                            ? "当前仍显示上一次成功读取的内容；重试只更新今日列表与营养证据。"
-                            : "重试范围仅限今日列表与营养证据读取。",
+                            ? "当前仍显示上一次成功读取的内容；重试只更新今日汇总与历史列表。"
+                            : "重试范围仅限今日汇总与历史列表读取。",
                         actionTitle: "重试",
                         onAction: {
                             Task { await onRetry() }
@@ -254,6 +364,81 @@ private struct DietScreenContent: View {
         .background(HMColors.background.ignoresSafeArea())
     }
 
+    private var searchField: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "magnifyingglass")
+                .foregroundStyle(.secondary)
+            TextField("搜索菜名或备注", text: $searchText)
+                .textInputAutocapitalization(.never)
+                .accessibilityIdentifier("diet-search")
+                .onChange(of: searchText) { _, _ in
+                    onSearchTextChanged()
+                }
+            if !searchText.isEmpty {
+                Button {
+                    searchText = ""
+                    onSearchTextChanged()
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(.secondary)
+                }
+                .accessibilityLabel("清除搜索")
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 9)
+        .background(HMColors.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(HMColors.separator, lineWidth: 1)
+        )
+    }
+
+    private var dayFilterChips: some View {
+        HStack(spacing: 8) {
+            chip(title: "全部日期", isSelected: filterDay == nil, action: onClearDayFilter)
+            chip(title: "今天", isSelected: isTodayFilter, action: onPickToday)
+            chip(title: filterDay == nil || isTodayFilter ? "选日期…" : selectedDayLabel, isSelected: !isTodayFilter && filterDay != nil, action: onOpenDayPicker)
+            Spacer()
+            if let totalCount {
+                Text("共 \(totalCount) 条")
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .accessibilityElement(children: .contain)
+    }
+
+    private var isTodayFilter: Bool {
+        guard let filterDay else { return false }
+        return Calendar.current.isDateInToday(filterDay)
+    }
+
+    private var selectedDayLabel: String {
+        guard let filterDay else { return "选日期…" }
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "zh_CN")
+        formatter.dateFormat = "M月d日"
+        return formatter.string(from: filterDay)
+    }
+
+    private func chip(title: String, isSelected: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title)
+                .font(.footnote.weight(isSelected ? .semibold : .regular))
+                .padding(.horizontal, 12)
+                .padding(.vertical, 7)
+                .background(
+                    isSelected ? HMColors.comparison.opacity(0.14) : HMColors.surface,
+                    in: Capsule()
+                )
+                .overlay(Capsule().stroke(isSelected ? HMColors.comparison : HMColors.separator, lineWidth: 1))
+                .foregroundStyle(isSelected ? HMColors.comparison : .secondary)
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(isSelected ? [.isSelected] : [])
+    }
+
     private var evidencePanel: some View {
         DietEvidencePanel(
             loadState: loadState,
@@ -265,6 +450,11 @@ private struct DietScreenContent: View {
         DietMealListPanel(
             loadState: loadState,
             meals: meals,
+            hasMore: hasMore,
+            isLoadingMore: isLoadingMore,
+            onLoadMore: {
+                await onLoadMore()
+            },
             onMealTap: onMealTap,
             onDeleteMeal: onDeleteMeal
         )
@@ -362,15 +552,6 @@ private struct DietEvidencePanel: View {
                         DietMetricCell(label: "碳水", value: carbText)
                     }
 
-                    HMInformationRow(
-                        systemImage: "list.bullet.rectangle",
-                        tone: EvidenceTone.forDietLoadState(loadState, calories: nutrition?.calories),
-                        title: "今日餐次",
-                        detail: loadState.hasUsableContent && (nutrition?.mealCount ?? 0) == 0
-                            ? "等待你主动保存第一餐"
-                            : (loadState == .failed ? "尚未取得餐次快照" : "支持继续补录并编辑")
-                    )
-
                     if let totals = nutrition?.totals,
                        [totals.caloriesKcal, totals.proteinG, totals.fatG, totals.carbsG]
                         .contains(where: { $0 == nil }) {
@@ -413,17 +594,20 @@ private struct DietMealListPanel: View {
 
     let loadState: DietLoadState
     let meals: [MealRecord]
+    let hasMore: Bool
+    let isLoadingMore: Bool
+    let onLoadMore: () async -> Void
     let onMealTap: (MealRecord) -> Void
     let onDeleteMeal: (MealRecord) async -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack {
-                Text("近期餐次")
+                Text("历史餐次")
                     .font(.title3.weight(.semibold))
                 Spacer(minLength: 8)
                 if loadState.hasUsableContent, !meals.isEmpty {
-                    Text("共 \(meals.count) 条")
+                    Text("已显示 \(meals.count) 条")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -449,8 +633,8 @@ private struct DietMealListPanel: View {
             case .loaded, .stale:
                 if meals.isEmpty {
                     HMEmptyState(
-                        title: "暂无餐次",
-                        message: "最近还没有保存的餐次。可以从上方记录一次，或复用历史餐次创建新草稿。",
+                        title: "暂无匹配餐次",
+                        message: "没有符合条件的已保存餐次。可以从上方记录一次，或调整搜索与日期筛选。",
                         icon: "fork.knife",
                         tone: .neutral,
                         primaryActionTitle: nil,
@@ -478,6 +662,27 @@ private struct DietMealListPanel: View {
                             .listRowInsets(EdgeInsets())
                             .listRowBackground(Color.clear)
                         }
+
+                        if hasMore {
+                            Button {
+                                Task { await onLoadMore() }
+                            } label: {
+                                HStack(spacing: 8) {
+                                    if isLoadingMore {
+                                        ProgressView().controlSize(.small)
+                                    }
+                                    Text(isLoadingMore ? "加载中…" : "加载更早的餐次")
+                                        .font(.footnote.weight(.medium))
+                                }
+                                .frame(maxWidth: .infinity)
+                                .frame(minHeight: 44)
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(isLoadingMore)
+                            .accessibilityIdentifier("diet-load-more")
+                            .listRowInsets(EdgeInsets())
+                            .listRowBackground(Color.clear)
+                        }
                     }
                     .listStyle(.plain)
                     .scrollContentBackground(.hidden)
@@ -492,7 +697,8 @@ private struct DietMealListPanel: View {
 
     private var listHeight: CGFloat {
         let estimatedRowHeight: CGFloat = dynamicTypeSize.isAccessibilitySize ? 156 : 86
-        return max(estimatedRowHeight, CGFloat(meals.count) * estimatedRowHeight)
+        let footerHeight: CGFloat = hasMore ? 52 : 0
+        return max(estimatedRowHeight, CGFloat(meals.count) * estimatedRowHeight + footerHeight)
     }
 }
 
@@ -602,6 +808,12 @@ struct MealEditView: View {
     init(copying copyDraft: MealStore.CopyDraft) {
         self.editing = nil
         _draft = State(initialValue: MealEditorDraft(copyDraft: copyDraft))
+    }
+
+    /// 预填草稿入口（营养表「加入饮食」/常吃模板/配方）：只带分项，不预设营养汇总。
+    init(prefilledItems: [MealItemDraft]) {
+        self.editing = nil
+        _draft = State(initialValue: MealEditorDraft(draftItems: prefilledItems))
     }
 
     private var saveDisabled: Bool {
@@ -1455,6 +1667,16 @@ private enum DietPreviewFixtures {
         loadState: .loaded,
         meals: [DietPreviewFixtures.todayMeal],
         todayNutrition: DietPreviewFixtures.loadedNutrition,
+        searchText: .constant(""),
+        filterDay: nil,
+        totalCount: 1,
+        hasMore: false,
+        isLoadingMore: false,
+        onSearchTextChanged: {},
+        onClearDayFilter: {},
+        onPickToday: {},
+        onOpenDayPicker: {},
+        onLoadMore: {},
         onAdd: {},
         onReuse: {},
         onMealTap: { _ in },
@@ -1469,6 +1691,16 @@ private enum DietPreviewFixtures {
         loadState: .loaded,
         meals: [DietPreviewFixtures.todayMeal],
         todayNutrition: DietPreviewFixtures.loadedNutrition,
+        searchText: .constant(""),
+        filterDay: nil,
+        totalCount: 1,
+        hasMore: false,
+        isLoadingMore: false,
+        onSearchTextChanged: {},
+        onClearDayFilter: {},
+        onPickToday: {},
+        onOpenDayPicker: {},
+        onLoadMore: {},
         onAdd: {},
         onReuse: {},
         onMealTap: { _ in },
@@ -1484,6 +1716,16 @@ private enum DietPreviewFixtures {
         loadState: .loaded,
         meals: [DietPreviewFixtures.todayMeal],
         todayNutrition: DietPreviewFixtures.loadedNutrition,
+        searchText: .constant(""),
+        filterDay: nil,
+        totalCount: 1,
+        hasMore: false,
+        isLoadingMore: false,
+        onSearchTextChanged: {},
+        onClearDayFilter: {},
+        onPickToday: {},
+        onOpenDayPicker: {},
+        onLoadMore: {},
         onAdd: {},
         onReuse: {},
         onMealTap: { _ in },
@@ -1499,6 +1741,16 @@ private enum DietPreviewFixtures {
         loadState: .loaded,
         meals: [],
         todayNutrition: DietPreviewFixtures.emptyNutrition,
+        searchText: .constant(""),
+        filterDay: nil,
+        totalCount: 0,
+        hasMore: false,
+        isLoadingMore: false,
+        onSearchTextChanged: {},
+        onClearDayFilter: {},
+        onPickToday: {},
+        onOpenDayPicker: {},
+        onLoadMore: {},
         onAdd: {},
         onReuse: {},
         onMealTap: { _ in },

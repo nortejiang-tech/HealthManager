@@ -118,6 +118,96 @@ struct MealItemDraft: Identifiable, Equatable {
         )
     }
 
+    /// 从官方目录条目生成编辑器草稿（营养表「加入饮食」，验收 A11）。
+    ///
+    /// - 基准为「每 100 单位（g/mL）」：编辑器改克数即按比例缩放；
+    /// - 生熟状态取目录条目的生熟口径，不再默认 unknown（ADR-004 §2.4）；
+    /// - 来源标记 nutrition_database，出处为目录条目 id 与数据集版本；
+    /// - 官方推定值/微量照常带入，缺失值保持缺失（不写 0）。
+    static func fromCatalogEntry(_ entry: FoodCatalogEntry, catalogVersion: String) -> MealItemDraft {
+        MealItemDraft(
+            name: entry.nameZh,
+            gramsText: "",
+            baselineGrams: 100,
+            baselineCalories: entry.nutrients.kcal.value,
+            baselineProtein: entry.nutrients.proteinG.value,
+            baselineFat: entry.nutrients.fatG.value,
+            baselineCarbs: entry.nutrients.carbsG.value,
+            preparationState: entry.mealItemState,
+            provenanceKind: .nutritionDatabase,
+            provenanceRef: entry.id,
+            provenanceVersion: catalogVersion,
+            confidence: nil
+        )
+    }
+
+    /// 已匹配的常吃单品：官方参考值 + 预填确认过的默认份量。
+    static func fromMatchedFood(
+        _ food: PersonalFoodRecord,
+        entry: FoodCatalogEntry,
+        catalogVersion: String,
+        grams: Double?
+    ) -> MealItemDraft {
+        var draft = fromCatalogEntry(entry, catalogVersion: catalogVersion)
+        draft.name = food.displayName
+        if let grams {
+            draft.gramsText = displayText(from: grams)
+        }
+        return draft
+    }
+
+    /// 配方加入饮食：总量来自配方版本快照；成品重量缺失时克数留空待补，
+    /// 总营养照常带入（每100g 不因缺成品重而伪造，验收 A08）。
+    /// 目录条目缺失时按用量未知处理，绝不回退成 0（§5.3 / A12）。
+    static func fromRecipe(
+        recipe: PersonalRecipeRecord,
+        version: PersonalRecipeVersionRecord,
+        entries: [String: FoodCatalogEntry],
+        grams: Double?
+    ) -> MealItemDraft {
+        let inputs: [RecipeCalculator.IngredientInput] = version.ingredients.map { ingredient in
+            guard let entry = entries[ingredient.catalogEntryId] else {
+                // 目录条目缺失：按用量未知处理，不回退成 0。
+                return RecipeCalculator.IngredientInput(
+                    per100: FoodCatalogEntry.Nutrients(
+                        kcal: FoodCatalogNutrient(value: nil, flag: .unmeasured),
+                        proteinG: FoodCatalogNutrient(value: nil, flag: .unmeasured),
+                        fatG: FoodCatalogNutrient(value: nil, flag: .unmeasured),
+                        carbsG: FoodCatalogNutrient(value: nil, flag: .unmeasured),
+                        fiberG: FoodCatalogNutrient(value: nil, flag: .unmeasured),
+                        sodiumMg: FoodCatalogNutrient(value: nil, flag: .unmeasured)
+                    ),
+                    grams: ingredient.grams,
+                    status: ingredient.amountStatus == .notUsed ? .notUsed : .unknown
+                )
+            }
+            return RecipeCalculator.IngredientInput(
+                per100: entry.nutrients,
+                grams: ingredient.grams,
+                status: ingredient.amountStatus
+            )
+        }
+        let calculation = RecipeCalculator.calculate(
+            ingredients: inputs,
+            outputGrams: version.outputGrams
+        )
+
+        return MealItemDraft(
+            name: recipe.displayName,
+            gramsText: grams.map { displayText(from: $0) } ?? "",
+            baselineGrams: version.outputGrams,
+            baselineCalories: calculation.totals.caloriesKcal,
+            baselineProtein: calculation.totals.proteinG,
+            baselineFat: calculation.totals.fatG,
+            baselineCarbs: calculation.totals.carbsG,
+            preparationState: .cooked,
+            provenanceKind: .recipeCalculation,
+            provenanceRef: recipe.id.map { PersonalFoodStore.provenanceRef(recipeId: $0, version: version.version) },
+            provenanceVersion: "v\(version.version)",
+            confidence: nil
+        )
+    }
+
     init(record: MealItemRecord) {
         let gramsText = Self.displayText(from: record.grams)
         self.init(
