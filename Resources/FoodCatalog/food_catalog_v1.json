@@ -1,0 +1,1821 @@
+{
+ "schemaVersion": 1,
+ "source": {
+  "agency": "MEXT",
+  "title": "日本食品标准成分表（八订）增补2023年",
+  "edition": "八订增补2023（含2026-03-27勘误）",
+  "downloadUrl": "https://www.mext.go.jp/content/20260327-mxt_kagsei-mext-000029402_02.xlsx",
+  "errataUrl": "https://www.mext.go.jp/content/20260327-mxt_kagsei-mext-000029402_16.xlsx",
+  "downloadedAt": "2026-09-17",
+  "fileSha256": "0d5a77077dd6cd91cbc2e6e317b8b218a38728c409eed452f1c10635a0d3099c",
+  "termsOfUse": "二次利用须注明出处：文部科学省《日本食品标准成分表（八订）增补2023年》"
+ },
+ "entries": [
+  {
+   "id": "mext-01088",
+   "source": "MEXT",
+   "foodNo": "01088",
+   "foodGroup": "01",
+   "nameZh": "熟白米饭",
+   "nameOriginal": "こめ ［水稲めし］ 精白米 うるち米",
+   "aliases": [
+    "白米饭",
+    "米饭",
+    "熟米饭"
+   ],
+   "category": "staple",
+   "preparationState": "cooked",
+   "basis": "per100g",
+   "refusePercent": 0.0,
+   "nutrients": {
+    "kcal": {
+     "value": 156.0,
+     "flag": "measured"
+    },
+    "proteinG": {
+     "value": 2.5,
+     "flag": "measured"
+    },
+    "fatG": {
+     "value": 0.3,
+     "flag": "measured"
+    },
+    "carbsG": {
+     "value": 37.1,
+     "flag": "measured"
+    },
+    "fiberG": {
+     "value": 1.5,
+     "flag": "measured"
+    },
+    "sodiumMg": {
+     "value": 1.0,
+     "flag": "measured"
+    }
+   },
+   "sourceUrl": "https://fooddb.mext.go.jp/details/details.pl?ITEM_NO=1_01088_7",
+   "note": "日本短粒粳米·精白米炊饭；含水率随煮制略有差异"
+  },
+  {
+   "id": "mext-01085",
+   "source": "MEXT",
+   "foodNo": "01085",
+   "foodGroup": "01",
+   "nameZh": "糙米饭",
+   "nameOriginal": "こめ ［水稲めし］ 玄米",
+   "aliases": [
+    "糙米饭"
+   ],
+   "category": "staple",
+   "preparationState": "cooked",
+   "basis": "per100g",
+   "refusePercent": 0.0,
+   "nutrients": {
+    "kcal": {
+     "value": 152.0,
+     "flag": "measured"
+    },
+    "proteinG": {
+     "value": 2.8,
+     "flag": "measured"
+    },
+    "fatG": {
+     "value": 1.0,
+     "flag": "measured"
+    },
+    "carbsG": {
+     "value": 35.6,
+     "flag": "measured"
+    },
+    "fiberG": {
+     "value": 1.4,
+     "flag": "measured"
+    },
+    "sodiumMg": {
+     "value": 1.0,
+     "flag": "measured"
+    }
+   },
+   "sourceUrl": "https://fooddb.mext.go.jp/details/details.pl?ITEM_NO=1_01085_7",
+   "note": "糙米炊饭"
+  },
+  {
+   "id": "mext-01026",
+   "source": "MEXT",
+   "foodNo": "01026",
+   "foodGroup": "01",
+   "nameZh": "主食面包",
+   "nameOriginal": "こむぎ ［パン類］ 角形食パン 食パン",
+   "aliases": [
+    "面包",
+    "吐司"
+   ],
+   "category": "staple",
+   "preparationState": "cooked",
+   "basis": "per100g",
+   "refusePercent": 0.0,
+   "nutrients": {
+    "kcal": {
+     "value": 248.0,
+     "flag": "measured"
+    },
+    "proteinG": {
+     "value": 8.9,
+     "flag": "measured"
+    },
+    "fatG": {
+     "value": 4.1,
+     "flag": "measured"
+    },
+    "carbsG": {
+     "value": 46.4,
+     "flag": "measured"
+    },
+    "fiberG": {
+     "value": 4.2,
+     "flag": "measured"
+    },
+    "sodiumMg": {
+     "value": 470.0,
+     "flag": "measured"
+    }
+   },
+   "sourceUrl": "https://fooddb.mext.go.jp/details/details.pl?ITEM_NO=1_01026_7",
+   "note": "方形主食面包（食パン）"
+  },
+  {
+   "id": "mext-01208",
+   "source": "MEXT",
+   "foodNo": "01208",
+   "foodGroup": "01",
+   "nameZh": "全麦面包",
+   "nameOriginal": "こむぎ ［パン類］ 全粒粉パン",
+   "aliases": [
+    "全麦吐司"
+   ],
+   "category": "staple",
+   "preparationState": "cooked",
+   "basis": "per100g",
+   "refusePercent": 0.0,
+   "nutrients": {
+    "kcal": {
+     "value": 251.0,
+     "flag": "measured"
+    },
+    "proteinG": {
+     "value": 7.9,
+     "flag": "measured"
+    },
+    "fatG": {
+     "value": 5.7,
+     "flag": "measured"
+    },
+    "carbsG": {
+     "value": 45.5,
+     "flag": "measured"
+    },
+    "fiberG": {
+     "value": 4.5,
+     "flag": "measured"
+    },
+    "sodiumMg": {
+     "value": 410.0,
+     "flag": "measured"
+    }
+   },
+   "sourceUrl": "https://fooddb.mext.go.jp/details/details.pl?ITEM_NO=1_01208_7",
+   "note": "全粒粉パン；官方标注为推定值"
+  },
+  {
+   "id": "mext-01048",
+   "source": "MEXT",
+   "foodNo": "01048",
+   "foodGroup": "01",
+   "nameZh": "煮中华面",
+   "nameOriginal": "こむぎ ［中華めん類］ 中華めん ゆで",
+   "aliases": [
+    "面条",
+    "煮面",
+    "碱水面"
+   ],
+   "category": "staple",
+   "preparationState": "cooked",
+   "basis": "per100g",
+   "refusePercent": 0.0,
+   "nutrients": {
+    "kcal": {
+     "value": 133.0,
+     "flag": "measured"
+    },
+    "proteinG": {
+     "value": 4.9,
+     "flag": "measured"
+    },
+    "fatG": {
+     "value": 0.6,
+     "flag": "measured"
+    },
+    "carbsG": {
+     "value": 29.2,
+     "flag": "measured"
+    },
+    "fiberG": {
+     "value": 2.8,
+     "flag": "estimated"
+    },
+    "sodiumMg": {
+     "value": 70.0,
+     "flag": "measured"
+    }
+   },
+   "sourceUrl": "https://fooddb.mext.go.jp/details/details.pl?ITEM_NO=1_01048_7",
+   "note": "中華めん ゆで；麻辣烫等熟面条候选"
+  },
+  {
+   "id": "mext-01039",
+   "source": "MEXT",
+   "foodNo": "01039",
+   "foodGroup": "01",
+   "nameZh": "煮乌冬面",
+   "nameOriginal": "こむぎ ［うどん・そうめん類］ うどん ゆで",
+   "aliases": [
+    "乌冬面"
+   ],
+   "category": "staple",
+   "preparationState": "cooked",
+   "basis": "per100g",
+   "refusePercent": 0.0,
+   "nutrients": {
+    "kcal": {
+     "value": 95.0,
+     "flag": "measured"
+    },
+    "proteinG": {
+     "value": 2.6,
+     "flag": "measured"
+    },
+    "fatG": {
+     "value": 0.4,
+     "flag": "measured"
+    },
+    "carbsG": {
+     "value": 21.6,
+     "flag": "measured"
+    },
+    "fiberG": {
+     "value": 1.3,
+     "flag": "estimated"
+    },
+    "sodiumMg": {
+     "value": 120.0,
+     "flag": "measured"
+    }
+   },
+   "sourceUrl": "https://fooddb.mext.go.jp/details/details.pl?ITEM_NO=1_01039_7",
+   "note": "うどん ゆで"
+  },
+  {
+   "id": "mext-12005",
+   "source": "MEXT",
+   "foodNo": "12005",
+   "foodGroup": "12",
+   "nameZh": "水煮全蛋",
+   "nameOriginal": "鶏卵 全卵 ゆで",
+   "aliases": [
+    "煮鸡蛋",
+    "白煮蛋",
+    "水煮蛋",
+    "煮蛋"
+   ],
+   "category": "eggDairySoy",
+   "preparationState": "cooked",
+   "basis": "per100g",
+   "refusePercent": 11.0,
+   "nutrients": {
+    "kcal": {
+     "value": 134.0,
+     "flag": "measured"
+    },
+    "proteinG": {
+     "value": 12.5,
+     "flag": "measured"
+    },
+    "fatG": {
+     "value": 10.4,
+     "flag": "measured"
+    },
+    "carbsG": {
+     "value": 0.3,
+     "flag": "measured"
+    },
+    "fiberG": {
+     "value": 0.0,
+     "flag": "measured"
+    },
+    "sodiumMg": {
+     "value": 140.0,
+     "flag": "measured"
+    }
+   },
+   "sourceUrl": "https://fooddb.mext.go.jp/details/details.pl?ITEM_NO=12_12005_7",
+   "note": "全蛋去壳可食部；官方废弃率11%指蛋壳，勿对去壳重量重复扣除"
+  },
+  {
+   "id": "mext-12004",
+   "source": "MEXT",
+   "foodNo": "12004",
+   "foodGroup": "12",
+   "nameZh": "生鸡蛋",
+   "nameOriginal": "鶏卵 全卵 生",
+   "aliases": [
+    "鸡蛋",
+    "全蛋"
+   ],
+   "category": "eggDairySoy",
+   "preparationState": "raw",
+   "basis": "per100g",
+   "refusePercent": 14.0,
+   "nutrients": {
+    "kcal": {
+     "value": 142.0,
+     "flag": "measured"
+    },
+    "proteinG": {
+     "value": 12.2,
+     "flag": "measured"
+    },
+    "fatG": {
+     "value": 10.2,
+     "flag": "measured"
+    },
+    "carbsG": {
+     "value": 0.4,
+     "flag": "measured"
+    },
+    "fiberG": {
+     "value": 0.0,
+     "flag": "measured"
+    },
+    "sodiumMg": {
+     "value": 140.0,
+     "flag": "measured"
+    }
+   },
+   "sourceUrl": "https://fooddb.mext.go.jp/details/details.pl?ITEM_NO=12_12004_7",
+   "note": "全蛋去壳可食部；用于烹饪配方计算"
+  },
+  {
+   "id": "mext-04052",
+   "source": "MEXT",
+   "foodNo": "04052",
+   "foodGroup": "04",
+   "nameZh": "无调整豆乳",
+   "nameOriginal": "だいず ［その他］ 豆乳 豆乳",
+   "aliases": [
+    "豆浆",
+    "无糖豆浆",
+    "豆乳"
+   ],
+   "category": "eggDairySoy",
+   "preparationState": "unknown",
+   "basis": "per100g",
+   "refusePercent": 0.0,
+   "nutrients": {
+    "kcal": {
+     "value": 43.0,
+     "flag": "measured"
+    },
+    "proteinG": {
+     "value": 3.6,
+     "flag": "measured"
+    },
+    "fatG": {
+     "value": 2.8,
+     "flag": "measured"
+    },
+    "carbsG": {
+     "value": 2.3,
+     "flag": "measured"
+    },
+    "fiberG": {
+     "value": 0.9,
+     "flag": "measured"
+    },
+    "sodiumMg": {
+     "value": 2.0,
+     "flag": "measured"
+    }
+   },
+   "sourceUrl": "https://fooddb.mext.go.jp/details/details.pl?ITEM_NO=4_04052_7",
+   "note": "普通豆乳（无调整）；早餐店/品牌无糖豆浆是否对应需单独确认"
+  },
+  {
+   "id": "mext-04032",
+   "source": "MEXT",
+   "foodNo": "04032",
+   "foodGroup": "04",
+   "nameZh": "木绵豆腐",
+   "nameOriginal": "だいず ［豆腐・油揚げ類］ 木綿豆腐",
+   "aliases": [
+    "北豆腐",
+    "老豆腐",
+    "卤水豆腐"
+   ],
+   "category": "eggDairySoy",
+   "preparationState": "unknown",
+   "basis": "per100g",
+   "refusePercent": 0.0,
+   "nutrients": {
+    "kcal": {
+     "value": 73.0,
+     "flag": "measured"
+    },
+    "proteinG": {
+     "value": 7.0,
+     "flag": "measured"
+    },
+    "fatG": {
+     "value": 4.9,
+     "flag": "measured"
+    },
+    "carbsG": {
+     "value": 1.5,
+     "flag": "measured"
+    },
+    "fiberG": {
+     "value": 1.1,
+     "flag": "measured"
+    },
+    "sodiumMg": {
+     "value": 9.0,
+     "flag": "measured"
+    }
+   },
+   "sourceUrl": "https://fooddb.mext.go.jp/details/details.pl?ITEM_NO=4_04032_7",
+   "note": "加工豆制品（凝固剂型未细分时取此条）"
+  },
+  {
+   "id": "mext-04033",
+   "source": "MEXT",
+   "foodNo": "04033",
+   "foodGroup": "04",
+   "nameZh": "绢豆腐",
+   "nameOriginal": "だいず ［豆腐・油揚げ類］ 絹ごし豆腐",
+   "aliases": [
+    "嫩豆腐",
+    "内酯豆腐"
+   ],
+   "category": "eggDairySoy",
+   "preparationState": "unknown",
+   "basis": "per100g",
+   "refusePercent": 0.0,
+   "nutrients": {
+    "kcal": {
+     "value": 56.0,
+     "flag": "measured"
+    },
+    "proteinG": {
+     "value": 5.3,
+     "flag": "measured"
+    },
+    "fatG": {
+     "value": 3.5,
+     "flag": "measured"
+    },
+    "carbsG": {
+     "value": 2.0,
+     "flag": "measured"
+    },
+    "fiberG": {
+     "value": 0.9,
+     "flag": "measured"
+    },
+    "sodiumMg": {
+     "value": 11.0,
+     "flag": "measured"
+    }
+   },
+   "sourceUrl": "https://fooddb.mext.go.jp/details/details.pl?ITEM_NO=4_04033_7",
+   "note": "絹ごし豆腐"
+  },
+  {
+   "id": "mext-13003",
+   "source": "MEXT",
+   "foodNo": "13003",
+   "foodGroup": "13",
+   "nameZh": "普通牛乳",
+   "nameOriginal": "＜牛乳及び乳製品＞ （液状乳類） 普通牛乳",
+   "aliases": [
+    "牛奶",
+    "牛乳"
+   ],
+   "category": "eggDairySoy",
+   "preparationState": "unknown",
+   "basis": "per100g",
+   "refusePercent": 0.0,
+   "nutrients": {
+    "kcal": {
+     "value": 61.0,
+     "flag": "measured"
+    },
+    "proteinG": {
+     "value": 3.3,
+     "flag": "measured"
+    },
+    "fatG": {
+     "value": 3.8,
+     "flag": "measured"
+    },
+    "carbsG": {
+     "value": 4.8,
+     "flag": "measured"
+    },
+    "fiberG": {
+     "value": 0.0,
+     "flag": "estimated"
+    },
+    "sodiumMg": {
+     "value": 41.0,
+     "flag": "measured"
+    }
+   },
+   "sourceUrl": "https://fooddb.mext.go.jp/details/details.pl?ITEM_NO=13_13003_7",
+   "note": "液状乳·普通牛乳；日本成分表按 100 g 口径发布"
+  },
+  {
+   "id": "mext-11220",
+   "source": "MEXT",
+   "foodNo": "11220",
+   "foodGroup": "11",
+   "nameZh": "鸡胸肉·生",
+   "nameOriginal": "＜鳥肉類＞ にわとり ［若どり・主品目］ むね 皮なし 生",
+   "aliases": [
+    "鸡胸肉"
+   ],
+   "category": "meatSeafood",
+   "preparationState": "raw",
+   "basis": "per100g",
+   "refusePercent": 0.0,
+   "nutrients": {
+    "kcal": {
+     "value": 105.0,
+     "flag": "measured"
+    },
+    "proteinG": {
+     "value": 23.3,
+     "flag": "measured"
+    },
+    "fatG": {
+     "value": 1.9,
+     "flag": "measured"
+    },
+    "carbsG": {
+     "value": 0.1,
+     "flag": "measured"
+    },
+    "fiberG": {
+     "value": 0.0,
+     "flag": "estimated"
+    },
+    "sodiumMg": {
+     "value": 45.0,
+     "flag": "measured"
+    }
+   },
+   "sourceUrl": "https://fooddb.mext.go.jp/details/details.pl?ITEM_NO=11_11220_7",
+   "note": "若どり むね 皮なし 生；去骨去皮可食部"
+  },
+  {
+   "id": "mext-11288",
+   "source": "MEXT",
+   "foodNo": "11288",
+   "foodGroup": "11",
+   "nameZh": "烤鸡胸肉",
+   "nameOriginal": "＜鳥肉類＞ にわとり ［若どり・主品目］ むね 皮なし 焼き",
+   "aliases": [
+    "烤鸡胸"
+   ],
+   "category": "meatSeafood",
+   "preparationState": "cooked",
+   "basis": "per100g",
+   "refusePercent": 0.0,
+   "nutrients": {
+    "kcal": {
+     "value": 177.0,
+     "flag": "measured"
+    },
+    "proteinG": {
+     "value": 38.8,
+     "flag": "measured"
+    },
+    "fatG": {
+     "value": 3.3,
+     "flag": "measured"
+    },
+    "carbsG": {
+     "value": 0.1,
+     "flag": "measured"
+    },
+    "fiberG": {
+     "value": 0.0,
+     "flag": "estimated"
+    },
+    "sodiumMg": {
+     "value": 73.0,
+     "flag": "measured"
+    }
+   },
+   "sourceUrl": "https://fooddb.mext.go.jp/details/details.pl?ITEM_NO=11_11288_7",
+   "note": "若どり むね 皮なし 焼き"
+  },
+  {
+   "id": "mext-11127",
+   "source": "MEXT",
+   "foodNo": "11127",
+   "foodGroup": "11",
+   "nameZh": "猪里脊·赤肉",
+   "nameOriginal": "＜畜肉類＞ ぶた ［大型種肉］ ロース 赤肉 生",
+   "aliases": [
+    "猪里脊",
+    "里脊",
+    "瘦肉"
+   ],
+   "category": "meatSeafood",
+   "preparationState": "raw",
+   "basis": "per100g",
+   "refusePercent": 0.0,
+   "nutrients": {
+    "kcal": {
+     "value": 140.0,
+     "flag": "measured"
+    },
+    "proteinG": {
+     "value": 22.7,
+     "flag": "measured"
+    },
+    "fatG": {
+     "value": 5.6,
+     "flag": "measured"
+    },
+    "carbsG": {
+     "value": 0.3,
+     "flag": "measured"
+    },
+    "fiberG": {
+     "value": 0.0,
+     "flag": "estimated"
+    },
+    "sodiumMg": {
+     "value": 48.0,
+     "flag": "measured"
+    }
+   },
+   "sourceUrl": "https://fooddb.mext.go.jp/details/details.pl?ITEM_NO=11_11127_7",
+   "note": "大型種 ロース 赤肉 生；带脂部位请改用配方层另行估算"
+  },
+  {
+   "id": "mext-10415",
+   "source": "MEXT",
+   "foodNo": "10415",
+   "foodGroup": "10",
+   "nameZh": "南美白对虾·生",
+   "nameOriginal": "＜えび・かに類＞ （えび類） バナメイえび 養殖 生",
+   "aliases": [
+    "白灼虾",
+    "虾",
+    "白煮虾"
+   ],
+   "category": "meatSeafood",
+   "preparationState": "raw",
+   "basis": "per100g",
+   "refusePercent": 20.0,
+   "nutrients": {
+    "kcal": {
+     "value": 82.0,
+     "flag": "measured"
+    },
+    "proteinG": {
+     "value": 19.6,
+     "flag": "measured"
+    },
+    "fatG": {
+     "value": 0.6,
+     "flag": "measured"
+    },
+    "carbsG": {
+     "value": 0.7,
+     "flag": "measured"
+    },
+    "fiberG": {
+     "value": 0.0,
+     "flag": "estimated"
+    },
+    "sodiumMg": {
+     "value": 140.0,
+     "flag": "measured"
+    }
+   },
+   "sourceUrl": "https://fooddb.mext.go.jp/details/details.pl?ITEM_NO=10_10415_7",
+   "note": "養殖バナメイえび；废弃率20%指虾壳，白灼后重量变化本条不含"
+  },
+  {
+   "id": "mext-06226",
+   "source": "MEXT",
+   "foodNo": "06226",
+   "foodGroup": "06",
+   "nameZh": "大葱·软白",
+   "nameOriginal": "（ねぎ類） 根深ねぎ 葉 軟白 生",
+   "aliases": [
+    "大葱",
+    "葱白"
+   ],
+   "category": "vegetableFruit",
+   "preparationState": "raw",
+   "basis": "per100g",
+   "refusePercent": 40.0,
+   "nutrients": {
+    "kcal": {
+     "value": 35.0,
+     "flag": "measured"
+    },
+    "proteinG": {
+     "value": 1.4,
+     "flag": "measured"
+    },
+    "fatG": {
+     "value": 0.1,
+     "flag": "measured"
+    },
+    "carbsG": {
+     "value": 8.3,
+     "flag": "measured"
+    },
+    "fiberG": {
+     "value": 2.5,
+     "flag": "measured"
+    },
+    "sodiumMg": {
+     "value": null,
+     "flag": "trace"
+    }
+   },
+   "sourceUrl": "https://fooddb.mext.go.jp/details/details.pl?ITEM_NO=6_06226_7",
+   "note": "根深ねぎ 葉 軟白 生；废弃率40%指根须与老叶"
+  },
+  {
+   "id": "mext-06061",
+   "source": "MEXT",
+   "foodNo": "06061",
+   "foodGroup": "06",
+   "nameZh": "圆白菜·生",
+   "nameOriginal": "（キャベツ類） キャベツ 結球葉 生",
+   "aliases": [
+    "包菜",
+    "卷心菜",
+    "圆白菜"
+   ],
+   "category": "vegetableFruit",
+   "preparationState": "raw",
+   "basis": "per100g",
+   "refusePercent": 15.0,
+   "nutrients": {
+    "kcal": {
+     "value": 23.0,
+     "flag": "measured"
+    },
+    "proteinG": {
+     "value": 1.2,
+     "flag": "measured"
+    },
+    "fatG": {
+     "value": 0.1,
+     "flag": "measured"
+    },
+    "carbsG": {
+     "value": 5.2,
+     "flag": "measured"
+    },
+    "fiberG": {
+     "value": 1.8,
+     "flag": "measured"
+    },
+    "sodiumMg": {
+     "value": 5.0,
+     "flag": "measured"
+    }
+   },
+   "sourceUrl": "https://fooddb.mext.go.jp/details/details.pl?ITEM_NO=6_06061_7",
+   "note": "キャベツ 結球葉 生"
+  },
+  {
+   "id": "mext-06263",
+   "source": "MEXT",
+   "foodNo": "06263",
+   "foodGroup": "06",
+   "nameZh": "西兰花·生",
+   "nameOriginal": "ブロッコリー 花序 生",
+   "aliases": [
+    "西兰花",
+    "花椰菜"
+   ],
+   "category": "vegetableFruit",
+   "preparationState": "raw",
+   "basis": "per100g",
+   "refusePercent": 35.0,
+   "nutrients": {
+    "kcal": {
+     "value": 37.0,
+     "flag": "measured"
+    },
+    "proteinG": {
+     "value": 5.4,
+     "flag": "measured"
+    },
+    "fatG": {
+     "value": 0.6,
+     "flag": "measured"
+    },
+    "carbsG": {
+     "value": 6.6,
+     "flag": "measured"
+    },
+    "fiberG": {
+     "value": 5.1,
+     "flag": "measured"
+    },
+    "sodiumMg": {
+     "value": 7.0,
+     "flag": "measured"
+    }
+   },
+   "sourceUrl": "https://fooddb.mext.go.jp/details/details.pl?ITEM_NO=6_06263_7",
+   "note": "花序 生；废弃率35%指茎部硬皮"
+  },
+  {
+   "id": "mext-06264",
+   "source": "MEXT",
+   "foodNo": "06264",
+   "foodGroup": "06",
+   "nameZh": "水煮西兰花",
+   "nameOriginal": "ブロッコリー 花序 ゆで",
+   "aliases": [
+    "煮西兰花"
+   ],
+   "category": "vegetableFruit",
+   "preparationState": "cooked",
+   "basis": "per100g",
+   "refusePercent": 0.0,
+   "nutrients": {
+    "kcal": {
+     "value": 30.0,
+     "flag": "measured"
+    },
+    "proteinG": {
+     "value": 3.9,
+     "flag": "measured"
+    },
+    "fatG": {
+     "value": 0.4,
+     "flag": "measured"
+    },
+    "carbsG": {
+     "value": 5.2,
+     "flag": "measured"
+    },
+    "fiberG": {
+     "value": 4.3,
+     "flag": "measured"
+    },
+    "sodiumMg": {
+     "value": 5.0,
+     "flag": "measured"
+    }
+   },
+   "sourceUrl": "https://fooddb.mext.go.jp/details/details.pl?ITEM_NO=6_06264_7",
+   "note": "花序 ゆで"
+  },
+  {
+   "id": "mext-06065",
+   "source": "MEXT",
+   "foodNo": "06065",
+   "foodGroup": "06",
+   "nameZh": "黄瓜·生",
+   "nameOriginal": "きゅうり 果実 生",
+   "aliases": [
+    "黄瓜"
+   ],
+   "category": "vegetableFruit",
+   "preparationState": "raw",
+   "basis": "per100g",
+   "refusePercent": 2.0,
+   "nutrients": {
+    "kcal": {
+     "value": 13.0,
+     "flag": "measured"
+    },
+    "proteinG": {
+     "value": 1.0,
+     "flag": "measured"
+    },
+    "fatG": {
+     "value": 0.1,
+     "flag": "measured"
+    },
+    "carbsG": {
+     "value": 3.0,
+     "flag": "measured"
+    },
+    "fiberG": {
+     "value": 1.1,
+     "flag": "measured"
+    },
+    "sodiumMg": {
+     "value": 1.0,
+     "flag": "measured"
+    }
+   },
+   "sourceUrl": "https://fooddb.mext.go.jp/details/details.pl?ITEM_NO=6_06065_7",
+   "note": "果実 生"
+  },
+  {
+   "id": "mext-06245",
+   "source": "MEXT",
+   "foodNo": "06245",
+   "foodGroup": "06",
+   "nameZh": "青椒·生",
+   "nameOriginal": "（ピーマン類） 青ピーマン 果実 生",
+   "aliases": [
+    "青椒",
+    "菜椒"
+   ],
+   "category": "vegetableFruit",
+   "preparationState": "raw",
+   "basis": "per100g",
+   "refusePercent": 15.0,
+   "nutrients": {
+    "kcal": {
+     "value": 20.0,
+     "flag": "measured"
+    },
+    "proteinG": {
+     "value": 0.9,
+     "flag": "measured"
+    },
+    "fatG": {
+     "value": 0.2,
+     "flag": "measured"
+    },
+    "carbsG": {
+     "value": 5.1,
+     "flag": "measured"
+    },
+    "fiberG": {
+     "value": 2.3,
+     "flag": "measured"
+    },
+    "sodiumMg": {
+     "value": 1.0,
+     "flag": "measured"
+    }
+   },
+   "sourceUrl": "https://fooddb.mext.go.jp/details/details.pl?ITEM_NO=6_06245_7",
+   "note": "青ピーマン 果実 生"
+  },
+  {
+   "id": "mext-06182",
+   "source": "MEXT",
+   "foodNo": "06182",
+   "foodGroup": "06",
+   "nameZh": "番茄·生",
+   "nameOriginal": "（トマト類） 赤色トマト 果実 生",
+   "aliases": [
+    "西红柿",
+    "番茄"
+   ],
+   "category": "vegetableFruit",
+   "preparationState": "raw",
+   "basis": "per100g",
+   "refusePercent": 3.0,
+   "nutrients": {
+    "kcal": {
+     "value": 20.0,
+     "flag": "measured"
+    },
+    "proteinG": {
+     "value": 0.7,
+     "flag": "measured"
+    },
+    "fatG": {
+     "value": 0.1,
+     "flag": "measured"
+    },
+    "carbsG": {
+     "value": 4.7,
+     "flag": "measured"
+    },
+    "fiberG": {
+     "value": 1.0,
+     "flag": "measured"
+    },
+    "sodiumMg": {
+     "value": 3.0,
+     "flag": "measured"
+    }
+   },
+   "sourceUrl": "https://fooddb.mext.go.jp/details/details.pl?ITEM_NO=6_06182_7",
+   "note": "赤色トマト 果実 生"
+  },
+  {
+   "id": "mext-06153",
+   "source": "MEXT",
+   "foodNo": "06153",
+   "foodGroup": "06",
+   "nameZh": "洋葱·生",
+   "nameOriginal": "（たまねぎ類） たまねぎ りん茎 生",
+   "aliases": [
+    "洋葱"
+   ],
+   "category": "vegetableFruit",
+   "preparationState": "raw",
+   "basis": "per100g",
+   "refusePercent": 6.0,
+   "nutrients": {
+    "kcal": {
+     "value": 33.0,
+     "flag": "measured"
+    },
+    "proteinG": {
+     "value": 1.0,
+     "flag": "measured"
+    },
+    "fatG": {
+     "value": 0.1,
+     "flag": "measured"
+    },
+    "carbsG": {
+     "value": 8.4,
+     "flag": "measured"
+    },
+    "fiberG": {
+     "value": 1.5,
+     "flag": "measured"
+    },
+    "sodiumMg": {
+     "value": 2.0,
+     "flag": "measured"
+    }
+   },
+   "sourceUrl": "https://fooddb.mext.go.jp/details/details.pl?ITEM_NO=6_06153_7",
+   "note": "りん茎 生"
+  },
+  {
+   "id": "mext-06312",
+   "source": "MEXT",
+   "foodNo": "06312",
+   "foodGroup": "06",
+   "nameZh": "生菜·生",
+   "nameOriginal": "（レタス類） レタス 土耕栽培 結球葉 生",
+   "aliases": [
+    "生菜",
+    "结球生菜"
+   ],
+   "category": "vegetableFruit",
+   "preparationState": "raw",
+   "basis": "per100g",
+   "refusePercent": 2.0,
+   "nutrients": {
+    "kcal": {
+     "value": 11.0,
+     "flag": "measured"
+    },
+    "proteinG": {
+     "value": 0.6,
+     "flag": "measured"
+    },
+    "fatG": {
+     "value": 0.1,
+     "flag": "measured"
+    },
+    "carbsG": {
+     "value": 2.8,
+     "flag": "measured"
+    },
+    "fiberG": {
+     "value": 1.1,
+     "flag": "measured"
+    },
+    "sodiumMg": {
+     "value": 2.0,
+     "flag": "measured"
+    }
+   },
+   "sourceUrl": "https://fooddb.mext.go.jp/details/details.pl?ITEM_NO=6_06312_7",
+   "note": "レタス 土耕栽培 結球葉 生"
+  },
+  {
+   "id": "mext-06291",
+   "source": "MEXT",
+   "foodNo": "06291",
+   "foodGroup": "06",
+   "nameZh": "绿豆芽·生",
+   "nameOriginal": "（もやし類） りょくとうもやし 生",
+   "aliases": [
+    "豆芽",
+    "绿豆芽"
+   ],
+   "category": "vegetableFruit",
+   "preparationState": "raw",
+   "basis": "per100g",
+   "refusePercent": 2.0,
+   "nutrients": {
+    "kcal": {
+     "value": 15.0,
+     "flag": "measured"
+    },
+    "proteinG": {
+     "value": 1.8,
+     "flag": "measured"
+    },
+    "fatG": {
+     "value": 0.1,
+     "flag": "measured"
+    },
+    "carbsG": {
+     "value": 2.4,
+     "flag": "measured"
+    },
+    "fiberG": {
+     "value": 1.3,
+     "flag": "measured"
+    },
+    "sodiumMg": {
+     "value": 3.0,
+     "flag": "measured"
+    }
+   },
+   "sourceUrl": "https://fooddb.mext.go.jp/details/details.pl?ITEM_NO=6_06291_7",
+   "note": "りょくとうもやし 生"
+  },
+  {
+   "id": "mext-06287",
+   "source": "MEXT",
+   "foodNo": "06287",
+   "foodGroup": "06",
+   "nameZh": "黄豆芽·生",
+   "nameOriginal": "（もやし類） だいずもやし 生",
+   "aliases": [
+    "黄豆芽"
+   ],
+   "category": "vegetableFruit",
+   "preparationState": "raw",
+   "basis": "per100g",
+   "refusePercent": 7.0,
+   "nutrients": {
+    "kcal": {
+     "value": 29.0,
+     "flag": "measured"
+    },
+    "proteinG": {
+     "value": 3.6,
+     "flag": "measured"
+    },
+    "fatG": {
+     "value": 1.4,
+     "flag": "measured"
+    },
+    "carbsG": {
+     "value": 2.5,
+     "flag": "measured"
+    },
+    "fiberG": {
+     "value": 2.3,
+     "flag": "measured"
+    },
+    "sodiumMg": {
+     "value": 3.0,
+     "flag": "measured"
+    }
+   },
+   "sourceUrl": "https://fooddb.mext.go.jp/details/details.pl?ITEM_NO=6_06287_7",
+   "note": "だいずもやし 生"
+  },
+  {
+   "id": "mext-06233",
+   "source": "MEXT",
+   "foodNo": "06233",
+   "foodGroup": "06",
+   "nameZh": "大白菜·生",
+   "nameOriginal": "はくさい 結球葉 生",
+   "aliases": [
+    "白菜",
+    "大白菜"
+   ],
+   "category": "vegetableFruit",
+   "preparationState": "raw",
+   "basis": "per100g",
+   "refusePercent": 6.0,
+   "nutrients": {
+    "kcal": {
+     "value": 13.0,
+     "flag": "measured"
+    },
+    "proteinG": {
+     "value": 0.8,
+     "flag": "measured"
+    },
+    "fatG": {
+     "value": 0.1,
+     "flag": "measured"
+    },
+    "carbsG": {
+     "value": 3.2,
+     "flag": "measured"
+    },
+    "fiberG": {
+     "value": 1.3,
+     "flag": "measured"
+    },
+    "sodiumMg": {
+     "value": 6.0,
+     "flag": "measured"
+    }
+   },
+   "sourceUrl": "https://fooddb.mext.go.jp/details/details.pl?ITEM_NO=6_06233_7",
+   "note": "はくさい 結球葉 生"
+  },
+  {
+   "id": "mext-06132",
+   "source": "MEXT",
+   "foodNo": "06132",
+   "foodGroup": "06",
+   "nameZh": "白萝卜·生",
+   "nameOriginal": "（だいこん類） だいこん 根 皮つき 生",
+   "aliases": [
+    "萝卜",
+    "白萝卜"
+   ],
+   "category": "vegetableFruit",
+   "preparationState": "raw",
+   "basis": "per100g",
+   "refusePercent": 10.0,
+   "nutrients": {
+    "kcal": {
+     "value": 15.0,
+     "flag": "measured"
+    },
+    "proteinG": {
+     "value": 0.5,
+     "flag": "measured"
+    },
+    "fatG": {
+     "value": 0.1,
+     "flag": "measured"
+    },
+    "carbsG": {
+     "value": 4.1,
+     "flag": "measured"
+    },
+    "fiberG": {
+     "value": 1.4,
+     "flag": "measured"
+    },
+    "sodiumMg": {
+     "value": 19.0,
+     "flag": "measured"
+    }
+   },
+   "sourceUrl": "https://fooddb.mext.go.jp/details/details.pl?ITEM_NO=6_06132_7",
+   "note": "だいこん 根 皮つき 生"
+  },
+  {
+   "id": "mext-06160",
+   "source": "MEXT",
+   "foodNo": "06160",
+   "foodGroup": "06",
+   "nameZh": "青梗菜·生",
+   "nameOriginal": "チンゲンサイ 葉 生",
+   "aliases": [
+    "油菜",
+    "青菜",
+    "小油菜"
+   ],
+   "category": "vegetableFruit",
+   "preparationState": "raw",
+   "basis": "per100g",
+   "refusePercent": 15.0,
+   "nutrients": {
+    "kcal": {
+     "value": 9.0,
+     "flag": "measured"
+    },
+    "proteinG": {
+     "value": 0.6,
+     "flag": "measured"
+    },
+    "fatG": {
+     "value": 0.1,
+     "flag": "measured"
+    },
+    "carbsG": {
+     "value": 2.0,
+     "flag": "measured"
+    },
+    "fiberG": {
+     "value": 1.2,
+     "flag": "measured"
+    },
+    "sodiumMg": {
+     "value": 32.0,
+     "flag": "measured"
+    }
+   },
+   "sourceUrl": "https://fooddb.mext.go.jp/details/details.pl?ITEM_NO=6_06160_7",
+   "note": "チンゲンサイ 葉 生；与国内小油菜为近似种，匹配前需人工确认"
+  },
+  {
+   "id": "mext-08007",
+   "source": "MEXT",
+   "foodNo": "08007",
+   "foodGroup": "08",
+   "nameZh": "木耳·水发煮",
+   "nameOriginal": "（きくらげ類） きくらげ ゆで",
+   "aliases": [
+    "木耳",
+    "黑木耳"
+   ],
+   "category": "vegetableFruit",
+   "preparationState": "cooked",
+   "basis": "per100g",
+   "refusePercent": 0.0,
+   "nutrients": {
+    "kcal": {
+     "value": 14.0,
+     "flag": "measured"
+    },
+    "proteinG": {
+     "value": 0.6,
+     "flag": "measured"
+    },
+    "fatG": {
+     "value": 0.2,
+     "flag": "measured"
+    },
+    "carbsG": {
+     "value": 5.2,
+     "flag": "measured"
+    },
+    "fiberG": {
+     "value": 5.2,
+     "flag": "measured"
+    },
+    "sodiumMg": {
+     "value": 9.0,
+     "flag": "measured"
+    }
+   },
+   "sourceUrl": "https://fooddb.mext.go.jp/details/details.pl?ITEM_NO=8_08007_7",
+   "note": "きくらげ ゆで（泡发水煮）"
+  },
+  {
+   "id": "mext-08006",
+   "source": "MEXT",
+   "foodNo": "08006",
+   "foodGroup": "08",
+   "nameZh": "干木耳",
+   "nameOriginal": "（きくらげ類） きくらげ 乾",
+   "aliases": [
+    "干木耳"
+   ],
+   "category": "vegetableFruit",
+   "preparationState": "raw",
+   "basis": "per100g",
+   "refusePercent": 0.0,
+   "nutrients": {
+    "kcal": {
+     "value": 216.0,
+     "flag": "measured"
+    },
+    "proteinG": {
+     "value": 7.9,
+     "flag": "measured"
+    },
+    "fatG": {
+     "value": 2.1,
+     "flag": "measured"
+    },
+    "carbsG": {
+     "value": 71.1,
+     "flag": "measured"
+    },
+    "fiberG": {
+     "value": 57.4,
+     "flag": "measured"
+    },
+    "sodiumMg": {
+     "value": 59.0,
+     "flag": "measured"
+    }
+   },
+   "sourceUrl": "https://fooddb.mext.go.jp/details/details.pl?ITEM_NO=8_08006_7",
+   "note": "きくらげ 乾；按泡发前干重使用"
+  },
+  {
+   "id": "mext-06175",
+   "source": "MEXT",
+   "foodNo": "06175",
+   "foodGroup": "06",
+   "nameZh": "甜玉米·生",
+   "nameOriginal": "（とうもろこし類） スイートコーン 未熟種子 生",
+   "aliases": [
+    "玉米",
+    "生玉米",
+    "甜玉米"
+   ],
+   "category": "vegetableFruit",
+   "preparationState": "raw",
+   "basis": "per100g",
+   "refusePercent": 50.0,
+   "nutrients": {
+    "kcal": {
+     "value": 89.0,
+     "flag": "measured"
+    },
+    "proteinG": {
+     "value": 3.6,
+     "flag": "measured"
+    },
+    "fatG": {
+     "value": 1.7,
+     "flag": "measured"
+    },
+    "carbsG": {
+     "value": 16.8,
+     "flag": "measured"
+    },
+    "fiberG": {
+     "value": 3.0,
+     "flag": "measured"
+    },
+    "sodiumMg": {
+     "value": null,
+     "flag": "trace"
+    }
+   },
+   "sourceUrl": "https://fooddb.mext.go.jp/details/details.pl?ITEM_NO=6_06175_7",
+   "note": "スイートコーン 未熟種子 生；废弃率50%指玉米芯；糯玉米非此条目"
+  },
+  {
+   "id": "mext-06176",
+   "source": "MEXT",
+   "foodNo": "06176",
+   "foodGroup": "06",
+   "nameZh": "煮甜玉米",
+   "nameOriginal": "（とうもろこし類） スイートコーン 未熟種子 ゆで",
+   "aliases": [
+    "煮玉米"
+   ],
+   "category": "vegetableFruit",
+   "preparationState": "cooked",
+   "basis": "per100g",
+   "refusePercent": 30.0,
+   "nutrients": {
+    "kcal": {
+     "value": 95.0,
+     "flag": "measured"
+    },
+    "proteinG": {
+     "value": 3.5,
+     "flag": "measured"
+    },
+    "fatG": {
+     "value": 1.7,
+     "flag": "measured"
+    },
+    "carbsG": {
+     "value": 18.6,
+     "flag": "measured"
+    },
+    "fiberG": {
+     "value": 3.1,
+     "flag": "measured"
+    },
+    "sodiumMg": {
+     "value": null,
+     "flag": "trace"
+    }
+   },
+   "sourceUrl": "https://fooddb.mext.go.jp/details/details.pl?ITEM_NO=6_06176_7",
+   "note": "スイートコーン 未熟種子 ゆで；废弃率30%指玉米芯"
+  },
+  {
+   "id": "mext-02018",
+   "source": "MEXT",
+   "foodNo": "02018",
+   "foodGroup": "02",
+   "nameZh": "蒸土豆",
+   "nameOriginal": "＜いも類＞ じゃがいも 塊茎 皮なし 蒸し",
+   "aliases": [
+    "土豆",
+    "马铃薯",
+    "蒸土豆"
+   ],
+   "category": "vegetableFruit",
+   "preparationState": "cooked",
+   "basis": "per100g",
+   "refusePercent": 5.0,
+   "nutrients": {
+    "kcal": {
+     "value": 76.0,
+     "flag": "measured"
+    },
+    "proteinG": {
+     "value": 1.9,
+     "flag": "measured"
+    },
+    "fatG": {
+     "value": 0.3,
+     "flag": "measured"
+    },
+    "carbsG": {
+     "value": 18.1,
+     "flag": "measured"
+    },
+    "fiberG": {
+     "value": 3.5,
+     "flag": "measured"
+    },
+    "sodiumMg": {
+     "value": 1.0,
+     "flag": "measured"
+    }
+   },
+   "sourceUrl": "https://fooddb.mext.go.jp/details/details.pl?ITEM_NO=2_02018_7",
+   "note": "じゃがいも 塊茎 皮なし 蒸し"
+  },
+  {
+   "id": "mext-14008",
+   "source": "MEXT",
+   "foodNo": "14008",
+   "foodGroup": "14",
+   "nameZh": "菜籽油",
+   "nameOriginal": "（植物油脂類） なたね油",
+   "aliases": [
+    "食用油",
+    "炒菜油",
+    "菜油"
+   ],
+   "category": "oilSeasoning",
+   "preparationState": "unknown",
+   "basis": "per100g",
+   "refusePercent": 0.0,
+   "nutrients": {
+    "kcal": {
+     "value": 887.0,
+     "flag": "measured"
+    },
+    "proteinG": {
+     "value": 0.0,
+     "flag": "measured"
+    },
+    "fatG": {
+     "value": 100.0,
+     "flag": "measured"
+    },
+    "carbsG": {
+     "value": 0.0,
+     "flag": "measured"
+    },
+    "fiberG": {
+     "value": 0.0,
+     "flag": "measured"
+    },
+    "sodiumMg": {
+     "value": 0.0,
+     "flag": "measured"
+    }
+   },
+   "sourceUrl": "https://fooddb.mext.go.jp/details/details.pl?ITEM_NO=14_14008_7",
+   "note": "なたね油；纯脂肪"
+  },
+  {
+   "id": "mext-14002",
+   "source": "MEXT",
+   "foodNo": "14002",
+   "foodGroup": "14",
+   "nameZh": "芝麻油",
+   "nameOriginal": "（植物油脂類） ごま油",
+   "aliases": [
+    "香油",
+    "麻油"
+   ],
+   "category": "oilSeasoning",
+   "preparationState": "unknown",
+   "basis": "per100g",
+   "refusePercent": 0.0,
+   "nutrients": {
+    "kcal": {
+     "value": 890.0,
+     "flag": "measured"
+    },
+    "proteinG": {
+     "value": 0.0,
+     "flag": "measured"
+    },
+    "fatG": {
+     "value": 100.0,
+     "flag": "measured"
+    },
+    "carbsG": {
+     "value": 0.0,
+     "flag": "measured"
+    },
+    "fiberG": {
+     "value": 0.0,
+     "flag": "measured"
+    },
+    "sodiumMg": {
+     "value": null,
+     "flag": "trace"
+    }
+   },
+   "sourceUrl": "https://fooddb.mext.go.jp/details/details.pl?ITEM_NO=14_14002_7",
+   "note": "ごま油"
+  },
+  {
+   "id": "mext-17007",
+   "source": "MEXT",
+   "foodNo": "17007",
+   "foodGroup": "17",
+   "nameZh": "浓口酱油",
+   "nameOriginal": "＜調味料類＞ （しょうゆ類） こいくちしょうゆ",
+   "aliases": [
+    "酱油",
+    "生抽"
+   ],
+   "category": "oilSeasoning",
+   "preparationState": "unknown",
+   "basis": "per100g",
+   "refusePercent": 0.0,
+   "nutrients": {
+    "kcal": {
+     "value": 76.0,
+     "flag": "measured"
+    },
+    "proteinG": {
+     "value": 7.7,
+     "flag": "measured"
+    },
+    "fatG": {
+     "value": 0.0,
+     "flag": "measured"
+    },
+    "carbsG": {
+     "value": 7.9,
+     "flag": "measured"
+    },
+    "fiberG": {
+     "value": null,
+     "flag": "unmeasured"
+    },
+    "sodiumMg": {
+     "value": 5700.0,
+     "flag": "measured"
+    }
+   },
+   "sourceUrl": "https://fooddb.mext.go.jp/details/details.pl?ITEM_NO=17_17007_7",
+   "note": "こいくちしょうゆ"
+  },
+  {
+   "id": "mext-17012",
+   "source": "MEXT",
+   "foodNo": "17012",
+   "foodGroup": "17",
+   "nameZh": "食盐",
+   "nameOriginal": "＜調味料類＞ （食塩類） 食塩",
+   "aliases": [
+    "盐",
+    "食盐"
+   ],
+   "category": "oilSeasoning",
+   "preparationState": "unknown",
+   "basis": "per100g",
+   "refusePercent": 0.0,
+   "nutrients": {
+    "kcal": {
+     "value": 0.0,
+     "flag": "measured"
+    },
+    "proteinG": {
+     "value": 0.0,
+     "flag": "measured"
+    },
+    "fatG": {
+     "value": 0.0,
+     "flag": "measured"
+    },
+    "carbsG": {
+     "value": 0.0,
+     "flag": "measured"
+    },
+    "fiberG": {
+     "value": 0.0,
+     "flag": "estimated"
+    },
+    "sodiumMg": {
+     "value": 39000.0,
+     "flag": "measured"
+    }
+   },
+   "sourceUrl": "https://fooddb.mext.go.jp/details/details.pl?ITEM_NO=17_17012_7",
+   "note": "食塩"
+  },
+  {
+   "id": "mext-16045",
+   "source": "MEXT",
+   "foodNo": "16045",
+   "foodGroup": "16",
+   "nameZh": "黑咖啡·冲泡",
+   "nameOriginal": "＜コーヒー・ココア類＞ コーヒー 浸出液",
+   "aliases": [
+    "咖啡",
+    "黑咖啡"
+   ],
+   "category": "oilSeasoning",
+   "preparationState": "unknown",
+   "basis": "per100g",
+   "refusePercent": 0.0,
+   "nutrients": {
+    "kcal": {
+     "value": 4.0,
+     "flag": "measured"
+    },
+    "proteinG": {
+     "value": 0.2,
+     "flag": "measured"
+    },
+    "fatG": {
+     "value": null,
+     "flag": "trace"
+    },
+    "carbsG": {
+     "value": 0.7,
+     "flag": "measured"
+    },
+    "fiberG": {
+     "value": null,
+     "flag": "unmeasured"
+    },
+    "sodiumMg": {
+     "value": 1.0,
+     "flag": "measured"
+    }
+   },
+   "sourceUrl": "https://fooddb.mext.go.jp/details/details.pl?ITEM_NO=16_16045_7",
+   "note": "コーヒー 浸出液；无糖无奶冲泡液，日本成分表按 100 g 口径发布"
+  },
+  {
+   "id": "mext-05027",
+   "source": "MEXT",
+   "foodNo": "05027",
+   "foodGroup": "05",
+   "nameZh": "调味炒葵花籽",
+   "nameOriginal": "ひまわり フライ 味付け",
+   "aliases": [
+    "葵花籽",
+    "瓜子"
+   ],
+   "category": "vegetableFruit",
+   "preparationState": "cooked",
+   "basis": "per100g",
+   "refusePercent": 0.0,
+   "nutrients": {
+    "kcal": {
+     "value": 603.0,
+     "flag": "measured"
+    },
+    "proteinG": {
+     "value": 20.1,
+     "flag": "measured"
+    },
+    "fatG": {
+     "value": 56.3,
+     "flag": "measured"
+    },
+    "carbsG": {
+     "value": 17.2,
+     "flag": "measured"
+    },
+    "fiberG": {
+     "value": 7.9,
+     "flag": "measured"
+    },
+    "sodiumMg": {
+     "value": 250.0,
+     "flag": "measured"
+    }
+   },
+   "sourceUrl": "https://fooddb.mext.go.jp/details/details.pl?ITEM_NO=5_05027_7",
+   "note": "ひまわり フライ 味付け；去壳可食部"
+  }
+ ]
+}
