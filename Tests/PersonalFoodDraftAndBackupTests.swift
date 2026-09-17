@@ -115,7 +115,7 @@ final class PersonalFoodDraftAndBackupTests: XCTestCase {
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("hm-v9-\(UUID().uuidString).sqlite")
         let pool = try DatabasePool(path: url.path, configuration: configuration)
-        var migrator = Migrations.makeMigrator()
+        let migrator = Migrations.makeMigrator()
         if let migration {
             try migrator.migrate(pool, upTo: migration)
         } else {
@@ -232,7 +232,7 @@ final class PersonalFoodDraftAndBackupTests: XCTestCase {
         _ = try await store.confirmCandidate(
             key: "煮鸡蛋", displayName: "煮鸡蛋", entry: entry, catalogVersion: "t-edition"
         )
-        let recipe = try await store.createRecipe(
+        _ = try await store.createRecipe(
             name: "固定早餐",
             ingredients: [
                 RecipeIngredient(catalogEntryId: entry.id, catalogVersion: "t-edition", nameZh: entry.nameZh,

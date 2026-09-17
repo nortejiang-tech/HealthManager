@@ -69,9 +69,11 @@ enum RecipeCalculator {
         let inputGrams: Double
         let outputGrams: Double?
 
-        /// 成品每 100 g；成品重量非法时为 nil（待补）。
+        /// 成品每 100 g；成品重量非法或原料用量未知时为 nil（待补）。
         var per100: Totals? {
-            guard let outputGrams, FoodServingCalculator.validGrams(outputGrams) else { return nil }
+            guard !isAmountUnknown,
+                  let outputGrams,
+                  FoodServingCalculator.validGrams(outputGrams) else { return nil }
             func scale(_ value: Double?) -> Double? {
                 guard let value else { return nil }
                 return value * 100 / outputGrams

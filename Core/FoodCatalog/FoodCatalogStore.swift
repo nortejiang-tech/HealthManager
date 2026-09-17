@@ -16,7 +16,7 @@ final class FoodCatalogStore: @unchecked Sendable {
         try FoodCatalogStore(bundle: .main)
     }
 
-    init(bundle: Bundle) throws {
+    convenience init(bundle: Bundle) throws {
         guard let url = bundle.url(forResource: Self.resourceFileName, withExtension: "json"),
               let data = try? Data(contentsOf: url) else {
             throw FoodCatalogError.resourceMissing(Self.resourceFileName)

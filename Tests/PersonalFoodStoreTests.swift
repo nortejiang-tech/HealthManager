@@ -6,9 +6,13 @@ import GRDB
 final class PersonalFoodStoreTests: XCTestCase {
 
     private func makeStore(
+        databaseManager: DatabaseManager? = nil,
         now: @escaping @Sendable () -> Int64 = { Int64(Date().timeIntervalSince1970) }
     ) -> PersonalFoodStore {
-        PersonalFoodStore(databaseManager: DatabaseManager.makeInMemoryForTesting(), now: now)
+        PersonalFoodStore(
+            databaseManager: databaseManager ?? DatabaseManager.makeInMemoryForTesting(),
+            now: now
+        )
     }
 
     /// 本地自然日 → eaten_at（按当前日历的当天起点 + 偏移天数）。
@@ -47,28 +51,28 @@ final class PersonalFoodStoreTests: XCTestCase {
         let db = DatabaseManager.makeInMemoryForTesting()
         // 30 天窗口内：两餐都含煮鸡蛋 → 2 餐（一餐两条同名只计一次）。
         _ = try await insertMeal(db, eatenAt: eatenAt(daysAgo: 1), items: [
-            .init(name: "煮鸡蛋", grams: 150, kind: .aiEstimate),
-            .init(name: "白煮蛋", grams: 150, kind: .aiEstimate),
+            (name: "煮鸡蛋", grams: 150, kind: .aiEstimate),
+            (name: "白煮蛋", grams: 150, kind: .aiEstimate),
         ])
         _ = try await insertMeal(db, eatenAt: eatenAt(daysAgo: 3), items: [
-            .init(name: "煮鸡蛋", grams: 150, kind: .aiEstimate),
+            (name: "煮鸡蛋", grams: 150, kind: .aiEstimate),
         ])
         // 窗口外：40 天前。
         _ = try await insertMeal(db, eatenAt: eatenAt(daysAgo: 40), items: [
-            .init(name: "煮鸡蛋", grams: 150, kind: .aiEstimate),
+            (name: "煮鸡蛋", grams: 150, kind: .aiEstimate),
         ])
 
-        let store = makeStore()
+        let store = makeStore(databaseManager: db)
         let recent = try await store.loadFrequentPage(windowDays: 30)
         let eggRecent = recent.pendingCandidates.first { $0.key == MealItemIdentity.canonicalName("煮鸡蛋") }
         // 煮鸡蛋/白煮蛋同为 canonicalName 归并（去空白+小写不同——中文不归并！）
         // 注意：canonicalName 不做语义归并，两键分开；此处验证窗口与去重即可。
         XCTAssertNotNil(eggRecent)
-        XCTAssertEqual(eggRecent?.mealCount, 1)
+        XCTAssertEqual(eggRecent?.mealCount, 2)
 
         let all = try await store.loadFrequentPage(windowDays: nil)
         let eggAll = all.pendingCandidates.first { $0.key == MealItemIdentity.canonicalName("煮鸡蛋") }
-        XCTAssertEqual(eggAll?.mealCount, 2, "全部历史含 40 天前那一餐")
+        XCTAssertEqual(eggAll?.mealCount, 3, "全部历史还应包含 40 天前那一餐")
     }
 
     func test_summarize_countsDistinctMealOnce_perKey() {
@@ -93,11 +97,11 @@ final class PersonalFoodStoreTests: XCTestCase {
     func test_confirmAndIgnore_flowsThroughPendingList() async throws {
         let db = DatabaseManager.makeInMemoryForTesting()
         _ = try await insertMeal(db, eatenAt: eatenAt(daysAgo: 1), items: [
-            .init(name: "无糖豆浆", grams: 240, kind: .aiEstimate),
-            .init(name: "煮鸡蛋", grams: 150, kind: .aiEstimate),
+            (name: "无糖豆浆", grams: 240, kind: .aiEstimate),
+            (name: "煮鸡蛋", grams: 150, kind: .aiEstimate),
         ])
 
-        let store = makeStore()
+        let store = makeStore(databaseManager: db)
         let entry = FoodCatalogEntry.fixture(id: "mext-12005", nameZh: "水煮全蛋")
 
         // 确认煮鸡蛋 → 从候选消失，出现在已匹配。
@@ -122,12 +126,12 @@ final class PersonalFoodStoreTests: XCTestCase {
     func test_pinnedFoodSortsFirst_andDefaultGramsPersist() async throws {
         let db = DatabaseManager.makeInMemoryForTesting()
         _ = try await insertMeal(db, eatenAt: eatenAt(daysAgo: 1), items: [
-            .init(name: "黄瓜", grams: 200, kind: .aiEstimate),
-            .init(name: "西红柿", grams: 100, kind: .aiEstimate),
-            .init(name: "西红柿", grams: 100, kind: .aiEstimate),
+            (name: "黄瓜", grams: 200, kind: .aiEstimate),
+            (name: "西红柿", grams: 100, kind: .aiEstimate),
+            (name: "西红柿", grams: 100, kind: .aiEstimate),
         ])
 
-        let store = makeStore()
+        let store = makeStore(databaseManager: db)
         let cucumber = FoodCatalogEntry.fixture(id: "mext-06065", nameZh: "黄瓜·生")
         let tomato = FoodCatalogEntry.fixture(id: "mext-06182", nameZh: "番茄·生")
         _ = try await store.confirmCandidate(
@@ -224,10 +228,15 @@ final class PersonalFoodStoreTests: XCTestCase {
             catalogEntryId: oil.id, catalogVersion: "t", nameZh: oil.nameZh,
             basis: .per100g, preparationState: .unknown, grams: nil, amountStatus: .weighed
         )
-        await XCTAssertThrowsError(try await store.createRecipe(
-            name: "清炒2", ingredients: [badWeighed], outputGrams: nil,
-            outputWeightBasis: nil, note: nil, matchKey: nil
-        ))
+        do {
+            _ = try await store.createRecipe(
+                name: "清炒2", ingredients: [badWeighed], outputGrams: nil,
+                outputWeightBasis: nil, note: nil, matchKey: nil
+            )
+            XCTFail("称量状态缺少有效克数时必须拒绝保存")
+        } catch {
+            // 预期抛出 StoreError.invalidInput。
+        }
     }
 
     func test_deleteRecipe_removesMappingButKeepsHistoricalSnapshotRow() async throws {

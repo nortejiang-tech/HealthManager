@@ -229,7 +229,7 @@ struct RecipeEditorView: View {
                     Text("用量")
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                    TextField("克", text: $draft.gramsText)
+                    TextField("克", text: draft.gramsText)
                         .keyboardType(.decimalPad)
                         .multilineTextAlignment(.trailing)
                         .frame(maxWidth: 100)
@@ -287,7 +287,7 @@ struct RecipeEditorView: View {
                     Text("\(String(format: "%.0f", kcal)) kcal")
                         .font(.body.monospacedDigit().weight(.semibold))
                 } else {
-                    Text("待补成品重量")
+                    Text(calculation.isAmountUnknown ? "待补原料用量" : "待补成品重量")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 }
@@ -359,7 +359,7 @@ struct RecipeEditorView: View {
                     catalogVersion: catalogStore.catalog.source.edition,
                     nameZh: entry.nameZh,
                     basis: entry.basis,
-                    preparationState: entry.mealItemState,
+                    preparationState: entry.preparationState.mealItemState,
                     grams: nil,
                     amountStatus: .weighed
                 ),

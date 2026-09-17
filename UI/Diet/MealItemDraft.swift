@@ -133,7 +133,7 @@ struct MealItemDraft: Identifiable, Equatable {
             baselineProtein: entry.nutrients.proteinG.value,
             baselineFat: entry.nutrients.fatG.value,
             baselineCarbs: entry.nutrients.carbsG.value,
-            preparationState: entry.mealItemState,
+            preparationState: entry.preparationState.mealItemState,
             provenanceKind: .nutritionDatabase,
             provenanceRef: entry.id,
             provenanceVersion: catalogVersion,

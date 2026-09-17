@@ -185,9 +185,9 @@ final class MealStore: @unchecked Sendable {
                 let pattern = "%\(trimmed.replacingOccurrences(of: "%", with: "\\%").replacingOccurrences(of: "_", with: "\\_"))%"
                 let itemMatch = MealItemRecord
                     .select(Column("meal_id"))
-                    .filter(Column("name").like(pattern, escape: Character("\\")))
+                    .filter(Column("name").like(pattern, escape: "\\"))
                 request = request.filter(
-                    Column("notes").like(pattern, escape: Character("\\")) ||
+                    Column("notes").like(pattern, escape: "\\") ||
                     itemMatch.contains(Column("id"))
                 )
             }
@@ -222,9 +222,9 @@ final class MealStore: @unchecked Sendable {
                 let pattern = "%\(trimmed.replacingOccurrences(of: "%", with: "\\%").replacingOccurrences(of: "_", with: "\\_"))%"
                 let itemMatch = MealItemRecord
                     .select(Column("meal_id"))
-                    .filter(Column("name").like(pattern, escape: Character("\\")))
+                    .filter(Column("name").like(pattern, escape: "\\"))
                 request = request.filter(
-                    Column("notes").like(pattern, escape: Character("\\")) ||
+                    Column("notes").like(pattern, escape: "\\") ||
                     itemMatch.contains(Column("id"))
                 )
             }

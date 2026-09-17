@@ -57,6 +57,10 @@ final class SmokeTests: XCTestCase {
             anyDescendant(in: app, matching: "nutrition-screen").waitForExistence(timeout: 8),
             "Nutrition screen marker missing."
         )
+        // 页面段选择会跨次启动保存；显式回到参考食材，避免测试依赖模拟器历史状态。
+        let referenceSegment = app.segmentedControls.buttons["参考食材"]
+        XCTAssertTrue(referenceSegment.waitForExistence(timeout: 8))
+        referenceSegment.tap()
         XCTAssertTrue(
             anyDescendant(in: app, matching: "nutrition-search").waitForExistence(timeout: 8),
             "Nutrition search field missing."

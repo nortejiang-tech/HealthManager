@@ -20,7 +20,7 @@ final class DuplicateRawSampleMigrationTests: XCTestCase {
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("hm-dedup-\(UUID().uuidString).sqlite")
         let pool = try DatabasePool(path: url.path, configuration: configuration)
-        var migrator = Migrations.makeMigrator()
+        let migrator = Migrations.makeMigrator()
         if let migration {
             try migrator.migrate(pool, upTo: migration)
         } else {

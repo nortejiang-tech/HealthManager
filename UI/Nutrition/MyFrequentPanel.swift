@@ -195,8 +195,8 @@ struct MyFrequentPanel: View {
 
     private func addToMeal(matched: PersonalFoodStore.MatchedFood, entry: FoodCatalogEntry?) {
         guard let entry else {
-            actionErrorMessage = "目录中找不到该条目（\(
-                matched.food.catalogEntryId ?? "未知")），无法生成官方参考草稿。"
+            let entryId = matched.food.catalogEntryId ?? "未知"
+            actionErrorMessage = "目录中找不到该条目（\(entryId)），无法生成官方参考草稿。"
             return
         }
         let grams = matched.food.defaultGrams ?? matched.recentCommonGrams

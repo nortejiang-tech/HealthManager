@@ -66,8 +66,6 @@ final class PersonalFoodStore: @unchecked Sendable {
         try await databaseManager.asyncRead { db in
             let facts = try FrequentFoodsQuery.loadMealFacts(db: db, windowDays: windowDays)
             let summaries = FrequentFoodsQuery.summarize(mealFacts: facts)
-            let summariesByKey = Dictionary(uniqueKeysWithValues: summaries.map { ($0.key, $0) })
-
             let foods = try PersonalFoodRecord.order(Column("pinned").desc).fetchAll(db)
             let ignoredKeys = Set(
                 try IgnoredCandidateRecord.fetchAll(db).map(\.candidateKey)

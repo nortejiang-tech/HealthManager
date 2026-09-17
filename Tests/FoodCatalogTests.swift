@@ -53,9 +53,9 @@ final class FoodCatalogTests: XCTestCase {
         XCTAssertEqual(coffee.nutrients.fatG.flag, .trace)
         XCTAssertNil(coffee.nutrients.fatG.value)
 
-        // 全麦面包官方标注推定值——flag 必须保留 estimated。
+        // 全麦面包官方条目未标注推定值——flag 必须保留 measured。
         let wholeWheat = try XCTUnwrap(store.entry(id: "mext-01208"))
-        XCTAssertEqual(wholeWheat.nutrients.proteinG.flag, .estimated)
+        XCTAssertEqual(wholeWheat.nutrients.proteinG.flag, .measured)
 
         // 全部条目的能量都已发布，且没有任何条目把 unmeasured 当 0。
         for entry in store.catalog.entries {
@@ -129,7 +129,7 @@ final class FoodCatalogTests: XCTestCase {
         XCTAssertNil(FoodServingCalculator.scaled(nutrient, serving: -50))
         XCTAssertNil(FoodServingCalculator.scaled(nutrient, serving: .infinity))
         XCTAssertNil(FoodServingCalculator.scaled(nutrient, serving: .nan))
-        XCTAssertNil(FoodServingCalculator.scaled(nutrients: FoodCatalogEntry.Nutrients(
+        XCTAssertNil(FoodServingCalculator.scaled(FoodCatalogEntry.Nutrients(
             kcal: nutrient, proteinG: nutrient, fatG: nutrient, carbsG: nutrient,
             fiberG: nutrient, sodiumMg: nutrient
         ), serving: 0))
