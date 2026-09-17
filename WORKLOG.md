@@ -1029,3 +1029,39 @@ Release build（device）: BUILD SUCCEEDED，0 error / 0 warning
 - 告警页：新增「当前待检查（N 类）」按指标归组 + 「确认此类」；历史详情按日期保留，分组不删除不自动确认。
 
 **版本**：0.6.0（12）。**验证状态**：代码完成；⚠️ 本轮开发机 Xcode 27 许可未接受，`xcodebuild/swiftc` 全部被阻塞，构建与全部单测（含新增 FoodCatalog/RecipeCalculator/PersonalFoodStore/MealHistoryQuery/PersonalFoodDraftAndBackup/v9 迁移用例）**尚未执行**——接受许可后须先跑 `xcodebuild test` 再真机验收。
+
+### 接管收尾与模拟器验收 — 2026-09-17
+
+**完成**
+
+- 在保留 ZCode 原有 5 个未提交文件修改的前提下，修复编译器暴露的 GRDB 参数/Swift 元组/异步断言问题，以及测试内存数据库未复用同一实例的问题。
+- 配方未知用量现在不产生“所有字段为 nil 但仍存在”的每 100 g 结果；编辑器明确提示“待补原料用量”。
+- 按 MEXT 公开条目核对全麦面包（01208）：官方页面未显示推定标记，资源备注与测试改为 `measured`，营养数值未修改。
+- UI SmokeTests 显式选择“参考食材”段，避免页面段持久化造成跨次启动的测试污染；产品保留用户段选择记忆行为。
+
+**验证**
+
+```
+xcodebuild -scheme HealthManager -destination 'generic/platform=iOS Simulator' build
+  BUILD SUCCEEDED
+xcodebuild -scheme HealthManager -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:HealthManagerTests test
+  303/303 passed, 0 failed, 0 skipped
+xcodebuild -scheme HealthManager -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:HealthManagerUITests test
+  7/7 passed, 0 failed, 0 skipped
+xcodebuild -scheme HealthManager -configuration Release -destination 'id=00008150-001204800152401C' build
+  BUILD SUCCEEDED（已连接的 NortePro的iPhone；未安装）
+```
+
+**ZCode 断线调查（只读）**
+
+- ZCode 任务索引显示该 HealthManager 任务以 `MODEL_TLS_VALIDATION_FAILED` 结束，归因 `provider / stream / SSE`，`retryable=false`；不是 HealthManager 编译或测试失败。
+- `zcode.z.ai` 直连路径返回仅含 IP SAN 的证书，严格校验时报 `ERR_TLS_CERT_ALTNAME_INVALID`；同一主机经本机 Mihomo `127.0.0.1:7890` 代理返回 `*.z.ai` 匹配证书并获得 307 响应。系统代理开关虽已开启，但 ZCode 的 provider/Node 流路径没有稳定复用该代理路径，形成了“浏览器/显式代理可通、ZCode 直连 TLS 失败”的路径差异。
+- ZCode 主进程、agent host 与 CLI 仍存活；登录刷新随后又出现同类证书不匹配/超时，当前界面为“登录失败，请重试”。未点击重新登录、未关闭进程、未关闭 TLS 校验、未改系统代理或凭据。
+
+**ZCode 复核（2026-09-18）**
+
+- 修复提交后复跑：`HealthManagerTests` 303/303 通过、`SmokeTests` 通过（iPhone 17 Pro / iOS 26.5，`TEST SUCCEEDED`），与接管轮结论一致。
+
+**待验**
+
+- 真机 A01~A16、安装升级数据核对与发布仍为 `PENDING`；本轮未把模拟器通过误报成真机或发布通过。

@@ -1,13 +1,13 @@
 # NEXT_TASK
 
-> 当前状态（2026-09-17）：v0.6.0（build 12）代码完成，**未发布**。依据 `docs/planning/2026-09-17-营养表与体验迭代/` 完成：导航五栏改版（趋势首页、移除今日页）、离线官方营养目录、营养表页、我的常吃/个人配方、备份 v2、饮食历史分页搜索、首页与说明精简、告警分组。详见 `WORKLOG.md` 末尾与 `docs/adr/ADR-004`。
+> 当前状态（2026-09-17）：v0.6.0（build 12）代码完成，**模拟器构建与测试通过，未发布**。依据 `docs/planning/2026-09-17-营养表与体验迭代/` 完成：导航五栏改版（趋势首页、移除今日页）、离线官方营养目录、营养表页、我的常吃/个人配方、备份 v2、饮食历史分页搜索、首页与说明精简、告警分组。详见 `WORKLOG.md` 末尾与 `docs/adr/ADR-004`。
 
 ## 当前待办（按顺序，阻塞发布）
 
-- [ ] **接受本机 Xcode 27 许可**（`sudo xcodebuild -license accept`），然后跑全量构建与测试：
-  - `xcodebuild -scheme HealthManager -destination 'platform=iOS Simulator,name=<可用机型>' test`
-  - 新增测试：FoodCatalogTests / RecipeCalculatorTests / PersonalFoodStoreTests / MealHistoryQueryTests / PersonalFoodDraftAndBackupTests（含 v9 迁移与备份 v2 往返）。
-- [ ] 修掉编译/测试暴露的问题（本轮代码未经编译器验证；重点检查 GRDB 子查询 `Column("id").in(...)`、SwiftUI sheet 重呈现、`historyPage` LIKE 转义）。
+- [x] Xcode 27 许可已生效（2026-09-17 用户完成）；模拟器构建、单测/UI 测试与真机 Release 签名均已实际执行。
+- [x] 完成模拟器构建与测试：`HealthManagerTests` 303/303、`HealthManagerUITests` 7/7，iPhone 17 / iOS 26.5；generic iOS Simulator build succeeded。
+- [x] 修掉编译/测试暴露的问题：GRDB/测试数据库夹具、配方未知用量的每 100 g 语义、官方目录标注、SwiftUI 营养表 UI 测试状态隔离等。
+- [x] 已对已连接的 `NortePro的iPhone` 完成 Release 编译与签名（`BUILD SUCCEEDED`）；尚未安装或启动，避免未经确认改变真机现有安装与数据。
 - [ ] 真机验收 A01~A16（清单见 `docs/releases/v0.6.0.md`），重点：升级后 v9 迁移自动执行且历史餐次不变；备份 v2 导出/重装恢复；营养表→加入饮食→保存闭环；HealthKit 写入与旧版一致。
 - [ ] 真机通过后按既有流程发布。
 
