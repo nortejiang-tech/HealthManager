@@ -241,11 +241,11 @@ final class PersonalFoodDraftAndBackupTests: XCTestCase {
             outputGrams: 390, outputWeightBasis: "estimated", note: nil, matchKey: nil
         )
 
-        // 2. 导出 → manifest v2 含新文件。
+        // 2. 导出 → manifest v3 含个人与参考表文件。
         let packageURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("hm-backup-v2-\(UUID().uuidString)", isDirectory: true)
+            .appendingPathComponent("hm-backup-v3-roundtrip-\(UUID().uuidString)", isDirectory: true)
         let manifest = try await BackupExporter(database: source).export(to: packageURL)
-        XCTAssertEqual(manifest.formatVersion, 2)
+        XCTAssertEqual(manifest.formatVersion, BackupManifest.currentFormatVersion)
         let fileNames = Set(manifest.files.map(\.file))
         XCTAssertTrue(fileNames.contains("personal_recipes.jsonl"))
         XCTAssertTrue(fileNames.contains("personal_recipe_versions.jsonl"))
@@ -291,17 +291,17 @@ final class PersonalFoodDraftAndBackupTests: XCTestCase {
             .importPackage(from: v1Dir)
         XCTAssertGreaterThan(v1Summary.importedCounts["meal_records"] ?? 0, 0, "v1 包的常规表照常导入")
 
-        // 6. 更高版本（3）明确拒绝。
+        // 6. 更高版本（99）明确拒绝。
         let v3Dir = FileManager.default.temporaryDirectory
             .appendingPathComponent("hm-backup-v3-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: v3Dir, withIntermediateDirectories: true)
-        let v3 = BackupManifest(formatVersion: 3, appVersion: "9.9", exportedAt: 1, files: [])
-        try encoder.encode(v3).write(to: v3Dir.appendingPathComponent("manifest.json"))
+        let v99 = BackupManifest(formatVersion: 99, appVersion: "9.9", exportedAt: 1, files: [])
+        try encoder.encode(v99).write(to: v3Dir.appendingPathComponent("manifest.json"))
         do {
             _ = try await BackupImporter(database: target).importPackage(from: v3Dir)
-            XCTFail("formatVersion 3 必须被拒绝")
+            XCTFail("formatVersion 99 必须被拒绝")
         } catch let error as BackupImportError {
-            guard case .unsupportedFormatVersion(3) = error else {
+            guard case .unsupportedFormatVersion(99) = error else {
                 return XCTFail("unexpected error: \(error)")
             }
         }

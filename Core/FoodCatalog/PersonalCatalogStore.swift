@@ -203,7 +203,8 @@ final class PersonalCatalogStore: @unchecked Sendable {
                     if request.activate {
                         member.isRemoved = false
                         member.displayName = displayName
-                        member.versionId = resolvedVersionId
+                        // 版本指针不随导入自动升级（ADR-005 §1.1）：成员继续指向
+                        // 自己选用的版本；新版本仅追加行，供「显式采用」流程使用。
                         if !request.aliases.isEmpty {
                             member.customAliasesJSON = PersonalReferenceEntryRecord.encodeAliases(request.aliases)
                         }

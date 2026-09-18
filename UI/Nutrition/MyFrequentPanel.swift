@@ -26,6 +26,8 @@ struct MyFrequentPanel: View {
     let onMatchCandidate: (FrequentFoodsQuery.Summary) -> Void
     let onEditRecipe: (PersonalFoodStore.RecipeWithVersion) -> Void
     let onCreateRecipe: (FrequentFoodsQuery.Summary) -> Void
+    /// 「生成参考配方」：由父级编排推测（可能耗时/需模型），失败时父级回退手动。
+    var onGenerateRecipe: ((FrequentFoodsQuery.Summary) -> Void)? = nil
 
     @State private var page: PersonalFoodStore.FrequentPage?
     @State private var isLoading = false
@@ -384,13 +386,25 @@ struct MyFrequentPanel: View {
                 .buttonStyle(.bordered)
                 .accessibilityIdentifier("nutrition-candidate-match-\(candidate.key)")
 
-                Button {
-                    onCreateRecipe(candidate)
-                } label: {
-                    Label("补充配方", systemImage: "slider.horizontal.3")
-                        .font(.footnote.weight(.medium))
+                if let onGenerateRecipe {
+                    Button {
+                        onGenerateRecipe(candidate)
+                    } label: {
+                        Label("生成参考配方", systemImage: "wand.and.stars")
+                            .font(.footnote.weight(.medium))
+                    }
+                    .buttonStyle(.bordered)
+                    .tint(HMColors.estimate)
+                    .accessibilityIdentifier("nutrition-candidate-generate-\(candidate.key)")
+                } else {
+                    Button {
+                        onCreateRecipe(candidate)
+                    } label: {
+                        Label("手动建配方", systemImage: "slider.horizontal.3")
+                            .font(.footnote.weight(.medium))
+                    }
+                    .buttonStyle(.bordered)
                 }
-                .buttonStyle(.bordered)
 
                 Button(role: .destructive) {
                     Task { await ignore(candidate) }

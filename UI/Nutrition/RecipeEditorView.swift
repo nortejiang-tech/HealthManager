@@ -3,9 +3,16 @@ import SwiftUI
 /// 配方编辑器（§5.3 / 阶段三）：原料（官方条目 + 用量状态）、成品重量与依据、
 /// 每 100 g 预览。保存即生成新的不可变版本；取消不写任何数据。
 struct RecipeEditorView: View {
+    /// 推测初稿（§5.2）：模型建议的原料/成品重，保存前完全可编辑。
+    struct GeneratedPrefill: Equatable {
+        var ingredients: [RecipeIngredient]
+        var outputGrams: Double?
+        var rationale: String
+    }
+
     enum Mode {
-        /// 从待确认候选创建（可选携带候选键，确认后映射回该候选）。
-        case create(matchKey: String?, suggestedName: String)
+        /// 从待确认候选创建（可选携带候选键与推测初稿）。
+        case create(matchKey: String?, suggestedName: String, generated: GeneratedPrefill?)
         /// 修订既有配方：保存生成新版本，旧版本保留。
         case edit(PersonalFoodStore.RecipeWithVersion)
     }
@@ -39,6 +46,8 @@ struct RecipeEditorView: View {
     let catalogStore: FoodCatalogStore
     let mode: RecipeEditorView.Mode
     let onSaved: () async -> Void
+    /// 推测模式的「重新生成」：返回新初稿供应用；当前草稿不会被覆盖（R4）。
+    var regenerate: (() async -> GeneratedPrefill?)? = nil
 
     @State private var name: String
     @State private var ingredients: [DraftIngredient]
@@ -49,24 +58,41 @@ struct RecipeEditorView: View {
     @State private var isShowingPicker = false
     @State private var isSaving = false
     @State private var saveError: String?
+    @State private var generatedRationale: String?
+    @State private var incomingSuggestion: GeneratedPrefill?
+    @State private var isRegenerating = false
+    @State private var isShowingPendingAlert = false
+    @State private var pendingNameInput = ""
 
     init(
         catalogStore: FoodCatalogStore,
         mode: RecipeEditorView.Mode,
-        onSaved: @escaping () async -> Void
+        onSaved: @escaping () async -> Void,
+        regenerate: (() async -> GeneratedPrefill?)? = nil
     ) {
         self.catalogStore = catalogStore
         self.mode = mode
         self.onSaved = onSaved
+        self.regenerate = regenerate
 
         switch mode {
-        case .create(let key, let suggestedName):
+        case .create(let key, let suggestedName, let generated):
             _name = State(initialValue: suggestedName)
-            _ingredients = State(initialValue: [])
-            _outputText = State(initialValue: "")
-            _outputBasis = State(initialValue: .pending)
+            _ingredients = State(initialValue: generated.map { prefill in
+                prefill.ingredients.map { ingredient in
+                    DraftIngredient(
+                        ingredient: ingredient,
+                        gramsText: ingredient.grams.map {
+                            $0 == $0.rounded() ? String(format: "%.0f", $0) : String($0)
+                        } ?? ""
+                    )
+                }
+            } ?? [])
+            _outputText = State(initialValue: generated?.outputGrams.map { String($0) } ?? "")
+            _outputBasis = State(initialValue: generated != nil ? .estimated : .pending)
             _note = State(initialValue: "")
             _matchKey = State(initialValue: key)
+            _generatedRationale = State(initialValue: generated?.rationale)
         case .edit(let item):
             _name = State(initialValue: item.recipe.displayName)
             _ingredients = State(initialValue: item.version.ingredients.map { ingredient in
@@ -87,9 +113,59 @@ struct RecipeEditorView: View {
     var body: some View {
         NavigationStack {
             Form {
+                if let generatedRationale {
+                    Section {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Label("推测配方 · 含推测用量", systemImage: "wand.and.stars")
+                                .font(.subheadline.weight(.semibold))
+                            Text(generatedRationale)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+
+                if incomingSuggestion != nil {
+                    Section {
+                        HStack {
+                            Label("有新推测可用（当前草稿未改动）", systemImage: "arrow.triangle.2.circlepath")
+                                .font(.footnote)
+                            Spacer()
+                            Button("应用") {
+                                applyIncomingSuggestion()
+                            }
+                            .buttonStyle(.bordered)
+                            .tint(HMColors.comparison)
+                            Button("放弃") {
+                                incomingSuggestion = nil
+                            }
+                            .buttonStyle(.bordered)
+                        }
+                    }
+                }
+
                 Section("配方名称") {
                     TextField("如：干豆腐卷大葱、早餐（鸡蛋＋豆浆）", text: $name)
                         .accessibilityIdentifier("recipe-editor-name")
+                }
+
+                if regenerate != nil {
+                    Section {
+                        Button {
+                            Task { await runRegenerate() }
+                        } label: {
+                            HStack(spacing: 8) {
+                                if isRegenerating {
+                                    ProgressView().controlSize(.small)
+                                }
+                                Text(isRegenerating ? "重新推测中…" : "重新生成推测")
+                            }
+                        }
+                        .disabled(isRegenerating)
+                        .accessibilityIdentifier("recipe-editor-regenerate")
+                    } footer: {
+                        Text("重新生成不会覆盖你已修改的内容；新推测会先展示，由你选择应用或放弃。")
+                    }
                 }
 
                 Section {
@@ -106,6 +182,14 @@ struct RecipeEditorView: View {
                         Label("添加原料（官方目录）", systemImage: "plus.circle")
                     }
                     .accessibilityIdentifier("recipe-editor-add-ingredient")
+
+                    Button {
+                        pendingNameInput = ""
+                        isShowingPendingAlert = true
+                    } label: {
+                        Label("添加待匹配原料", systemImage: "questionmark.circle")
+                    }
+                    .accessibilityIdentifier("recipe-editor-add-pending")
                 } header: {
                     Text("原料")
                 } footer: {
@@ -150,7 +234,7 @@ struct RecipeEditorView: View {
                     }
                 }
             }
-            .navigationTitle(isEditingExisting ? "修订配方" : "新建配方")
+            .navigationTitle(navigationTitleText)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -165,7 +249,7 @@ struct RecipeEditorView: View {
                         if isSaving {
                             ProgressView().controlSize(.small)
                         } else {
-                            Text("保存")
+                            Text(isGeneratedDraft ? "确认并保存" : "保存")
                         }
                     }
                     .disabled(isSaving || !canSave)
@@ -175,14 +259,52 @@ struct RecipeEditorView: View {
             .sheet(isPresented: $isShowingPicker) {
                 CatalogPickerSheet(
                     catalogStore: catalogStore,
+                    personalCatalog: environment.personalCatalogStore,
                     title: "选择原料",
-                    subtitle: "从内置官方目录挑选；未收录的食材不会出现在结果里。",
+                    subtitle: "从官方资料范围挑选（含已导入条目）；使用已移除参考表成员不会把它恢复进参考表。",
                     onPick: { entry in
-                        appendIngredient(entry)
+                        if let rowId = rowToReplace {
+                            if let index = ingredients.firstIndex(where: { $0.id == rowId }) {
+                                ingredients[index].ingredient = Self.ingredient(from: entry, versionLabel: RecipeSuggestionService.poolVersionLabel(entry: entry))
+                                ingredients[index].gramsText = ingredients[index].gramsText
+                            }
+                            rowToReplace = nil
+                        } else {
+                            appendIngredient(entry)
+                        }
                         isShowingPicker = false
                     },
-                    onCancel: { isShowingPicker = false }
+                    onCancel: {
+                        rowToReplace = nil
+                        isShowingPicker = false
+                    }
                 )
+            }
+            .alert("待匹配原料", isPresented: $isShowingPendingAlert) {
+                TextField("原料名，如：蘸酱", text: $pendingNameInput)
+                Button("添加") {
+                    let trimmed = pendingNameInput.trimmingCharacters(in: .whitespacesAndNewlines)
+                    guard !trimmed.isEmpty else { return }
+                    ingredients.append(
+                        DraftIngredient(
+                            ingredient: RecipeIngredient(
+                                catalogEntryId: "",
+                                catalogVersion: "",
+                                nameZh: trimmed,
+                                basis: .per100g,
+                                preparationState: .unknown,
+                                grams: nil,
+                                amountStatus: .unknown,
+                                nutritionSnapshot: nil,
+                                pendingName: trimmed
+                            ),
+                            gramsText: ""
+                        )
+                    )
+                }
+                Button("取消", role: .cancel) {}
+            } message: {
+                Text("暂无可信官方候选的原料先占位；受影响的营养按未知处理，之后可选择官方条目替换。")
             }
         }
     }
@@ -190,6 +312,41 @@ struct RecipeEditorView: View {
     private var isEditingExisting: Bool {
         if case .edit = mode { return true }
         return false
+    }
+
+    private var isGeneratedDraft: Bool {
+        generatedRationale != nil
+    }
+
+    private var navigationTitleText: String {
+        if case .edit = mode { return "修订配方" }
+        return isGeneratedDraft ? "推测配方" : "新建配方"
+    }
+
+    private func applyIncomingSuggestion() {
+        guard let suggestion = incomingSuggestion else { return }
+        ingredients = suggestion.ingredients.map { ingredient in
+            DraftIngredient(
+                ingredient: ingredient,
+                gramsText: ingredient.grams.map {
+                    $0 == $0.rounded() ? String(format: "%.0f", $0) : String($0)
+                } ?? ""
+            )
+        }
+        if let output = suggestion.outputGrams {
+            outputText = String(output)
+            outputBasis = .estimated
+        }
+        incomingSuggestion = nil
+    }
+
+    private func runRegenerate() async {
+        guard let regenerate else { return }
+        isRegenerating = true
+        defer { isRegenerating = false }
+        if let suggestion = await regenerate() {
+            incomingSuggestion = suggestion
+        }
     }
 
     private var outputFooter: String {
@@ -204,6 +361,39 @@ struct RecipeEditorView: View {
     }
 
     private func ingredientRow(_ draft: Binding<DraftIngredient>) -> some View {
+        if draft.wrappedValue.ingredient.isPendingMatch {
+            return AnyView(pendingIngredientRow(draft))
+        }
+        return AnyView(resolvedIngredientRow(draft))
+    }
+
+    /// 待匹配原料：资料库暂无可信候选——保留一行，可选择/替换/删除，不悄悄略去（R3）。
+    private func pendingIngredientRow(_ draft: Binding<DraftIngredient>) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: "questionmark.circle")
+                .foregroundStyle(HMColors.actionRequired)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(draft.wrappedValue.ingredient.displayName)
+                    .font(.body)
+                Text("待匹配原料——受影响营养按未知处理")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+            Button("选择官方条目") {
+                rowToReplace = draft.wrappedValue.id
+                isShowingPicker = true
+            }
+            .buttonStyle(.bordered)
+            .font(.caption)
+        }
+        .padding(.vertical, 4)
+        .accessibilityElement(children: .combine)
+    }
+
+    @State private var rowToReplace: UUID?
+
+    private func resolvedIngredientRow(_ draft: Binding<DraftIngredient>) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
                 Text(draft.wrappedValue.ingredient.nameZh)
@@ -315,22 +505,67 @@ struct RecipeEditorView: View {
     }
 
     private var resolvedInputs: (inputs: [RecipeCalculator.IngredientInput], missingCount: Int) {
+        let unknownNutrients = FoodCatalogEntry.Nutrients(
+            kcal: FoodCatalogNutrient(value: nil, flag: .unmeasured),
+            proteinG: FoodCatalogNutrient(value: nil, flag: .unmeasured),
+            fatG: FoodCatalogNutrient(value: nil, flag: .unmeasured),
+            carbsG: FoodCatalogNutrient(value: nil, flag: .unmeasured),
+            fiberG: FoodCatalogNutrient(value: nil, flag: .unmeasured),
+            sodiumMg: FoodCatalogNutrient(value: nil, flag: .unmeasured)
+        )
         var inputs: [RecipeCalculator.IngredientInput] = []
         var missing = 0
         for draft in ingredients {
-            guard let entry = catalogStore.entry(id: draft.ingredient.catalogEntryId) else {
-                missing += 1
+            // 快照优先；无快照且当前目录解析失败、或待匹配原料 → 未知贡献（不跳过、不清零）。
+            if let snapshot = draft.ingredient.nutritionSnapshot {
+                inputs.append(
+                    RecipeCalculator.IngredientInput(
+                        per100: snapshot.per100,
+                        grams: parsedGrams(draft),
+                        status: draft.ingredient.amountStatus
+                    )
+                )
                 continue
             }
+            if let entry = catalogStore.entry(id: draft.ingredient.catalogEntryId) {
+                inputs.append(
+                    RecipeCalculator.IngredientInput(
+                        per100: entry.nutrients,
+                        grams: parsedGrams(draft),
+                        status: draft.ingredient.amountStatus
+                    )
+                )
+                continue
+            }
+            missing += 1
             inputs.append(
                 RecipeCalculator.IngredientInput(
-                    per100: entry.nutrients,
+                    per100: unknownNutrients,
                     grams: parsedGrams(draft),
-                    status: draft.ingredient.amountStatus
+                    status: draft.ingredient.amountStatus == .notUsed ? .notUsed : .unknown
                 )
             )
         }
         return (inputs, missing)
+    }
+
+    /// 由目录条目构造原料（选择官方条目替换待匹配行/新增原料共用）。
+    static func ingredient(from entry: FoodCatalogEntry, versionLabel: String) -> RecipeIngredient {
+        RecipeIngredient(
+            catalogEntryId: entry.id,
+            catalogVersion: versionLabel,
+            nameZh: entry.nameZh,
+            basis: entry.basis,
+            preparationState: entry.preparationState.mealItemState,
+            grams: nil,
+            amountStatus: .estimated,
+            nutritionSnapshot: IngredientNutritionSnapshot.capture(
+                from: entry,
+                versionLabel: versionLabel,
+                capturedAt: Int64(Date().timeIntervalSince1970)
+            ),
+            pendingName: nil
+        )
     }
 
     private func parsedGrams(_ draft: DraftIngredient) -> Double? {
@@ -354,14 +589,9 @@ struct RecipeEditorView: View {
         guard !ingredients.contains(where: { $0.ingredient.catalogEntryId == entry.id }) else { return }
         ingredients.append(
             DraftIngredient(
-                ingredient: RecipeIngredient(
-                    catalogEntryId: entry.id,
-                    catalogVersion: catalogStore.catalog.source.edition,
-                    nameZh: entry.nameZh,
-                    basis: entry.basis,
-                    preparationState: entry.preparationState.mealItemState,
-                    grams: nil,
-                    amountStatus: .weighed
+                ingredient: Self.ingredient(
+                    from: entry,
+                    versionLabel: RecipeSuggestionService.poolVersionLabel(entry: entry)
                 ),
                 gramsText: ""
             )
@@ -441,15 +671,33 @@ extension RecipeIngredient.AmountStatus {
     }
 }
 
-/// 从内置目录挑选条目（候选匹配、配方加原料共用）。只读，不写任何数据。
+/// 从官方资料范围挑选条目（候选匹配、配方加原料共用）。
+/// 检索范围 = 随包目录 + 个人资料库（含已移除参考表成员与仅入库条目）；
+/// 在这里使用条目**不会**把条目恢复进参考表（ADR-005 §3.1）。只读，不写任何数据。
 struct CatalogPickerSheet: View {
     let catalogStore: FoodCatalogStore
+    var personalCatalog: PersonalCatalogStore? = nil
     let title: String
     let subtitle: String
     let onPick: (FoodCatalogEntry) -> Void
     let onCancel: () -> Void
 
     @State private var query: String = ""
+    @State private var importedEntries: [FoodCatalogEntry] = []
+
+    /// 合并去重后的完整检索（个人库优先——保留用户显示名）。
+    private func combinedResults(_ query: String) -> [FoodCatalogEntry] {
+        var byId: [String: FoodCatalogEntry] = [:]
+        for entry in importedEntries { byId[entry.id] = entry }
+        for entry in catalogStore.search(query: query, category: nil) where byId[entry.id] == nil {
+            byId[entry.id] = entry
+        }
+        let all = Array(byId.values)
+        guard !query.trimmingCharacters(in: .whitespaces).isEmpty else {
+            return all.sorted { $0.nameZh < $1.nameZh }
+        }
+        return FoodSearchService.rank(entries: all, query: query).map(\.0)
+    }
 
     var body: some View {
         NavigationStack {
@@ -468,7 +716,7 @@ struct CatalogPickerSheet: View {
                 .background(HMColors.surface, in: RoundedRectangle(cornerRadius: 12))
                 .overlay(RoundedRectangle(cornerRadius: 12).stroke(HMColors.separator, lineWidth: 1))
 
-                let results = catalogStore.search(query: query, category: nil)
+                let results = combinedResults(query)
                 if results.isEmpty {
                     Text("没有匹配的官方条目。查不到的食物不会被猜测填充。")
                         .font(.footnote)
@@ -501,6 +749,11 @@ struct CatalogPickerSheet: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("取消") { onCancel() }
+                }
+            }
+            .task {
+                if let personalCatalog {
+                    importedEntries = ((try? await personalCatalog.allOfficialFoods()) ?? []).map(\.entry)
                 }
             }
         }

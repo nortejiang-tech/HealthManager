@@ -196,6 +196,25 @@ struct SettingsView: View {
                 Text("文本评注和照片分析可以使用不同的 OpenAI 兼容接口；API Key 存在系统 Keychain，不进入数据库快照。")
             }
 
+            Section {
+                NavigationLink {
+                    FoodLibrarySettingsView()
+                } label: {
+                    HStack {
+                        Label("食材资料库", systemImage: "books.vertical")
+                        Spacer()
+                        Text(USDAKeyStore.isConfigured ? "已配置" : "未配置")
+                            .foregroundStyle(.secondary)
+                            .font(.footnote)
+                    }
+                }
+                .accessibilityIdentifier("settings-food-library")
+            } header: {
+                Text("可信资料库")
+            } footer: {
+                Text("配置 USDA FoodData Central 个人 API Key 后，可在「营养表 → ＋」联网检索并添加官方食材。Key 存本机 Keychain，不进备份包。")
+            }
+
             Section("通知") {
                 LabeledContent("用药提醒授权", value: notifStatusLabel)
                 if notifStatus == .denied {

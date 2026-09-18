@@ -32,7 +32,7 @@ enum NutritionFormatting {
     }
 }
 
-/// 「营养表」页：参考食材（离线官方目录）与我的常吃两段切换。
+/// 「营养表」页：参考食材（个人参考表，可整理）与我的常吃两段切换。
 /// 页面只读目录与本地统计；只有「加入饮食」→ 编辑器 → 保存才走写链路（§3 导航合同）。
 struct NutritionView: View {
     enum PageSegment: String, CaseIterable, Identifiable {
@@ -54,8 +54,9 @@ struct NutritionView: View {
         case editor([MealItemDraft])
         case sourceInfo
         case candidateMatch(FrequentFoodsQuery.Summary)
-        case recipeCreate(matchKey: String?, suggestedName: String)
+        case recipeCreate(matchKey: String?, suggestedName: String, generated: RecipeEditorView.GeneratedPrefill?)
         case recipeEdit(PersonalFoodStore.RecipeWithVersion)
+        case addFood
 
         var id: String {
             switch self {
@@ -63,10 +64,17 @@ struct NutritionView: View {
             case .editor(let items): return "editor-\(items.map(\.name).joined(separator: "|"))"
             case .sourceInfo: return "source-info"
             case .candidateMatch(let summary): return "candidate-match-\(summary.key)"
-            case .recipeCreate(let key, let name): return "recipe-create-\(key ?? name)"
+            case .recipeCreate(let key, let name, _): return "recipe-create-\(key ?? name)"
             case .recipeEdit(let item): return "recipe-edit-\(item.recipe.id ?? -1)-v\(item.version.version)"
+            case .addFood: return "add-food"
             }
         }
+    }
+
+    /// 移除后的撤销横幅状态。
+    private struct PendingUndo: Equatable {
+        let memberId: Int64
+        let displayName: String
     }
 
     private static let segmentStorageKey = "nutrition.page.segment.v1"
@@ -82,11 +90,31 @@ struct NutritionView: View {
     @State private var frequentRefreshToken: Int = 0
     @State private var actionErrorMessage: String?
 
+    // 参考表（成员驱动，ADR-005）
+    @State private var referenceFoods: [PersonalCatalogStore.ReferenceFood] = []
+    @State private var isLoadingReference: Bool = false
+    @State private var referenceError: String?
+    @State private var referenceToken: Int = 0
+    @State private var pendingUndo: PendingUndo?
+    @State private var undoExpiryTask: Task<Void, Never>?
+    @State private var isGeneratingRecipe: Bool = false
+
     var body: some View {
         NavigationStack {
             content
                 .navigationTitle("营养表")
                 .toolbar {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        if segment == .reference {
+                            Button {
+                                activeSheet = .addFood
+                            } label: {
+                                Image(systemName: "plus")
+                            }
+                            .accessibilityIdentifier("nutrition-add-food")
+                            .accessibilityLabel("添加食材")
+                        }
+                    }
                     ToolbarItem(placement: .topBarTrailing) {
                         Button {
                             activeSheet = .sourceInfo
@@ -97,8 +125,12 @@ struct NutritionView: View {
                         .accessibilityLabel("数据来源说明")
                     }
                 }
+                .safeAreaInset(edge: .bottom, spacing: 0) {
+                    undoBanner
+                }
                 .sheet(item: $activeSheet, onDismiss: {
-                    // 候选确认/配方保存可能改变「我的常吃」，关闭任意面板后刷新。
+                    // 候选确认/配方保存/添加食材都可能改变列表，关闭后统一刷新。
+                    referenceToken += 1
                     frequentRefreshToken += 1
                 }) { sheet in
                     switch sheet {
@@ -108,7 +140,11 @@ struct NutritionView: View {
                             catalog: catalogStore?.catalog,
                             onAddToMeal: { draft in
                                 activeSheet = .editor([draft])
-                            }
+                            },
+                            onRemove: memberID(entry) != nil ? {
+                                removeMember(for: entry)
+                                activeSheet = nil
+                            } : nil
                         )
                     case .editor(let items):
                         MealEditView(prefilledItems: items)
@@ -118,6 +154,7 @@ struct NutritionView: View {
                         if let catalogStore {
                             CatalogPickerSheet(
                                 catalogStore: catalogStore,
+                                personalCatalog: environment.personalCatalogStore,
                                 title: "匹配官方条目",
                                 subtitle: "为「\(summary.displayName)」选择官方条目。名称相近不等于同物；确认后该候选按所选条目计算。",
                                 onPick: { entry in
@@ -126,14 +163,21 @@ struct NutritionView: View {
                                 onCancel: { activeSheet = nil }
                             )
                         }
-                    case .recipeCreate(let matchKey, let suggestedName):
+                    case .recipeCreate(let matchKey, let suggestedName, let generated):
                         if let catalogStore {
                             RecipeEditorView(
                                 catalogStore: catalogStore,
-                                mode: .create(matchKey: matchKey, suggestedName: suggestedName),
+                                mode: .create(
+                                    matchKey: matchKey,
+                                    suggestedName: suggestedName,
+                                    generated: generated
+                                ),
                                 onSaved: {
                                     await MainActor.run { activeSheet = nil }
-                                }
+                                },
+                                regenerate: generated != nil ? {
+                                    await regenerateSuggestion(matchKey: matchKey, suggestedName: suggestedName)
+                                } : nil
                             )
                         }
                     case .recipeEdit(let item):
@@ -143,6 +187,19 @@ struct NutritionView: View {
                                 mode: .edit(item),
                                 onSaved: {
                                     await MainActor.run { activeSheet = nil }
+                                }
+                            )
+                        }
+                    case .addFood:
+                        if let catalogStore {
+                            AddFoodSheet(
+                                bundled: catalogStore,
+                                onCancel: { activeSheet = nil },
+                                onAdded: {
+                                    Task { @MainActor in
+                                        activeSheet = nil
+                                        await refreshReference(scrollToEnd: true)
+                                    }
                                 }
                             )
                         }
@@ -158,47 +215,308 @@ struct NutritionView: View {
                 }
                 .task {
                     await loadCatalogIfNeeded()
+                    await refreshReference()
+                }
+                .onChange(of: segment) { _, _ in
+                    if segment == .reference {
+                        Task { await refreshReference() }
+                    }
                 }
         }
     }
 
+    private var memberID: (FoodCatalogEntry) -> Int64? { { entry in
+        referenceFoods.first { $0.entry.id == entry.id }?.member.id
+    } }
+
     @ViewBuilder
     private var content: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                segmentPicker
+        ScrollViewReader { proxy in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    segmentPicker
 
-                if segment == .reference {
-                    referenceSection
-                } else if let catalogError {
-                    catalogErrorView(catalogError)
-                } else if let catalogStore {
-                    MyFrequentPanel(
-                        catalogStore: catalogStore,
-                        refreshToken: frequentRefreshToken,
-                        onAddToMeal: { items in
-                            activeSheet = .editor(items)
-                        },
-                        onMatchCandidate: { summary in
-                            activeSheet = .candidateMatch(summary)
-                        },
-                        onEditRecipe: { item in
-                            activeSheet = .recipeEdit(item)
-                        },
-                        onCreateRecipe: { summary in
-                            activeSheet = .recipeCreate(matchKey: summary.key, suggestedName: summary.displayName)
+                    if segment == .reference {
+                        referenceSection
+                    } else if let catalogError {
+                        catalogErrorView(catalogError)
+                    } else if let catalogStore {
+                        MyFrequentPanel(
+                            catalogStore: catalogStore,
+                            refreshToken: frequentRefreshToken,
+                            onAddToMeal: { items in
+                                activeSheet = .editor(items)
+                            },
+                            onMatchCandidate: { summary in
+                                activeSheet = .candidateMatch(summary)
+                            },
+                            onEditRecipe: { item in
+                                activeSheet = .recipeEdit(item)
+                            },
+                            onCreateRecipe: { summary in
+                                activeSheet = .recipeCreate(matchKey: summary.key, suggestedName: summary.displayName, generated: nil)
+                            },
+                            onGenerateRecipe: { summary in
+                                Task { await generateRecipeDraft(for: summary) }
+                            }
+                        )
+                        if isGeneratingRecipe {
+                            HStack(spacing: 8) {
+                                ProgressView().controlSize(.small)
+                                Text("正在按常见家常做法推测配方…")
+                                    .font(.footnote)
+                                    .foregroundStyle(.secondary)
+                            }
+                            .padding(.vertical, 8)
                         }
-                    )
-                } else {
-                    catalogLoadingView
+                    } else {
+                        catalogLoadingView
+                    }
+                }
+                .padding(.horizontal, 20)
+                .padding(.top, 8)
+                .padding(.bottom, 28)
+            }
+            .onChange(of: referenceToken) { _, _ in
+                // 添加成功后定位新条目（列表按加入时间排序，新条目在末尾）。
+                if let last = referenceFoods.last {
+                    proxy.scrollTo("ref-\(last.entry.id)", anchor: .bottom)
                 }
             }
-            .padding(.horizontal, 20)
-            .padding(.top, 8)
-            .padding(.bottom, 28)
         }
         .background(HMColors.background.ignoresSafeArea())
         .accessibilityIdentifier("nutrition-screen")
+    }
+
+    private var segmentPicker: some View {
+        Picker("页面段", selection: $segment) {
+            ForEach(PageSegment.allCases) { segment in
+                Text(segment.title).tag(segment)
+            }
+        }
+        .pickerStyle(.segmented)
+        .onChange(of: segment) { _, newValue in
+            UserDefaults.standard.set(newValue.rawValue, forKey: Self.segmentStorageKey)
+        }
+    }
+
+    // MARK: - 参考食材（我的参考表）
+
+    @ViewBuilder
+    private var referenceSection: some View {
+        if catalogStore == nil {
+            catalogLoadingView
+        } else if isLoadingReference, referenceFoods.isEmpty {
+            VStack(spacing: 10) {
+                HMLoadingSkeleton(height: 44)
+                HMLoadingSkeleton(height: 44)
+                HMLoadingSkeleton(height: 44)
+            }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("正在读取参考食材")
+        } else if let referenceError {
+            HMInlineRecovery(
+                title: "参考食材读取失败",
+                message: "已保存的记录与配方不受影响；可以重试读取。",
+                technicalDetails: referenceError,
+                actionTitle: "重试",
+                onAction: {
+                    Task { await refreshReference() }
+                }
+            )
+        } else {
+            NutritionReferencePanel(
+                foods: referenceFoods,
+                query: $query,
+                category: $category,
+                onEntryTap: { entry in
+                    activeSheet = .detail(entry)
+                },
+                onRemove: { food in
+                    removeFood(food)
+                },
+                onAddTap: {
+                    activeSheet = .addFood
+                }
+            )
+        }
+    }
+
+    /// 移除：立即隐藏 + 撤销横幅（可逆，不弹确认）；重复移除幂等。
+    private func removeFood(_ food: PersonalCatalogStore.ReferenceFood) {
+        guard let memberId = food.member.id else { return }
+        Task {
+            do {
+                try await environment.personalCatalogStore.removeMember(id: memberId)
+                await MainActor.run {
+                    withAnimation(.snappy) {
+                        referenceFoods.removeAll { $0.member.id == memberId }
+                    }
+                    pendingUndo = PendingUndo(memberId: memberId, displayName: food.member.displayName)
+                    scheduleUndoExpiry()
+                }
+            } catch {
+                await MainActor.run { actionErrorMessage = error.localizedDescription }
+            }
+        }
+    }
+
+    private func removeMember(for entry: FoodCatalogEntry) {
+        if let food = referenceFoods.first(where: { $0.entry.id == entry.id }) {
+            removeFood(food)
+        }
+    }
+
+    private func undoRemove() async {
+        guard let pending = pendingUndo else { return }
+        do {
+            try await environment.personalCatalogStore.restoreMember(id: pending.memberId)
+            pendingUndo = nil
+            await refreshReference()
+        } catch {
+            await MainActor.run { actionErrorMessage = error.localizedDescription }
+        }
+    }
+
+    private func scheduleUndoExpiry() {
+        undoExpiryTask?.cancel()
+        undoExpiryTask = Task {
+            try? await Task.sleep(nanoseconds: 6_000_000_000)
+            if Task.isCancelled { return }
+            await MainActor.run { pendingUndo = nil }
+        }
+    }
+
+    @ViewBuilder
+    private var undoBanner: some View {
+        if let pending = pendingUndo {
+            HStack(spacing: 10) {
+                Text("已移除「\(pending.displayName)」")
+                    .font(.footnote)
+                    .lineLimit(1)
+                Spacer(minLength: 8)
+                Button("撤销") {
+                    Task { await undoRemove() }
+                }
+                .font(.footnote.weight(.bold))
+                .accessibilityIdentifier("nutrition-undo-remove")
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            .background(.regularMaterial)
+            .overlay(alignment: .top) { Divider().overlay(HMColors.separator) }
+        }
+    }
+
+    private func refreshReference(scrollToEnd: Bool = false) async {
+        await MainActor.run {
+            isLoadingReference = referenceFoods.isEmpty
+            referenceError = nil
+        }
+        do {
+            let foods = try await environment.personalCatalogStore.activeMembers()
+            await MainActor.run {
+                referenceFoods = foods
+                isLoadingReference = false
+                if scrollToEnd { referenceToken += 1 }
+            }
+        } catch {
+            await MainActor.run {
+                referenceError = error.localizedDescription
+                isLoadingReference = false
+            }
+            AppLogger.shared.error("Reference foods load failed: \(error.localizedDescription)")
+        }
+    }
+
+    /// 「生成参考配方」编排（§5.2）：先匹配官方候选池，再请模型推测；
+    /// 失败时保留手动建立配方入口（打开空白编辑器）。
+    private func generateRecipeDraft(for summary: FrequentFoodsQuery.Summary) {
+        guard !isGeneratingRecipe else { return }
+        guard RecipeSuggestionService.makeDefault() != nil, LLMConfig.enabled else {
+            activeSheet = .recipeCreate(matchKey: summary.key, suggestedName: summary.displayName, generated: nil)
+            actionErrorMessage = RecipeSuggestionService.SuggestionError.notConfigured.localizedDescription
+            return
+        }
+        isGeneratingRecipe = true
+        Task {
+            defer { isGeneratingRecipe = false }
+            guard let catalogStore else { return }
+            let searchService = FoodSearchService(bundled: catalogStore, personalCatalog: environment.personalCatalogStore)
+            let pool = await searchService.ingredientPool(forDishName: summary.displayName)
+            let history = "近30天记录 \(summary.mealCount) 餐；常见份量 \(summary.commonGrams.map { "\(Int($0))g" } ?? "未记录")（历史份量为 AI 估计值，非称重事实）"
+            do {
+                guard let suggestionService = RecipeSuggestionService.makeDefault() else { return }
+                let suggestion = try await suggestionService.suggest(
+                    dishName: summary.displayName,
+                    candidates: pool,
+                    historyContext: history
+                )
+                let prefill = RecipeEditorView.GeneratedPrefill(
+                    ingredients: suggestion.ingredients + suggestion.pendingNames.map { name in
+                        RecipeIngredient(
+                            catalogEntryId: "",
+                            catalogVersion: "",
+                            nameZh: name,
+                            basis: .per100g,
+                            preparationState: .unknown,
+                            grams: nil,
+                            amountStatus: .unknown,
+                            nutritionSnapshot: nil,
+                            pendingName: name
+                        )
+                    },
+                    outputGrams: suggestion.outputGrams,
+                    rationale: suggestion.rationale
+                )
+                await MainActor.run {
+                    activeSheet = .recipeCreate(
+                        matchKey: summary.key,
+                        suggestedName: summary.displayName,
+                        generated: prefill
+                    )
+                }
+            } catch {
+                await MainActor.run {
+                    actionErrorMessage = "\(error.localizedDescription) 已打开手动配方。"
+                    activeSheet = .recipeCreate(matchKey: summary.key, suggestedName: summary.displayName, generated: nil)
+                }
+            }
+        }
+    }
+
+    private func regenerateSuggestion(matchKey: String?, suggestedName: String) async -> RecipeEditorView.GeneratedPrefill? {
+        guard let catalogStore else { return nil }
+        let searchService = FoodSearchService(bundled: catalogStore, personalCatalog: environment.personalCatalogStore)
+        let pool = await searchService.ingredientPool(forDishName: suggestedName)
+        guard let suggestionService = RecipeSuggestionService.makeDefault() else { return nil }
+        do {
+            let suggestion = try await suggestionService.suggest(
+                dishName: suggestedName,
+                candidates: pool,
+                historyContext: ""
+            )
+            return RecipeEditorView.GeneratedPrefill(
+                ingredients: suggestion.ingredients + suggestion.pendingNames.map { name in
+                    RecipeIngredient(
+                        catalogEntryId: "",
+                        catalogVersion: "",
+                        nameZh: name,
+                        basis: .per100g,
+                        preparationState: .unknown,
+                        grams: nil,
+                        amountStatus: .unknown,
+                        nutritionSnapshot: nil,
+                        pendingName: name
+                    )
+                },
+                outputGrams: suggestion.outputGrams,
+                rationale: suggestion.rationale
+            )
+        } catch {
+            await MainActor.run { actionErrorMessage = error.localizedDescription }
+            return nil
+        }
     }
 
     private func confirmCandidate(_ summary: FrequentFoodsQuery.Summary, entry: FoodCatalogEntry) async {
@@ -219,38 +537,6 @@ struct NutritionView: View {
                 actionErrorMessage = error.localizedDescription
             }
             AppLogger.shared.error("Confirm candidate failed: \(error.localizedDescription)")
-        }
-    }
-
-    private var segmentPicker: some View {
-        Picker("页面段", selection: $segment) {
-            ForEach(PageSegment.allCases) { segment in
-                Text(segment.title).tag(segment)
-            }
-        }
-        .pickerStyle(.segmented)
-        .onChange(of: segment) { _, newValue in
-            UserDefaults.standard.set(newValue.rawValue, forKey: Self.segmentStorageKey)
-        }
-    }
-
-    // MARK: - 参考食材
-
-    @ViewBuilder
-    private var referenceSection: some View {
-        if let catalogError {
-            catalogErrorView(catalogError)
-        } else if catalogStore == nil {
-            catalogLoadingView
-        } else {
-            NutritionReferencePanel(
-                store: catalogStore!,
-                query: $query,
-                category: $category,
-                onEntryTap: { entry in
-                    activeSheet = .detail(entry)
-                }
-            )
         }
     }
 
@@ -312,19 +598,21 @@ extension FoodCatalogError {
     }
 }
 
-/// 参考食材段：搜索 + 分类筛选 + 条目列表。
+/// 参考食材段：搜索（限当前参考表）+ 分类筛选 + 可整理列表（左滑移除）。
 struct NutritionReferencePanel: View {
-    let store: FoodCatalogStore
+    let foods: [PersonalCatalogStore.ReferenceFood]
     @Binding var query: String
     @Binding var category: FoodCatalogCategory?
     let onEntryTap: (FoodCatalogEntry) -> Void
+    let onRemove: (PersonalCatalogStore.ReferenceFood) -> Void
+    let onAddTap: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 8) {
                 Image(systemName: "magnifyingglass")
                     .foregroundStyle(.secondary)
-                TextField("搜索食物或别名", text: $query)
+                TextField("搜索我的参考食材", text: $query)
                     .textInputAutocapitalization(.never)
                     .accessibilityIdentifier("nutrition-search")
                 if !query.isEmpty {
@@ -345,13 +633,32 @@ struct NutritionReferencePanel: View {
                     .stroke(HMColors.separator, lineWidth: 1)
             )
 
-            categoryChips
-
-            Text("每 100 g 可食部分")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            if !foods.isEmpty {
+                categoryChips
+                Text("每 100 g 可食部分")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
 
             entryList
+        }
+    }
+
+    private var presentCategories: [FoodCatalogCategory] {
+        var seen: Set<FoodCatalogCategory> = []
+        for food in foods where seen.insert(food.entry.category).inserted {}
+        return FoodCatalogCategory.allCases.filter { seen.contains($0) }
+    }
+
+    private var filteredFoods: [PersonalCatalogStore.ReferenceFood] {
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return foods.filter { food in
+            if let category, food.entry.category != category { return false }
+            guard !trimmed.isEmpty else { return true }
+            if food.member.displayName.lowercased().contains(trimmed) { return true }
+            if food.entry.nameZh.lowercased().contains(trimmed) { return true }
+            if food.entry.nameOriginal.lowercased().contains(trimmed) { return true }
+            return food.aliases.contains { $0.lowercased().contains(trimmed) }
         }
     }
 
@@ -361,7 +668,7 @@ struct NutritionReferencePanel: View {
                 chip(title: "全部", isSelected: category == nil) {
                     category = nil
                 }
-                ForEach(FoodCatalogCategory.allCases, id: \.self) { candidate in
+                ForEach(presentCategories, id: \.self) { candidate in
                     chip(title: candidate.displayName, isSelected: category == candidate) {
                         category = candidate
                     }
@@ -397,17 +704,25 @@ struct NutritionReferencePanel: View {
         .accessibilityAddTraits(isSelected ? [.isSelected] : [])
     }
 
-    private var filteredEntries: [FoodCatalogEntry] {
-        store.search(query: query, category: category)
-    }
-
     private var entryList: some View {
-        let entries = filteredEntries
+        let entries = filteredFoods
         return Group {
-            if entries.isEmpty {
+            if foods.isEmpty {
                 HMEmptyState(
-                    title: "没有匹配的食物",
-                    message: "内置目录只包含已核对的官方条目；查不到的食物不会被猜测填充。可以试试我的常吃或直接记录。",
+                    title: "还没有参考食材",
+                    message: "从官方目录或 USDA 资料库添加；也可以稍后再整理。",
+                    icon: "square.grid.2x2",
+                    tone: .neutral,
+                    primaryActionTitle: "添加食材",
+                    primaryAction: {
+                        onAddTap()
+                    }
+                )
+                .padding(.vertical, 24)
+            } else if entries.isEmpty {
+                HMEmptyState(
+                    title: "没有匹配的食材",
+                    message: "当前参考表中没有匹配项；「＋」可搜索资料库并添加新食材。",
                     icon: "magnifyingglass",
                     tone: .neutral,
                     primaryActionTitle: nil,
@@ -416,14 +731,18 @@ struct NutritionReferencePanel: View {
                 .padding(.vertical, 24)
             } else {
                 VStack(spacing: 0) {
-                    ForEach(Array(entries.enumerated()), id: \.element.id) { index, entry in
-                        Button {
-                            onEntryTap(entry)
-                        } label: {
-                            NutritionEntryRow(entry: entry)
+                    ForEach(Array(entries.enumerated()), id: \.element.entry.id) { index, food in
+                        SwipeToRemoveRow {
+                            Button {
+                                onEntryTap(food.entry)
+                            } label: {
+                                NutritionEntryRow(entry: food.entry)
+                            }
+                            .buttonStyle(.plain)
+                        } onRemove: {
+                            onRemove(food)
                         }
-                        .buttonStyle(.plain)
-                        .accessibilityIdentifier("nutrition-entry-\(entry.id)")
+                        .accessibilityIdentifier("nutrition-entry-\(food.entry.id)")
                         if index < entries.count - 1 {
                             Divider().overlay(HMColors.separator).padding(.leading, 4)
                         }
@@ -449,6 +768,7 @@ struct NutritionEntryRow: View {
                 Text(entry.nameZh)
                     .font(.body.weight(.medium))
                     .foregroundStyle(.primary)
+                    .lineLimit(2)
                 Text(entry.preparationState.displayName)
                     .font(.caption2)
                     .foregroundStyle(.secondary)

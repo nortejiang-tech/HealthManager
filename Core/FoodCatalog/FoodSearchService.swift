@@ -73,10 +73,10 @@ final class FoodSearchService: @unchecked Sendable {
 
     /// 查询词项：按空白切分；无空格的整串作为一个词项（中文习惯）。
     static func queryTerms(_ raw: String) -> [String] {
-        let normalized = normalized(raw)
-        guard !normalized.isEmpty else { return [] }
+        let normalizedQuery = normalized(raw)
+        guard !normalizedQuery.isEmpty else { return [] }
         let parts = raw.split(whereSeparator: { $0.isWhitespace }).map { normalized(String($0)) }.filter { !$0.isEmpty }
-        return parts.isEmpty ? [normalized] : parts
+        return parts.isEmpty ? [normalizedQuery] : parts
     }
 
     // MARK: - 本地搜索
@@ -222,6 +222,45 @@ final class FoodSearchService: @unchecked Sendable {
             previous = current
         }
         return previous[rhs.count]
+    }
+
+    // MARK: - 配方推测候选池
+
+    /// 为菜名构建推测候选池：菜名整体 + 2~4 字滑窗探测（中文名无分格）+ 油/盐/酱油种子。
+    /// 只收集 exact/strong/medium 命中；possible 噪声不进池（模型编不进官方 ID 就会转待匹配）。
+    func ingredientPool(forDishName dishName: String, limit: Int = 18) async -> [FoodCatalogEntry] {
+        let bundledEntries = bundled.search(query: "", category: nil)
+        let imported = (try? await personalCatalog.allOfficialFoods()) ?? []
+        var byId: [String: FoodCatalogEntry] = [:]
+        for entry in bundledEntries { byId[entry.id] = entry }
+        for food in imported { byId[food.entry.id] = food.entry }
+        let universe = Array(byId.values)
+
+        var probes: [String] = [dishName]
+        let characters = Array(dishName)
+        var seen: Set<String> = [dishName]
+        for length in 2...min(4, max(2, characters.count)) {
+            for start in 0...(max(0, characters.count - length)) {
+                let window = String(characters[start..<min(start + length, characters.count)])
+                if window.count >= 2, seen.insert(window).inserted {
+                    probes.append(window)
+                }
+            }
+        }
+        probes.append(contentsOf: ["菜籽油", "食盐", "酱油"])
+
+        var pool: [FoodCatalogEntry] = []
+        var poolIds: Set<String> = []
+        for probe in probes {
+            for (entry, tier) in Self.rank(entries: universe, query: probe) {
+                if tier == .possible { continue }
+                if poolIds.insert(entry.id).inserted {
+                    pool.append(entry)
+                }
+                if pool.count >= limit { return pool }
+            }
+        }
+        return pool
     }
 
     // MARK: - USDA 远端

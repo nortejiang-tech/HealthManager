@@ -1,6 +1,6 @@
 # HealthManager 备份包字段字典（export schema）
 
-> 契约版本：formatVersion 2（对应 `BackupManifest.currentFormatVersion`）
+> 契约版本：formatVersion 3（对应 `BackupManifest.currentFormatVersion`）
 > 决策记录：`docs/adr/ADR-003-backup-package-export-restore.md`、`docs/adr/ADR-004-offline-food-catalog-and-personal-recipe-data-contracts.md`
 > 本文件是备份包与外部读取方（例如电脑上的 agent）之间的稳定契约。
 
@@ -12,11 +12,11 @@
 4. **主键/唯一键**：导入侧按数据库主键与唯一索引执行 `INSERT OR IGNORE`——恢复只补缺、不覆盖，可重复执行。
 5. **文件与行序**：每行一条 JSON，键按字母序输出；行按主键升序。行序不是契约，读取方不得依赖。
 6. **manifest.json**：`{ formatVersion, appVersion, exportedAt, files: [{ file, recordCount, bytes, sha256 }] }`。每个数据文件的 SHA-256 必须与 manifest 一致才导入。
-7. **版本兼容**：v2 新增个人配方/映射三文件；v0.5.x App（supported 1...1）遇 v2 包明确拒绝导入（提示升级 App），不静默丢数据；v0.6+ App 兼容导入 v1 包（缺新文件按空表处理）。
+7. **版本兼容**：v2 新增个人配方/映射三文件；v3 新增参考表与导入资料三文件（ADR-005）。旧 App 遇更高版本包明确拒绝导入（提示升级 App），不静默丢数据；新 App 兼容导入旧格式包（缺新文件按空表处理），并在恢复后按需执行一次性种子/快照回填。
 
 ## 表清单
 
-11 张解析后数据表 + 3 张个人创作表（v2 起）+ 1 个配置快照。**不包含**：`health_samples_raw`（原始样本，由 Apple 健康同步）、`sync_jobs`、`backfill_report`、`sync_anchors`（运维数据）、照片文件、只读营养目录资源（随 App 打包，可重建）。
+11 张解析后数据表 + 3 张个人创作表（v2 起）+ 3 张参考表/资料表（v3 起）+ 1 个配置快照。**不包含**：`health_samples_raw`（原始样本，由 Apple 健康同步）、`sync_jobs`、`backfill_report`、`sync_anchors`（运维数据）、照片文件、只读营养目录资源（随 App 打包，可重建）。
 
 | 文件 | 表 | 主键 / 唯一键 | 导入冲突策略 |
 |---|---|---|---|
@@ -34,6 +34,9 @@
 | personal_recipes.jsonl | personal_recipes | id | 只补缺 |
 | personal_recipe_versions.jsonl | personal_recipe_versions | id；(recipe_id, version) 唯一 | 只补缺 |
 | personal_foods.jsonl | personal_foods | id | 只补缺 |
+| official_foods.jsonl | official_foods | id；(provider, provider_food_id) 唯一 | 只补缺 |
+| official_food_versions.jsonl | official_food_versions | id；(official_food_id, version_label) 唯一 | 只补缺 |
+| personal_reference_entries.jsonl | personal_reference_entries | id；official_food_id 唯一 | 只补缺 |
 | settings.json | （App 配置快照） | — | 整体应用（见下） |
 
 恢复依赖顺序按上表自上而下：配方主体先于版本、版本先于引用它们的个人映射；重复导入幂等。恢复端目录资源中找不到对应条目时，餐次快照照常显示（不丢餐、不变 0）。
@@ -134,6 +137,40 @@ id · display_name · current_version（当前版本号）· created_at · updat
 | output_weight_basis | string\|null | weighed / estimated / null |
 | note | string\|null | 做法/比例假设说明 |
 | created_at | int | 版本创建时间（不可变版本：修订生成新行，旧行不改） |
+
+### official_foods.jsonl（v3）
+
+id · provider（MEXT/USDA…）· provider_food_id（官方食品编号）· name_original（原名快照）· created_at
+
+### official_food_versions.jsonl（v3）
+
+| 字段 | 类型 | 含义 |
+|---|---|---|
+| id | int | 主键 |
+| official_food_id | int | 所属身份（外键 official_foods.id） |
+| version_label | string | 不可变版本标签：有官方版本号用官方版本，无则 `FDC-<类型>-published/ fetched-<日期>` |
+| basis | string | per100g / per100mL |
+| nutrients_json | string | FoodCatalogEntry.Nutrients JSON（含 measured/estimated/trace/unmeasured 标记） |
+| display_name_zh | string | 导入时确定的显示名 |
+| category / preparation_state | string | 枚举 rawValue（含 v0.7 新增 sweetsSnacks / other） |
+| refuse_percent | number\|null | 官方废弃率 |
+| source_url / source_edition | string | 出处与版本/发布信息 |
+| note | string\|null | 能量口径等映射说明 |
+| created_at | int | 版本入库时间（旧行永不改写） |
+
+### personal_reference_entries.jsonl（v3）
+
+| 字段 | 类型 | 含义 |
+|---|---|---|
+| id | int | 主键 |
+| official_food_id | int | 官方身份（外键，唯一） |
+| version_id | int | 成员选用的资料版本（外键） |
+| display_name | string | 用户可编辑显示名 |
+| custom_aliases_json | string | 自定义别名数组（JSON 字符串） |
+| is_removed | bool | **移除是状态变化**；重新添加恢复成员，不产生副本 |
+| added_at / updated_at | int | Unix 秒 |
+
+settings.json v3 起新增 `personalCatalogSeeded`（bool，可缺省）：恢复后不重播 41 条默认种子——用户移除的默认条目不会因恢复而复活。
 
 ### personal_foods.jsonl（v2）
 

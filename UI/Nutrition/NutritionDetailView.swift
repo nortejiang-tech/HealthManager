@@ -9,6 +9,8 @@ struct NutritionDetailView: View {
     @State private var servingText: String = ""
 
     let onAddToMeal: (MealItemDraft) -> Void
+    /// 非 nil 时显示「从参考表移除」菜单（该条目在个人参考表中）。
+    var onRemove: (() -> Void)?
 
     @Environment(\.dismiss) private var dismiss
 
@@ -44,6 +46,18 @@ struct NutritionDetailView: View {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("关闭") { dismiss() }
                         .accessibilityIdentifier("nutrition-detail-close")
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    if onRemove != nil {
+                        Menu {
+                            Button("从参考表移除", role: .destructive) {
+                                onRemove?()
+                            }
+                        } label: {
+                            Image(systemName: "ellipsis.circle")
+                        }
+                        .accessibilityIdentifier("nutrition-detail-more")
+                    }
                 }
             }
         }

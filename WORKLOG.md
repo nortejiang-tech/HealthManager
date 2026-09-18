@@ -1065,3 +1065,30 @@ xcodebuild -scheme HealthManager -configuration Release -destination 'id=0000815
 **待验**
 
 - 真机 A01~A16、安装升级数据核对与发布仍为 `PENDING`；本轮未把模拟器通过误报成真机或发布通过。
+
+## 营养表增删、可信检索与可编辑推测配方 — 2026-09-18（v0.7.0 开发轮）
+
+依据 `docs/planning/2026-09-18-营养表增删与配方推测.md` 与 ADR-005。基线 v0.6.0（b49c745）。
+
+**数据（阶段A/E）**
+- v10 迁移（v1~v9 不动）：official_foods（身份=provider+foodID）/ official_food_versions（不可变资料版本）/ personal_reference_entries（移除=is_removed 状态、持选用版本指针）。
+- 配方原料内嵌完整营养快照（RecipeIngredient.nutritionSnapshot），计算与「加入饮食」快照优先；启动一次性回填旧配方快照（仅用可确认的原版本，补不上保持待修复）。
+- 备份 formatVersion 3：新增 official_foods/official_food_versions/personal_reference_entries 三文件；settings 增 personalCatalogSeeded（恢复不重播种子，D3）；v2/更早兼容导入；更高版本拒绝。
+- 修复漏算路径：MyFrequentPanel/fromRecipe/RecipeEditorView 对无解析原料一律按未知贡献，不再跳过后显示完整总量。
+
+**参考食材管理（阶段B）**
+- 参考表改成员驱动：右上「＋」添加、左滑移除（自定义 SwipeToRemoveRow）、移除后底部「已移除 · 撤销」横幅（6 秒）；空态「还没有参考食材＋添加食材」；详情菜单同操作；恢复不产生副本。
+- 搜索框只筛当前参考表；配方选择器/候选匹配检索完整官方资料范围（含已移除成员），且不会借使用恢复成员。
+
+**可信添加（阶段C）**
+- USDA FDC 适配器：Foundation/SR Legacy/FNDDS 白名单（品牌标签拒收）；nutrient ID 映射（1008/1003/1004/1005/1079/1093）；能量口径规则（1008 优先，缺失时 1062kJ÷4.184 标推定并记录规则）；null=未测定；每份≠每100g。
+- key 存 Keychain（设置 → 食材资料库），不进备份/日志；错误区分未配置/401/429/超时/断网。
+- 添加食材页：本地即时过滤 → 提交查远端（防抖/过期响应丢弃）→ 候选展示限定词与「可能匹配」→ 详情核验后添加 → 显示名/别名可编辑；身份幂等去重。
+- 新增分类 sweetsSnacks / other（旧备份可解码）。
+
+**推测配方（阶段D）**
+- RecipeSuggestionService：模型只能引用给定候选池 ID（编造 ID/负数/自称已称量拒绝）；建议状态最高 estimated；油为独立原料行；pendingNames → 待匹配占位行（可选择/替换/删除）。
+- 候选行「生成参考配方」：候选池（菜名滑窗探测+油盐酱种子）→ 模型 → 推测初稿进编辑器（标题「推测配方」、主按钮「确认并保存」）；「重新生成」先保留当前草稿、新草稿显式应用；失败回退手动配方。
+- 计算：已称重/估计/未知沿用现有语义；待匹配与未知用量传播不完整状态；文档示例（290 kcal/250g→116，300g→96.7）有专项测试。
+
+**版本**：0.7.0（13）。**验证**：模拟器 `HealthManagerTests` 329/329 通过（新增 PersonalReferenceStore/USDA+搜索+推测/BackupV3 等 6 个测试类 26 用例）；SmokeTests 通过；真实 USDA 检索+详情取证存 `docs/food-catalog/usda-evidence/`（DEMO_KEY，fdcid 170273 黑巧克力 70-85%）。真机 A01~A16 对应清单与三条主流程录屏属发布前待办。
