@@ -24,6 +24,13 @@ extension FoodCatalog {
     }
 }
 
+/// 官方「每份」定义：描述 + 该份对应的克重（官方口径）。
+/// 每份总营养 = 每100g 值 × gramWeight ÷ 100（单位换算，非标签搬运）。
+struct FoodPortion: Codable, Equatable, Sendable {
+    var description: String
+    var gramWeight: Double
+}
+
 /// 单条官方食物条目。数值一律「每 100 g（或 100 mL）可食部分」。
 struct FoodCatalogEntry: Codable, Equatable, Identifiable, Sendable {
     var id: String
@@ -43,8 +50,17 @@ struct FoodCatalogEntry: Codable, Equatable, Identifiable, Sendable {
     var nutrients: Nutrients
     var sourceUrl: String
     var note: String
+    /// 官方份定义（USDA foodPortions 等）；空 = 来源未提供。
+    /// 旧版 JSON 无此键——自定义解码以兼容，不能用合成解码的默认值。
+    var portions: [FoodPortion] = []
 
     var displayName: String { nameZh }
+
+    enum CodingKeys: String, CodingKey {
+        case id, source, foodNo, foodGroup, nameZh, nameOriginal, aliases, category
+        case preparationState, basis, refusePercent, nutrients, sourceUrl, note, portions
+    }
+
 
     /// 详情页「查看来源」使用；机构 + 食品编号 + 版本即使链接失效也可理解原记录。
     var sourceCitation: String {
@@ -139,5 +155,28 @@ enum FoodCatalogBasis: String, Codable, Sendable {
         case .per100g: return "每 100 g"
         case .per100mL: return "每 100 mL"
         }
+    }
+}
+
+/// 自定义解码：`portions` 为 v0.7.1 新增键，旧 JSON/旧备份缺失时取空数组
+/// （写在扩展里以保留逐成员构造器）。
+extension FoodCatalogEntry {
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        source = try container.decode(String.self, forKey: .source)
+        foodNo = try container.decode(String.self, forKey: .foodNo)
+        foodGroup = try container.decode(String.self, forKey: .foodGroup)
+        nameZh = try container.decode(String.self, forKey: .nameZh)
+        nameOriginal = try container.decode(String.self, forKey: .nameOriginal)
+        aliases = try container.decode([String].self, forKey: .aliases)
+        category = try container.decode(FoodCatalogCategory.self, forKey: .category)
+        preparationState = try container.decode(FoodCatalogPreparationState.self, forKey: .preparationState)
+        basis = try container.decode(FoodCatalogBasis.self, forKey: .basis)
+        refusePercent = try container.decodeIfPresent(Double.self, forKey: .refusePercent)
+        nutrients = try container.decode(Nutrients.self, forKey: .nutrients)
+        sourceUrl = try container.decode(String.self, forKey: .sourceUrl)
+        note = try container.decode(String.self, forKey: .note)
+        portions = try container.decodeIfPresent([FoodPortion].self, forKey: .portions) ?? []
     }
 }

@@ -257,6 +257,18 @@ struct AddFoodSheet: View {
                     nutrientLine("蛋白质", value: NutritionFormatting.macro(entry.nutrients.proteinG), unit: "g", nutrient: entry.nutrients.proteinG)
                     nutrientLine("脂肪", value: NutritionFormatting.macro(entry.nutrients.fatG), unit: "g", nutrient: entry.nutrients.fatG)
                     nutrientLine("碳水", value: NutritionFormatting.macro(entry.nutrients.carbsG), unit: "g", nutrient: entry.nutrients.carbsG)
+                    ForEach(entry.portions, id: \.description) { portion in
+                        let scaled = FoodServingCalculator.scaled(entry.nutrients, serving: portion.gramWeight)
+                        HStack(alignment: .firstTextBaseline) {
+                            Text("每份（\(portion.description) · \(Self.portionGramsText(portion))g）")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            Spacer()
+                            Text(scaled.map { "\(NutritionFormatting.kcal($0.kcal)) kcal · P \(NutritionFormatting.macro($0.proteinG))g · F \(NutritionFormatting.macro($0.fatG))g · C \(NutritionFormatting.macro($0.carbsG))g" } ?? "—")
+                                .font(.caption.monospacedDigit())
+                                .foregroundStyle(.secondary)
+                        }
+                    }
                     DisclosureGroup("更多营养与出处") {
                         nutrientLine("膳食纤维", value: NutritionFormatting.macro(entry.nutrients.fiberG), unit: "g", nutrient: entry.nutrients.fiberG)
                         nutrientLine("钠", value: NutritionFormatting.sodium(entry.nutrients.sodiumMg), unit: "mg", nutrient: entry.nutrients.sodiumMg)
@@ -504,6 +516,13 @@ struct AddFoodSheet: View {
                 addError = error.localizedDescription
             }
         }
+    }
+}
+
+private extension AddFoodSheet {
+    static func portionGramsText(_ portion: FoodPortion) -> String {
+        let w = portion.gramWeight
+        return w == w.rounded() ? String(format: "%.0f", w) : String(w)
     }
 }
 

@@ -47,6 +47,8 @@ struct OfficialFoodVersionRecord: Codable, FetchableRecord, MutablePersistableRe
     var sourceUrl: String
     var sourceEdition: String
     var note: String?
+    /// FoodPortion 数组 JSON（官方每份定义）；v11 起随版本持久化。
+    var portionsJSON: String
     var createdAt: Int64
 
     enum CodingKeys: String, CodingKey {
@@ -62,7 +64,18 @@ struct OfficialFoodVersionRecord: Codable, FetchableRecord, MutablePersistableRe
         case sourceUrl = "source_url"
         case sourceEdition = "source_edition"
         case note
+        case portionsJSON = "portions_json"
         case createdAt = "created_at"
+    }
+
+    var portions: [FoodPortion] {
+        guard let data = portionsJSON.data(using: .utf8) else { return [] }
+        return (try? JSONDecoder().decode([FoodPortion].self, from: data)) ?? []
+    }
+
+    static func encodePortions(_ portions: [FoodPortion]) -> String {
+        guard let data = try? JSONEncoder().encode(portions) else { return "[]" }
+        return String(decoding: data, as: UTF8.self)
     }
 
     var nutrients: FoodCatalogEntry.Nutrients? {
@@ -105,7 +118,8 @@ struct OfficialFoodVersionRecord: Codable, FetchableRecord, MutablePersistableRe
             refusePercent: refusePercent,
             nutrients: nutrients,
             sourceUrl: sourceUrl,
-            note: note ?? ""
+            note: note ?? "",
+            portions: portions
         )
     }
 

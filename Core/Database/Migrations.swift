@@ -622,6 +622,16 @@ enum Migrations {
             }
         }
 
+        // MARK: v11 — 官方资料版本携带「每份」定义（用户需求：一份的总营养便于记录）
+        //
+        // foodPortions 是官方口径（如 FNDDS「1 sandwich = 219 g」）；App 用它把
+        // 每 100 g 官方值换算成每份总量并预填记录克数。只加列、不改旧行。
+        migrator.registerMigration("v11_official_food_version_portions") { db in
+            try db.alter(table: "official_food_versions") { t in
+                t.add(column: "portions_json", .text).notNull().defaults(to: "[]")
+            }
+        }
+
         return migrator
     }
 

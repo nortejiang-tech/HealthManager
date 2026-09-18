@@ -156,6 +156,7 @@ id · provider（MEXT/USDA…）· provider_food_id（官方食品编号）· na
 | refuse_percent | number\|null | 官方废弃率 |
 | source_url / source_edition | string | 出处与版本/发布信息 |
 | note | string\|null | 能量口径等映射说明 |
+| portions_json | string | 官方每份定义数组 JSON：`[{description, gramWeight}]`（v0.7.1 起，来自 USDA foodPortions；每份总营养=每100g×gramWeight÷100 的单位换算） |
 | created_at | int | 版本入库时间（旧行永不改写） |
 
 ### personal_reference_entries.jsonl（v3）

@@ -183,6 +183,7 @@ final class PersonalCatalogStore: @unchecked Sendable {
                         sourceUrl: entry.sourceUrl,
                         sourceEdition: request.versionLabel,
                         note: entry.note.isEmpty ? nil : entry.note,
+                        portionsJSON: OfficialFoodVersionRecord.encodePortions(entry.portions),
                         createdAt: timestamp
                     )
                     try version.insert(db)

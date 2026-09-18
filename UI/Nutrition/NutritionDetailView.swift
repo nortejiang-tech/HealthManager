@@ -12,6 +12,8 @@ struct NutritionDetailView: View {
     /// 非 nil 时显示「从参考表移除」菜单（该条目在个人参考表中）。
     var onRemove: (() -> Void)?
 
+    @State private var selectedPortion: FoodPortion?
+
     @Environment(\.dismiss) private var dismiss
 
     private var serving: Double? {
@@ -63,6 +65,49 @@ struct NutritionDetailView: View {
         }
     }
 
+    /// 官方「每份」快捷选择：点选即把该份克重填入份量（每份总营养 = 每100g × 克重 ÷ 100）。
+    @ViewBuilder
+    private var portionChips: some View {
+        if !entry.portions.isEmpty {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("官方份定义")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(entry.portions, id: \.description) { portion in
+                            Button {
+                                selectedPortion = portion
+                                servingText = Self.portionGramsText(portion)
+                            } label: {
+                                Text("\(portion.description) · \(Self.portionGramsText(portion))g")
+                                    .font(.caption.weight(selectedPortion?.description == portion.description ? .semibold : .regular))
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 6)
+                                    .background(
+                                        selectedPortion?.description == portion.description
+                                            ? HMColors.comparison.opacity(0.14) : Color.secondary.opacity(0.12),
+                                        in: Capsule()
+                                    )
+                                    .foregroundStyle(
+                                        selectedPortion?.description == portion.description
+                                            ? HMColors.comparison : Color.secondary
+                                    )
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityIdentifier("nutrition-portion-\(portion.description)")
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private static func portionGramsText(_ portion: FoodPortion) -> String {
+        let w = portion.gramWeight
+        return w == w.rounded() ? String(format: "%.0f", w) : String(w)
+    }
+
     private var headerCard: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
@@ -85,6 +130,9 @@ struct NutritionDetailView: View {
                 )
                 .font(.caption)
                 .foregroundStyle(.secondary)
+            }
+            if !entry.portions.isEmpty {
+                portionChips
             }
             if !entry.note.isEmpty {
                 Text(entry.note)
@@ -295,7 +343,8 @@ struct NutritionDetailView: View {
         Button {
             let draft = MealItemDraft.fromCatalogEntry(
                 entry,
-                catalogVersion: catalog?.source.edition ?? entry.source
+                catalogVersion: catalog?.source.edition ?? entry.source,
+                grams: selectedPortion?.gramWeight
             )
             onAddToMeal(draft)
         } label: {

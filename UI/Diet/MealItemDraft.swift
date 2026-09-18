@@ -124,10 +124,10 @@ struct MealItemDraft: Identifiable, Equatable {
     /// - 生熟状态取目录条目的生熟口径，不再默认 unknown（ADR-004 §2.4）；
     /// - 来源标记 nutrition_database，出处为目录条目 id 与数据集版本；
     /// - 官方推定值/微量照常带入，缺失值保持缺失（不写 0）。
-    static func fromCatalogEntry(_ entry: FoodCatalogEntry, catalogVersion: String) -> MealItemDraft {
+    static func fromCatalogEntry(_ entry: FoodCatalogEntry, catalogVersion: String, grams: Double? = nil) -> MealItemDraft {
         MealItemDraft(
             name: entry.nameZh,
-            gramsText: "",
+            gramsText: grams.map { displayText(from: $0) } ?? "",
             baselineGrams: 100,
             baselineCalories: entry.nutrients.kcal.value,
             baselineProtein: entry.nutrients.proteinG.value,

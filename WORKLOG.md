@@ -1099,3 +1099,13 @@ xcodebuild -scheme HealthManager -configuration Release -destination 'id=0000815
 - 用户完成 USDA 个人 key 配置（设置 → 食材资料库）并试用通过；方案 §8.2 三条主流程由用户确认。
 - 跨语言检索补齐：内置词典（53 条）+ 可选模型翻译检索词，中文「黑巧克力」可在 USDA 检索命中。
 - 已打附注 tag `v0.7.0`。
+
+
+### 「每份」总营养（USDA foodPortions）— 2026-09-18（v0.7.1/14）
+
+- 用户需求：巨无霸等条目除每 100 g 外同步显示一份的总营养，便于记录。
+- v11 迁移：official_food_versions 增加 portions_json（官方 foodPortions 的描述+克重）。
+- 详情页展示官方份定义 chips（如「item 7.6 oz · 219g」），点选即把该份克重填入份量并联动换算；「加入饮食」预填该份克数——记录一份=选一下。
+- 添加食材详情同步显示每份总营养（每100g×gramWeight÷100 的官方口径单位换算，非标签搬运）。
+- 实测：BIG MAC（SR Legacy #170720）foodPortions「item 7.6 oz」= 219 g，每100g 257 kcal → 每份 ≈563 kcal。
+- 兼容性：FoodCatalogEntry 自定义解码（旧 JSON/旧备份无 portions 键取空数组）；版本 0.7.1（14）；测试 329/329 通过。
