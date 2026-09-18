@@ -14,6 +14,7 @@ final class AppEnvironment: ObservableObject {
     let database: DatabaseManager
     let mealStore: MealStore
     let personalFoodStore: PersonalFoodStore
+    let personalCatalogStore: PersonalCatalogStore
     let healthKitManager: HealthKitManager
     let syncEngine: SyncEngine
     let mealPersistenceCoordinator: MealPersistenceCoordinator
@@ -29,6 +30,7 @@ final class AppEnvironment: ObservableObject {
         let database = DatabaseManager.makeDefault()
         let mealStore = MealStore(databaseManager: database)
         let personalFoodStore = PersonalFoodStore(databaseManager: database)
+        let personalCatalogStore = PersonalCatalogStore(databaseManager: database)
         let healthKit = HealthKitManager(database: database)
         let syncEngine = SyncEngine(
             database: database,
@@ -47,6 +49,7 @@ final class AppEnvironment: ObservableObject {
         self.database = database
         self.mealStore = mealStore
         self.personalFoodStore = personalFoodStore
+        self.personalCatalogStore = personalCatalogStore
         self.healthKitManager = healthKit
         self.syncEngine = syncEngine
         self.mealPersistenceCoordinator = coordinator
@@ -95,6 +98,24 @@ final class AppEnvironment: ObservableObject {
         // If projections are empty or the projection logic changed, catch them up so
         // the dashboard and deficit card don't wait for the next sync.
         Task { await self.backfillAggregatesIfNeeded() }
+        // v0.7：官方资料种子 + 旧配方原料快照回填（一次性，幂等；失败不阻塞启动）。
+        Task { await self.seedPersonalCatalogIfNeeded() }
+    }
+
+    /// 首次启动把离线目录 41 条初始化为参考表成员；为旧配方原料补快照。
+    private func seedPersonalCatalogIfNeeded() async {
+        do {
+            let bundled = try FoodCatalogStore.makeDefault()
+            try await personalCatalogStore.seedIfNeeded(bundled: bundled)
+            try await personalFoodStore.backfillRecipeSnapshots(
+                bundled: bundled,
+                personalCatalog: personalCatalogStore
+            )
+        } catch {
+            AppLogger.shared.error(
+                "Personal catalog seed/backfill failed: \(error.localizedDescription)"
+            )
+        }
     }
 
     private func backfillAggregatesIfNeeded() async {

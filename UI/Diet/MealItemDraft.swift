@@ -156,27 +156,44 @@ struct MealItemDraft: Identifiable, Equatable {
         return draft
     }
 
-    /// 配方加入饮食：总量来自配方版本快照；成品重量缺失时克数留空待补，
-    /// 总营养照常带入（每100g 不因缺成品重而伪造，验收 A08）。
-    /// 目录条目缺失时按用量未知处理，绝不回退成 0（§5.3 / A12）。
+    /// 配方加入饮食：总量来自配方版本**原料快照**优先（不依赖当前目录回读）；
+    /// 成品重量缺失时克数留空待补，总营养照常带入（每100g 不因缺成品重而伪造，验收 A08）。
+    /// 无快照且目录条目缺失、或待匹配原料：按用量未知处理，绝不回退成 0（§5.3 / A12）。
     static func fromRecipe(
         recipe: PersonalRecipeRecord,
         version: PersonalRecipeVersionRecord,
         entries: [String: FoodCatalogEntry],
         grams: Double?
     ) -> MealItemDraft {
+        let unknownNutrients = FoodCatalogEntry.Nutrients(
+            kcal: FoodCatalogNutrient(value: nil, flag: .unmeasured),
+            proteinG: FoodCatalogNutrient(value: nil, flag: .unmeasured),
+            fatG: FoodCatalogNutrient(value: nil, flag: .unmeasured),
+            carbsG: FoodCatalogNutrient(value: nil, flag: .unmeasured),
+            fiberG: FoodCatalogNutrient(value: nil, flag: .unmeasured),
+            sodiumMg: FoodCatalogNutrient(value: nil, flag: .unmeasured)
+        )
         let inputs: [RecipeCalculator.IngredientInput] = version.ingredients.map { ingredient in
-            guard let entry = entries[ingredient.catalogEntryId] else {
-                // 目录条目缺失：按用量未知处理，不回退成 0。
+            // 待匹配原料：占位行，贡献按未知传播，不略去（R3）。
+            if ingredient.isPendingMatch {
                 return RecipeCalculator.IngredientInput(
-                    per100: FoodCatalogEntry.Nutrients(
-                        kcal: FoodCatalogNutrient(value: nil, flag: .unmeasured),
-                        proteinG: FoodCatalogNutrient(value: nil, flag: .unmeasured),
-                        fatG: FoodCatalogNutrient(value: nil, flag: .unmeasured),
-                        carbsG: FoodCatalogNutrient(value: nil, flag: .unmeasured),
-                        fiberG: FoodCatalogNutrient(value: nil, flag: .unmeasured),
-                        sodiumMg: FoodCatalogNutrient(value: nil, flag: .unmeasured)
-                    ),
+                    per100: unknownNutrients,
+                    grams: ingredient.grams,
+                    status: ingredient.amountStatus == .notUsed ? .notUsed : .unknown
+                )
+            }
+            // 快照优先：配方保存时冻结的资料版本。
+            if let snapshot = ingredient.nutritionSnapshot {
+                return RecipeCalculator.IngredientInput(
+                    per100: snapshot.per100,
+                    grams: ingredient.grams,
+                    status: ingredient.amountStatus
+                )
+            }
+            // 旧数据兜底：当前目录仍能解析时用之；否则未知。
+            guard let entry = entries[ingredient.catalogEntryId] else {
+                return RecipeCalculator.IngredientInput(
+                    per100: unknownNutrients,
                     grams: ingredient.grams,
                     status: ingredient.amountStatus == .notUsed ? .notUsed : .unknown
                 )

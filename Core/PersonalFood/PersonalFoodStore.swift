@@ -407,6 +407,72 @@ final class PersonalFoodStore: @unchecked Sendable {
         }
     }
 
+    // MARK: - 原料快照回填（v0.7 一次性）
+
+    static let snapshotBackfillFlagKey = "recipes.snapshotBackfill.v10"
+
+    /// 为 v0.6 时代的旧配方原料补完整营养快照。
+    /// 只用「可确认的原版本」：个人资料库或随包目录中**同一版本标签**的条目；
+    /// 版本对不上或条目缺失 → 保持 nil（待修复），不用当前目录冒充旧版（ADR-005）。
+    /// 幂等：以 UserDefaults 标记为准。
+    func backfillRecipeSnapshots(
+        bundled: FoodCatalogStore,
+        personalCatalog: PersonalCatalogStore,
+        flagReader: @escaping @Sendable (String) -> Bool? = { UserDefaults.standard.object(forKey: $0) as? Bool },
+        flagWriter: @escaping @Sendable (String, Bool) -> Void = { UserDefaults.standard.set($1, forKey: $0) }
+    ) async throws {
+        if flagReader(Self.snapshotBackfillFlagKey) == true { return }
+
+        let bundledEdition = bundled.catalog.source.edition
+        let versions = try await databaseManager.asyncRead { db in
+            try PersonalRecipeVersionRecord.fetchAll(db)
+        }
+
+        for var version in versions {
+            let ingredients = version.ingredients
+            var changed = false
+            var filled: [RecipeIngredient] = []
+            for ingredient in ingredients {
+                if ingredient.nutritionSnapshot != nil || ingredient.isPendingMatch {
+                    filled.append(ingredient)
+                    continue
+                }
+                // 1) 个人资料库（含种子导入的官方版本）。
+                if let snapshot = try await personalCatalog.captureSnapshot(
+                    entryId: ingredient.catalogEntryId,
+                    capturedAt: now()
+                ) {
+                    var fixed = ingredient
+                    fixed.nutritionSnapshot = snapshot
+                    filled.append(fixed)
+                    changed = true
+                    continue
+                }
+                // 2) 随包目录——仅当版本标签一致（或旧数据未记版本）才可确认。
+                if let entry = bundled.entry(id: ingredient.catalogEntryId),
+                   ingredient.catalogVersion.isEmpty || ingredient.catalogVersion == bundledEdition {
+                    var fixed = ingredient
+                    fixed.nutritionSnapshot = IngredientNutritionSnapshot.capture(
+                        from: entry,
+                        versionLabel: bundledEdition,
+                        capturedAt: now()
+                    )
+                    filled.append(fixed)
+                    changed = true
+                    continue
+                }
+                filled.append(ingredient)
+            }
+            if changed {
+                version.ingredientsJSON = try PersonalRecipeVersionRecord.encodeIngredients(filled)
+                _ = try await databaseManager.asyncWrite { db in
+                    try version.update(db)
+                }
+            }
+        }
+        flagWriter(Self.snapshotBackfillFlagKey, true)
+    }
+
     // MARK: - 校验
 
     private func validate(

@@ -564,6 +564,64 @@ enum Migrations {
             }
         }
 
+        // MARK: v10 — 官方食品身份/资料版本/个人参考表（ADR-005）
+        //
+        // 三层分离：
+        // - official_foods：官方食品身份 = provider + 官方 food ID（中文名/别名不是身份）；
+        // - official_food_versions：不可变资料版本（计量基准、完整营养快照、出处、版本或
+        //   抓取摘要）。更新资料产生新版本，永不改写旧行——旧配方/旧餐次据此保持稳定；
+        // - personal_reference_entries：「我的参考表」成员。移除是 is_removed 状态变化，
+        //   重新添加恢复成员、不产生副本；重启/升级/备份恢复都不会把移除项自动塞回。
+        //
+        // 配方原料的完整营养快照存于 personal_recipe_versions.ingredients_json（结构体新增
+        // 可选字段，旧 JSON 兼容解码）；运行时按「可确认的原版本」一次性补齐，补不上的
+        // 保持待修复，不冒充。
+        migrator.registerMigration("v10_official_food_versions_and_personal_reference") { db in
+            try db.create(table: "official_foods") { t in
+                t.autoIncrementedPrimaryKey("id")
+                t.column("provider", .text).notNull()
+                t.column("provider_food_id", .text).notNull()
+                t.column("name_original", .text).notNull()
+                t.column("created_at", .integer).notNull()
+                t.uniqueKey(["provider", "provider_food_id"])
+            }
+            try db.create(table: "official_food_versions") { t in
+                t.autoIncrementedPrimaryKey("id")
+                t.column("official_food_id", .integer)
+                    .notNull()
+                    .references("official_foods", onDelete: .cascade)
+                t.column("version_label", .text).notNull()
+                t.column("basis", .text).notNull()
+                t.column("nutrients_json", .text).notNull()
+                t.column("display_name_zh", .text).notNull().check(sql: "TRIM(display_name_zh) != ''")
+                t.column("category", .text).notNull()
+                t.column("preparation_state", .text).notNull()
+                t.column("refuse_percent", .double)
+                t.column("source_url", .text).notNull()
+                t.column("source_edition", .text).notNull()
+                t.column("note", .text)
+                t.column("created_at", .integer).notNull()
+                t.uniqueKey(["official_food_id", "version_label"])
+            }
+            try db.create(table: "personal_reference_entries") { t in
+                t.autoIncrementedPrimaryKey("id")
+                t.column("official_food_id", .integer)
+                    .notNull()
+                    .unique()
+                    .references("official_foods", onDelete: .cascade)
+                // 成员选用的资料版本（快照指针）；资料更新产生新版本后本列不变，
+                // 「提示有新版本、显式采用」由此支撑。
+                t.column("version_id", .integer)
+                    .notNull()
+                    .references("official_food_versions", onDelete: .restrict)
+                t.column("display_name", .text).notNull().check(sql: "TRIM(display_name) != ''")
+                t.column("custom_aliases_json", .text).notNull().defaults(to: "[]")
+                t.column("is_removed", .integer).notNull().defaults(to: 0)
+                t.column("added_at", .integer).notNull()
+                t.column("updated_at", .integer).notNull()
+            }
+        }
+
         return migrator
     }
 

@@ -26,6 +26,9 @@ struct BackupSettings: Codable, Equatable, Sendable {
     var llmProfiles: [LLMConfig.Profile]
     var llmActiveProfileName: String?
 
+    /// v3 起：参考表一次性种子标记。恢复后不重播种子——用户移除的默认条目不复活。
+    var personalCatalogSeeded: Bool?
+
     // 与 DashboardLayoutStore.storageKey 保持同步。
     static let dashboardLayoutStorageKey = "dashboard.layout.visibleCards.v1"
 
@@ -49,7 +52,8 @@ struct BackupSettings: Codable, Equatable, Sendable {
             llmVisionModel: LLMConfig.visionModel,
             llmCustomPresets: LLMConfig.customPresets,
             llmProfiles: LLMConfig.profiles,
-            llmActiveProfileName: LLMConfig.activeProfileName
+            llmActiveProfileName: LLMConfig.activeProfileName,
+            personalCatalogSeeded: UserDefaults.standard.bool(forKey: PersonalCatalogStore.seedFlagKey)
         )
     }
 
@@ -83,6 +87,11 @@ struct BackupSettings: Codable, Equatable, Sendable {
             LLMConfig.customPresets = llmCustomPresets
             LLMConfig.profiles = llmProfiles
             LLMConfig.activeProfileName = llmActiveProfileName
+        }
+
+        // v3：种子标记存在才应用（旧格式备份无此字段，保持本地判断）。
+        if let seeded = personalCatalogSeeded {
+            UserDefaults.standard.set(seeded, forKey: PersonalCatalogStore.seedFlagKey)
         }
     }
 }

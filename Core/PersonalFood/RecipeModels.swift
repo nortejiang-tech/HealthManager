@@ -1,6 +1,8 @@
 import Foundation
 
-/// 配方原料：引用官方目录条目并冻结当时的版本与名称（资源包替换后旧配方仍可解释）。
+/// 配方原料：引用官方目录条目并冻结**完整营养快照**（v0.7 起，ADR-005）——
+/// 目录更新、资料移除后，旧配方仍能独立还原当时的每 100 g/100 mL 数值、
+/// 质量标记与出处，不依赖"当前目录"回读。
 /// 克数与「用量状态」分开保存——未知用量不得按 0 处理（ADR-004 §2.4）。
 struct RecipeIngredient: Codable, Equatable, Sendable {
     enum AmountStatus: String, Codable, CaseIterable, Sendable {
@@ -21,6 +23,48 @@ struct RecipeIngredient: Codable, Equatable, Sendable {
     var preparationState: MealItemRecord.PreparationState
     var grams: Double?
     var amountStatus: AmountStatus
+    /// 当时所用资料版本的完整营养快照；nil = 待修复
+    /// （旧配方原料且无法用可确认的原版本资料补齐时保留 nil，不冒充）。
+    var nutritionSnapshot: IngredientNutritionSnapshot?
+    /// 待匹配原料：推测出但资料库中暂无可信官方候选的占位行。
+    /// 非 nil 时允许 选择/替换/删除；受影响的营养按未知传播，不得略去。
+    var pendingName: String?
+
+    var isPendingMatch: Bool { pendingName != nil }
+
+    var displayName: String {
+        isPendingMatch ? (pendingName ?? "待匹配原料") : nameZh
+    }
+}
+
+/// 原料引用的资料版本快照：随配方版本（进而随备份 v3）持久化，离线可还原。
+struct IngredientNutritionSnapshot: Codable, Equatable, Sendable {
+    var provider: String
+    var providerFoodId: String
+    var versionLabel: String
+    var basis: FoodCatalogBasis
+    var per100: FoodCatalogEntry.Nutrients
+    var nameOriginal: String?
+    var sourceUrl: String?
+    var capturedAt: Int64
+
+    /// 从目录条目形态捕获快照（离线目录条目、个人库版本合成条目共用）。
+    static func capture(
+        from entry: FoodCatalogEntry,
+        versionLabel: String,
+        capturedAt: Int64
+    ) -> IngredientNutritionSnapshot {
+        IngredientNutritionSnapshot(
+            provider: entry.source,
+            providerFoodId: entry.foodNo,
+            versionLabel: versionLabel,
+            basis: entry.basis,
+            per100: entry.nutrients,
+            nameOriginal: entry.nameOriginal,
+            sourceUrl: entry.sourceUrl,
+            capturedAt: capturedAt
+        )
+    }
 }
 
 /// 配方计算（§5.3 计算规则）：

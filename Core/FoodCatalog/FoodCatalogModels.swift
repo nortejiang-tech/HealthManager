@@ -89,6 +89,8 @@ enum FoodCatalogCategory: String, Codable, CaseIterable, Sendable {
     case meatSeafood
     case vegetableFruit
     case oilSeasoning
+    /// 零食/甜食（v0.7 起，主要来自导入的官方资料如 USDA；保证旧备份可解码）。
+    case sweetsSnacks
 
     var displayName: String {
         switch self {
@@ -97,6 +99,7 @@ enum FoodCatalogCategory: String, Codable, CaseIterable, Sendable {
         case .meatSeafood: return "肉鱼虾"
         case .vegetableFruit: return "蔬果"
         case .oilSeasoning: return "油脂调味"
+        case .sweetsSnacks: return "零食甜食"
         }
     }
 }

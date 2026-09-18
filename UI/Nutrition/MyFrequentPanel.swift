@@ -237,9 +237,39 @@ struct MyFrequentPanel: View {
     }
 
     private func recipeRow(_ item: PersonalFoodStore.RecipeWithVersion) -> some View {
+        // 快照优先；无快照且目录解析失败、或待匹配原料一律按未知贡献，
+        // 不得跳过后仍显示完整总量（ADR-005：漏算路径修复）。
+        let unknownNutrients = FoodCatalogEntry.Nutrients(
+            kcal: FoodCatalogNutrient(value: nil, flag: .unmeasured),
+            proteinG: FoodCatalogNutrient(value: nil, flag: .unmeasured),
+            fatG: FoodCatalogNutrient(value: nil, flag: .unmeasured),
+            carbsG: FoodCatalogNutrient(value: nil, flag: .unmeasured),
+            fiberG: FoodCatalogNutrient(value: nil, flag: .unmeasured),
+            sodiumMg: FoodCatalogNutrient(value: nil, flag: .unmeasured)
+        )
         let calculation = RecipeCalculator.calculate(
-            ingredients: item.version.ingredients.compactMap { ingredient in
-                guard let entry = catalogStore.entry(id: ingredient.catalogEntryId) else { return nil }
+            ingredients: item.version.ingredients.map { ingredient -> RecipeCalculator.IngredientInput in
+                if ingredient.isPendingMatch {
+                    return RecipeCalculator.IngredientInput(
+                        per100: unknownNutrients,
+                        grams: ingredient.grams,
+                        status: ingredient.amountStatus == .notUsed ? .notUsed : .unknown
+                    )
+                }
+                if let snapshot = ingredient.nutritionSnapshot {
+                    return RecipeCalculator.IngredientInput(
+                        per100: snapshot.per100,
+                        grams: ingredient.grams,
+                        status: ingredient.amountStatus
+                    )
+                }
+                guard let entry = catalogStore.entry(id: ingredient.catalogEntryId) else {
+                    return RecipeCalculator.IngredientInput(
+                        per100: unknownNutrients,
+                        grams: ingredient.grams,
+                        status: ingredient.amountStatus == .notUsed ? .notUsed : .unknown
+                    )
+                }
                 return RecipeCalculator.IngredientInput(
                     per100: entry.nutrients,
                     grams: ingredient.grams,
@@ -248,6 +278,7 @@ struct MyFrequentPanel: View {
             },
             outputGrams: item.version.outputGrams
         )
+        let pendingCount = item.version.ingredients.filter(\.isPendingMatch).count
         return VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Text(item.recipe.displayName)
@@ -273,6 +304,9 @@ struct MyFrequentPanel: View {
                 Text("近30天记录 \(item.recentMealCount) 餐 · 我的配方估算")
                 if item.version.outputGrams == nil {
                     Text("待补成品重量")
+                }
+                if pendingCount > 0 {
+                    Text("待匹配原料 ×\(pendingCount)")
                 }
             }
             .font(.caption)
