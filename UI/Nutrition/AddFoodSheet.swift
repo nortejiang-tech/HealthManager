@@ -25,6 +25,8 @@ struct AddFoodSheet: View {
     @State private var query: String = ""
     @State private var localResults: [FoodSearchCandidate] = []
     @State private var remoteResults: [FoodSearchCandidate] = []
+    @State private var remoteQueryUsed: String = ""
+    @State private var remoteTermSource: String = ""
     @State private var remotePhase: RemotePhase = .idle
     @State private var generation: Int = 0
     @State private var localDebounce: Task<Void, Never>?
@@ -140,7 +142,7 @@ struct AddFoodSheet: View {
                     .foregroundStyle(.secondary)
                     .padding(.top, 8)
             } else {
-                Text("USDA 资料库")
+                Text("USDA 资料库 · 检索词「\(remoteQueryUsed)」（\(remoteTermSource)）")
                     .font(.subheadline.weight(.semibold))
                     .padding(.top, 6)
                 ForEach(remoteResults) { candidate in
@@ -366,6 +368,8 @@ struct AddFoodSheet: View {
     }
 
     /// 提交才查远端，不对每个按键发请求（§3.2-1）。
+    /// 跨语言（§3.3）：USDA 无中文数据——先查内置词典，再由已配置文本模型
+    /// 辅助翻译检索词（模型只产出检索词，不产出营养值）；都不可用回退原词。
     private func submitRemote() {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
@@ -373,12 +377,37 @@ struct AddFoodSheet: View {
         let currentGeneration = generation
         remotePhase = .searching
         remoteResults = []
+        remoteQueryUsed = trimmed
+        remoteTermSource = "原词"
         let client = USDAApiClient(fetcher: USDAApiClient.defaultFetcher())
         Task {
-            let result = await searchService.searchRemoteUSDA(query: trimmed, client: client)
+            // 1) 本地词典
+            var searchTerm = CrossLanguageSearchTermService.dictionaryTerm(
+                for: trimmed,
+                dictionary: CrossLanguageSearchTermService.loadDictionary()
+            )
+            var termSource = searchTerm != nil ? "词典" : "原词"
+            // 2) 已配置文本模型辅助翻译（词典未覆盖时，一次性调用）
+            if searchTerm == nil, LLMConfig.enabled,
+               let suggestionService = RecipeSuggestionService.makeDefault() {
+                if let translated = try? await CrossLanguageSearchTermService.translatedTerm(
+                    query: trimmed,
+                    call: { system, user in
+                        try await suggestionService.rawCall(system: system, user: user)
+                    }
+                ) {
+                    searchTerm = translated
+                    termSource = "模型翻译"
+                }
+            }
+            let effectiveQuery = searchTerm ?? trimmed
+
+            let result = await searchService.searchRemoteUSDA(query: effectiveQuery, client: client)
             await MainActor.run {
                 // 过期响应不覆盖新查询（S5）。
                 guard currentGeneration == generation else { return }
+                remoteQueryUsed = effectiveQuery
+                remoteTermSource = termSource
                 switch result {
                 case .success(let candidates):
                     remoteResults = candidates

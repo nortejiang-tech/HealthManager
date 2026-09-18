@@ -53,6 +53,11 @@ struct RecipeSuggestionService {
         }
     }
 
+    /// 直接透传一次文本补全（跨语言检索词翻译等轻用途；不产出营养值）。
+    func rawCall(system: String, user: String) async throws -> String {
+        try await call(system, user)
+    }
+
     static let systemPrompt = """
     你是中餐家常菜的配方助手。根据菜名、可选的历史份量线索和给定的官方食材候选，推测一份家常做法配方。
     只输出 JSON，不要输出其他文字，格式：
