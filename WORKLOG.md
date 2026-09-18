@@ -1092,3 +1092,10 @@ xcodebuild -scheme HealthManager -configuration Release -destination 'id=0000815
 - 计算：已称重/估计/未知沿用现有语义；待匹配与未知用量传播不完整状态；文档示例（290 kcal/250g→116，300g→96.7）有专项测试。
 
 **版本**：0.7.0（13）。**验证**：模拟器 `HealthManagerTests` 329/329 通过（新增 PersonalReferenceStore/USDA+搜索+推测/BackupV3 等 6 个测试类 26 用例）；SmokeTests 通过；真实 USDA 检索+详情取证存 `docs/food-catalog/usda-evidence/`（DEMO_KEY，fdcid 170273 黑巧克力 70-85%）。真机 A01~A16 对应清单与三条主流程录屏属发布前待办。
+
+### 真机安装与验收收尾 — 2026-09-18
+
+- Release（0.7.0/13）经 `devicectl` 覆盖安装到 NortePro的iPhone 并启动；v10 迁移、参考表种子、旧配方快照回填随首启自动执行。
+- 用户完成 USDA 个人 key 配置（设置 → 食材资料库）并试用通过；方案 §8.2 三条主流程由用户确认。
+- 跨语言检索补齐：内置词典（53 条）+ 可选模型翻译检索词，中文「黑巧克力」可在 USDA 检索命中。
+- 已打附注 tag `v0.7.0`。
