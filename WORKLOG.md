@@ -1109,3 +1109,8 @@ xcodebuild -scheme HealthManager -configuration Release -destination 'id=0000815
 - 添加食材详情同步显示每份总营养（每100g×gramWeight÷100 的官方口径单位换算，非标签搬运）。
 - 实测：BIG MAC（SR Legacy #170720）foodPortions「item 7.6 oz」= 219 g，每100g 257 kcal → 每份 ≈563 kcal。
 - 兼容性：FoodCatalogEntry 自定义解码（旧 JSON/旧备份无 portions 键取空数组）；版本 0.7.1（14）；测试 329/329 通过。
+
+#### 根因与回归测试（同日追加）
+
+- 用户实测发现每份信息缺失。根因：portion 解析补丁的 Python 脚本写法错误（`s.replace()` 返回值未赋回），五个代码块实际未写入——构建/测试全绿的假象掩盖了「解析层根本不存在」。
+- 已真正应用并新增回归测试 `BigMacPortionRegressionTests`（用 172067 真实响应结构：1 item = 200g，每份能量 234×2=468 kcal 断言）。测试 330/330 通过后重新出 Release 包装机。

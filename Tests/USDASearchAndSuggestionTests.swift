@@ -322,3 +322,33 @@ extension XCTestCase {
         }
     }
 }
+
+final class BigMacPortionRegressionTests: XCTestCase {
+    /// 用户实测（2026-09-18）：172067 详情应解析出「1 item = 200g」份定义，
+    /// 且候选→详情→条目链路携带 portions（用户反馈截图曾缺失）。
+    func test_bigMacWithoutSauce_parsesOfficialPortion() throws {
+        let json = """
+        {"fdcId":172067,"description":"McDONALD'S, BIG MAC (without Big Mac Sauce)","dataType":"SR Legacy",
+         "publicationDate":"4/1/2019",
+         "foodPortions":[{"id":89826,"gramWeight":200.0,"sequenceNumber":1,"amount":1.0,
+                          "modifier":"item","measureUnit":{"id":9999,"name":"undetermined","abbreviation":"undetermined"}}],
+         "foodNutrients":[
+           {"nutrient":{"id":1008,"name":"Energy","unitName":"KCAL"},"amount":234.0,"unitName":"KCAL"},
+           {"nutrient":{"id":1003,"name":"Protein","unitName":"G"},"amount":12.8,"unitName":"G"},
+           {"nutrient":{"id":1004,"name":"Total lipid (fat)","unitName":"G"},"amount":11.6,"unitName":"G"},
+           {"nutrient":{"id":1005,"name":"Carbohydrate, by difference","unitName":"G"},"amount":21.0,"unitName":"G"}
+         ]}
+        """
+        let detail = try USDAApiClient.parseDetail(data: Data(json.utf8))
+        XCTAssertEqual(detail.portions.count, 1)
+        XCTAssertEqual(detail.portions.first?.description, "1 item")
+        XCTAssertEqual(detail.portions.first?.gramWeight, 200)
+
+        let entry = try USDAFoodMapper.entry(from: detail)
+        XCTAssertEqual(entry.portions.first?.gramWeight, 200)
+        // 每份能量 = 234 × 200 / 100
+        let perServing = FoodServingCalculator.scaled(entry.nutrients.kcal, serving: 200)
+        XCTAssertEqual(perServing?.value ?? 0, 468, accuracy: 0.001)
+    }
+}
+

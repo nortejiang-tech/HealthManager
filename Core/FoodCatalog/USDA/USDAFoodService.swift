@@ -96,6 +96,8 @@ final class USDAApiClient: @unchecked Sendable {
         let publicationDate: String?
         /// 按来源 nutrient ID 映射后的每 100 g 值（含 trace/缺失语义）。
         let mapped: USDAFoodMapper.MappedNutrients
+        /// 官方每份定义（描述 + 克重），来自 foodPortions。
+        let portions: [FoodPortion]
     }
 
     static let defaultBaseURL = URL(string: "https://api.nal.usda.gov/fdc/v1")!
@@ -223,11 +225,18 @@ final class USDAApiClient: @unchecked Sendable {
             let amount: Double?
             let unitName: String?
         }
+        struct Portion: Decodable {
+            let amount: Double?
+            let gramWeight: Double?
+            let portionDescription: String?
+            let modifier: String?
+        }
         let fdcId: Int64
         let description: String
         let dataType: String?
         let publicationDate: String?
         let foodNutrients: [Nutrient]?
+        let foodPortions: [Portion]?
     }
 
     static func parseDetail(data: Data) throws -> FoodDetail {
@@ -251,18 +260,35 @@ final class USDAApiClient: @unchecked Sendable {
                     ? "energy-1008-kcal"
                     : (Self.hasKJ(values) ? "energy-1062-kj-divided-4.184" : "energy-absent")
             )
+            let portions = (raw.foodPortions ?? []).compactMap { portion -> FoodPortion? in
+                guard let weight = portion.gramWeight, weight.isFinite, weight > 0 else { return nil }
+                let descriptor = portion.portionDescription
+                    ?? [portion.amount.map { Self.trimPortion($0) }, portion.modifier]
+                        .compactMap { $0 }
+                        .joined(separator: " ")
+                let text = descriptor.isEmpty ? "1 份" : descriptor
+                return FoodPortion(description: text, gramWeight: weight)
+            }
+            var seen: Set<String> = []
+            let deduped = portions.filter { seen.insert($0.description).inserted }.prefix(6)
+
             return FoodDetail(
                 fdcId: raw.fdcId,
                 description: raw.description,
                 dataType: raw.dataType ?? "unknown",
                 publicationDate: raw.publicationDate,
-                mapped: mapped
+                mapped: mapped,
+                portions: Array(deduped)
             )
         } catch let error as USDAServiceError {
             throw error
         } catch {
             throw USDAServiceError.badResponse("详情解析失败")
         }
+    }
+
+    private static func trimPortion(_ value: Double) -> String {
+        value == value.rounded() ? String(format: "%.0f", value) : String(value)
     }
 
     private static func hasKJ(_ values: [RawDetail.Nutrient]) -> Bool {
@@ -337,7 +363,8 @@ enum USDAFoodMapper {
             refusePercent: nil,
             nutrients: nutrients,
             sourceUrl: "https://fdc.nal.usda.gov/food-details/\(detail.fdcId)/nutrients",
-            note: "USDA FoodData Central · \(detail.dataType) · 能量口径 \(detail.mapped.energyRule)"
+            note: "USDA FoodData Central · \(detail.dataType) · 能量口径 \(detail.mapped.energyRule)",
+                portions: detail.portions
         )
     }
 
