@@ -1114,3 +1114,29 @@ xcodebuild -scheme HealthManager -configuration Release -destination 'id=0000815
 
 - 用户实测发现每份信息缺失。根因：portion 解析补丁的 Python 脚本写法错误（`s.replace()` 返回值未赋回），五个代码块实际未写入——构建/测试全绿的假象掩盖了「解析层根本不存在」。
 - 已真正应用并新增回归测试 `BigMacPortionRegressionTests`（用 172067 真实响应结构：1 item = 200g，每份能量 234×2=468 kcal 断言）。测试 330/330 通过后重新出 Release 包装机。
+
+
+## 2026-09-19 — HealthBridge 0.8.0 (15)
+
+按混合架构新增独立 iCloud 同步通道、Mac 只读数据库/CLI/MCP、iOS 设置及 v12/v13 迁移。332/332 iOS、11/11 Mac 和真实 stdio 合成查询通过；Mac 接收器已安装，手机覆盖安装成功但锁定未远程启动。真机授权/回执、OpenClaw 调用、48小时观察 PENDING。三个 EVO 调用门禁失败后的独立审查和方法论偏差如实记入 docs/healthbridge/reports/EVO-CODER-REPORT.md；未改生产 wrapper。完整状态、风险和回滚见 docs/healthbridge/HANDOFF.md。无 Git 提交。
+
+
+## 2026-09-19 23:18 — HealthBridge快照内存闪退修复0.8.1(16)
+
+真机Jetsam确认前台per-process-limit。60000条实际prepare合成回归修前峰值增量532MiB，修后6.5MiB；600000条压力通过。按事务资源风险由Planner接管，EVO0调用；未改门禁。iOS331/331、Mac12/12通过；覆盖安装并读回0.8.1(16)。不新增迁移/清数据。等待用户解锁前台复验和真实回执。详见docs/healthbridge/STAGE-FIX-snapshot-memory.md及HOTFIX-CODER-REPORT。
+
+
+## 2026-09-20 — Apple Health 同步与冷启动重构 S02–S13
+
+- S01 复核通过后，完成启动计时、durable demand、可取消 HealthKit query、1000 条分页、单 runner、observer/BG completion、dirty-date 投影、手动双 pass、restore barrier、Bridge metadata/payload 分离、首屏维护门和真实状态显示。
+- 三次 EVO-X2 调用均触发监督器 guard violation；按状态机停止自动路由并由 Planner 接管，未改生产 wrapper。完整调用数据见 `docs/planning/2026-09-20-apple-health-sync-review/design/EVO-CODER-REPORT.md` 与 JSON。
+- 软件验收：Simulator build PASS；HealthBridge `20/20`；相关 UI `3/3`；全量单测 `418/419`。唯一失败是 `CODE_SIGNING_ALLOWED=NO` 测试宿主 Keychain `-34018`，同步业务断言没有失败。
+- 当前终态 `ACCEPTANCE_PENDING`：未部署、未提交、未推送。晚间需完成真机 20 次冷启动、三类自动恢复场景、数据保全核对和有签名 Keychain round-trip；详情见同目录 `STAGE-RESULTS.md` S13。
+
+
+## 2026-09-21 — 餐次保存卡死根因修复
+
+- 真机现场确认保存停在 SQLite 提交前：失败餐次未落库。根因是时区投影初始化在唯一 writer transaction 内扫描 354 万条有效 HealthKit raw，并逐行创建 `DateFormatter`；抽样推算写锁可占用约 355 秒，进程被终止后下次冷启动还会重做。
+- 将全库证据扫描移到 WAL reader，使用 cursor 和复用 formatter，仅在短事务发布去重日期。真机副本完整扫描约 5.98 秒且不阻塞交互 writer。
+- 并发聚焦回归 `9/9`，有签名完整回归 `437/437`（单元 `428/428`、UI `9/9`），签名真机构建与覆盖安装通过；锁屏数据库 `quick_check=ok` 且原数据保留。设备锁定，真实点按重放留为 `PENDING`。
+- 该修复为数据库并发与数据一致性边界，由 Planner 直接完成，EVO 未调用且累计比率不变。

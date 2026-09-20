@@ -1,0 +1,41 @@
+{
+  "stage": "S3C-daily-nutrition-energy",
+  "date": "2026-09-20",
+  "baseline": "1479db9 plus existing uncommitted HealthBridge implementation; no reset, clean, commit, or push",
+  "coder_calls": [
+    {
+      "run_id": "a667b034-445f-4274-9d19-3e2711ce25b2",
+      "model": "halogen-qwen3.8-flash-next",
+      "routing": "EVO-Coder after Planner trust-gate review",
+      "allowed_paths": [
+        "HealthBridge/Sources/BridgeCore/Query.swift"
+      ],
+      "actual_observed_paths": [
+        "HealthBridge/Sources/BridgeCore/Query.swift"
+      ],
+      "verification_commands": [
+        "swift test --package-path HealthBridge --skip-update --filter BridgeCoreTests/testDailyNutritionAndEnergyBalanceReadContract",
+        "swift test --package-path HealthBridge --skip-update"
+      ],
+      "structured_result": "unavailable",
+      "turns": "unavailable",
+      "tool_calls": "unavailable",
+      "prompt_hash": "unavailable",
+      "classification": "LOCAL_POSTWRITE_FAILURE",
+      "failure_reason": "No final structured evo_coder_result was captured; Planner preserved and independently reviewed the allowed-path write.",
+      "acceptance": "partially_accepted_with_planner_corrections"
+    }
+  ],
+  "planner_independent_acceptance": {
+    "synthetic_red_test": "PASS after implementation",
+    "bridgecore_suite": {
+      "passed": 15,
+      "failed": 0
+    },
+    "release_build": "PASS",
+    "ios_simulator_build": "PASS",
+    "real_local_replica_schema_check": "PASS",
+    "agent_tool_trace": "PENDING"
+  },
+  "rollback": "No prior binary was retained during atomic replacement. Rebuild a known prior source version or disable the Bridge receiver/health-agent read entrypoint; do not delete user health data or transport files."
+}

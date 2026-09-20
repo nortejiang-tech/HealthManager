@@ -2,67 +2,80 @@ import Foundation
 import HealthKit
 import GRDB
 
-/// Incremental sync via HKAnchoredObjectQuery (PRD F-001).
-///
-/// Per-type loop:
-/// 1. Load persisted `HKQueryAnchor` (BLOB, NSKeyedArchiver / SecureCoding) from `sync_anchors`.
-///    First run → `nil` anchor → HealthKit returns the full set, but the matching backfill has
-///    already inserted those rows, so `INSERT OR IGNORE` makes this idempotent.
-/// 2. `anchoredFetch` returns (added, deleted, newAnchor).
-/// 3. Map added → `health_samples_raw` (INSERT OR IGNORE on `sample_uuid`).
-/// 4. Mark deleted UUIDs as `is_deleted=1` (soft delete; raw is append-only-ish per PRD §6).
-/// 5. Persist `newAnchor`. UPSERT keyed on `hk_type`.
-/// 6. On HK failure: exponential backoff retry up to 3x; if still failing, record and continue.
-///
-/// Idempotency: re-running on the same anchor is a no-op (HealthKit returns 0 added / 0 deleted).
-actor IncrementalSyncCoordinator {
+enum IncrementalSyncCoordinatorError: LocalizedError, Equatable {
+    case unknownPersistedType(String)
 
+    var errorDescription: String? {
+        switch self {
+        case .unknownPersistedType(let identifier):
+            return "持久同步类型不在当前 HealthKit 目录中：\(identifier)"
+        }
+    }
+}
+
+/// Compatibility coordinator over the durable, paged sync path.
+///
+/// Entry points request generations in `SyncWorkStore`; every type then runs a bounded page
+/// slice. S08 replaces the compatibility loop with the single shared `SyncRunner`, while this
+/// stage already removes unlimited HealthKit reads and split row/anchor transactions.
+actor IncrementalSyncCoordinator {
     private let healthKitManager: HealthKitManager
     private let database: DatabaseManager
-    private let maxAttempts: Int
+    private let workStore: SyncWorkStore
+    private let maximumPagesPerType: Int
+    private let sliceDuration: TimeInterval
 
     init(
         healthKitManager: HealthKitManager,
         database: DatabaseManager,
-        maxAttempts: Int = 3
+        maxAttempts: Int = 3,
+        maximumPagesPerType: Int = 8,
+        sliceDuration: TimeInterval = 8
     ) {
         self.healthKitManager = healthKitManager
         self.database = database
-        self.maxAttempts = maxAttempts
+        self.workStore = SyncWorkStore(database: database)
+        self.maximumPagesPerType = maximumPagesPerType
+        self.sliceDuration = sliceDuration
+        _ = maxAttempts // Kept for source compatibility; retries belong to the shared runner.
     }
 
     struct TypeOutcome {
         let identifier: String
         let added: Int
         let deleted: Int
-        let attempts: Int
+        let pages: Int
+        let hasPending: Bool
         let error: Error?
         let failedStage: SyncStage?
     }
 
-    /// Result of one full pass over every read sample type. Job-row agnostic.
-    /// `ManualSyncCoordinator` invokes `executePass` twice under a single `manual` job row.
     struct PassResult {
         var perTypeCounts: [String: Int]
-        /// `firstError` is the first **non-authorization** failure. Auth-denied per-type
-        /// failures are recorded in `errors` but do not poison the overall job status.
         var firstError: Error?
         var errors: [SyncTypeError]
+        var hasPending: Bool
+    }
+
+    struct ReadyTypeSelection {
+        let sampleTypes: [HKSampleType]
+        let unknownIdentifiers: [String]
     }
 
     func run(
         trigger: SyncJob.Trigger,
         progress: @escaping (String) -> Void
     ) async throws -> SyncEngine.LastResult {
-
         let jobStart = Date()
-        let jobId = try SyncJobRecorder(database: database).openJob(jobType: .incremental, trigger: trigger, startedAt: jobStart)
-
+        let jobId = try SyncJobRecorder(database: database).openJob(
+            jobType: .incremental,
+            trigger: trigger,
+            startedAt: jobStart
+        )
         let pass = await executePass(progress: progress)
-
         let endedAt = Date()
         let totalSamples = pass.perTypeCounts.values.reduce(0, +)
-        let succeeded = (pass.firstError == nil)
+        let succeeded = pass.firstError == nil
         try SyncJobRecorder(database: database).closeJob(
             id: jobId,
             endedAt: endedAt,
@@ -70,7 +83,6 @@ actor IncrementalSyncCoordinator {
             errorMessage: pass.firstError?.localizedDescription,
             stats: pass.perTypeCounts
         )
-
         return SyncEngine.LastResult(
             jobId: jobId,
             jobType: .incremental,
@@ -84,203 +96,253 @@ actor IncrementalSyncCoordinator {
         )
     }
 
-    /// Iterate every read sample type once: load anchor → anchored fetch → persist → save anchor.
-    /// Returns aggregated counts so callers can manage their own sync_jobs envelope.
     func executePass(progress: @escaping (String) -> Void) async -> PassResult {
-        var perTypeCounts: [String: Int] = [:]
+        let readyWork: [SyncTypeWork]
+        do {
+            readyWork = try workStore.pendingWork()
+        } catch {
+            return PassResult(perTypeCounts: [:], firstError: error, errors: [], hasPending: true)
+        }
+        let selection = Self.selectReadyTypes(
+            from: readyWork,
+            catalog: HealthKitTypeCatalog.allReadSampleTypes
+        )
+        let sampleTypes = selection.sampleTypes
+
+        var counts: [String: Int] = [:]
         var firstError: Error?
         var errors: [SyncTypeError] = []
+        var hasPending = false
 
-        let sampleTypes = HealthKitTypeCatalog.allReadSampleTypes
-        let total = sampleTypes.count
+        for identifier in selection.unknownIdentifiers {
+            let error = IncrementalSyncCoordinatorError.unknownPersistedType(identifier)
+            deferUnknownType(identifier, error: error)
+            errors.append(SyncTypeError(
+                hkType: identifier,
+                stage: .loadAnchor,
+                underlying: error.localizedDescription,
+                isAuthDenied: false,
+                occurredAt: Date()
+            ))
+            if firstError == nil { firstError = error }
+            hasPending = true
+            AppLogger.shared.sync.error(
+                "Incremental persisted unknown type deferred for repair: \(identifier, privacy: .public)"
+            )
+        }
 
         for (index, sampleType) in sampleTypes.enumerated() {
             let identifier = sampleType.identifier
-            progress("[\(index + 1)/\(total)] 增量同步 \(identifier)…")
-
+            progress("[\(index + 1)/\(sampleTypes.count)] 增量同步 \(identifier)…")
             let outcome = await syncType(sampleType, identifier: identifier)
-            perTypeCounts[identifier] = outcome.added
+            counts[identifier] = outcome.added
+            hasPending = hasPending || outcome.hasPending
 
-            if let err = outcome.error {
-                let authDenied = SyncTypeError.isAuthorizationDenied(err)
+            if let error = outcome.error {
+                let authDenied = SyncTypeError.isAuthorizationDenied(error)
                 errors.append(SyncTypeError(
                     hkType: identifier,
                     stage: outcome.failedStage ?? .hkQuery,
-                    underlying: err.localizedDescription,
+                    underlying: error.localizedDescription,
                     isAuthDenied: authDenied,
                     occurredAt: Date()
                 ))
-                // Auth denial is expected when the user only granted a subset of types.
-                // Don't promote it into firstError — the overall job can still be a success.
-                if !authDenied, firstError == nil {
-                    firstError = err
-                }
-                if authDenied {
+                if !authDenied, firstError == nil { firstError = error }
+                AppLogger.shared.sync.error(
+                    "Incremental \(identifier, privacy: .public) failed at \(outcome.failedStage?.rawValue ?? "?", privacy: .public): \(error.localizedDescription, privacy: .public)"
+                )
+                if Self.shouldDeferRemainingTypes(after: error) {
+                    let remaining = sampleTypes.dropFirst(index + 1).map(\.identifier)
+                    deferUnqueriedTypes(remaining, reason: .waitForUnlock)
+                    hasPending = true
                     AppLogger.shared.sync.info(
-                        "Incremental \(identifier, privacy: .public): authorization denied (soft skip)"
+                        "HealthKit protected data unavailable; deferred \(remaining.count) unqueried types"
                     )
-                } else {
-                    AppLogger.shared.sync.error(
-                        "Incremental failed for \(identifier, privacy: .public) at stage \(outcome.failedStage?.rawValue ?? "?") after \(outcome.attempts) attempts: \(err.localizedDescription, privacy: .public)"
-                    )
+                    break
                 }
             } else {
                 AppLogger.shared.sync.info(
-                    "Incremental \(identifier, privacy: .public): +\(outcome.added) / -\(outcome.deleted)"
+                    "Incremental \(identifier, privacy: .public): pages=\(outcome.pages) +\(outcome.added) / -\(outcome.deleted), pending=\(outcome.hasPending)"
                 )
             }
         }
 
         return PassResult(
-            perTypeCounts: perTypeCounts,
+            perTypeCounts: counts,
             firstError: firstError,
-            errors: errors
+            errors: errors,
+            hasPending: hasPending
         )
     }
 
-    // MARK: - Per-type sync with retry
+    /// Select only durable ready work, while preserving the catalog's stable query order.
+    /// Unknown persisted identifiers are returned separately so the caller can defer them once
+    /// instead of spinning a worker that can never construct an HKSampleType.
+    static func selectReadyTypes(
+        from work: [SyncTypeWork],
+        catalog: [HKSampleType]
+    ) -> ReadyTypeSelection {
+        let readyIdentifiers = Set(work.lazy.filter(\.isPending).map(\.hkType))
+        let knownIdentifiers = Set(catalog.map(\.identifier))
+        return ReadyTypeSelection(
+            sampleTypes: catalog.filter { readyIdentifiers.contains($0.identifier) },
+            unknownIdentifiers: readyIdentifiers.subtracting(knownIdentifiers).sorted()
+        )
+    }
 
-    private func syncType(
-        _ sampleType: HKSampleType,
-        identifier: String
-    ) async -> TypeOutcome {
-        var attempt = 0
-        var lastError: Error?
-        var lastStage: SyncStage?
-
-        while attempt < maxAttempts {
-            attempt += 1
-            var currentStage: SyncStage = .loadAnchor
-            do {
-                let storedAnchor = try loadAnchor(for: identifier)
-
-                currentStage = .hkQuery
-                let result = try await healthKitManager.anchoredFetch(
-                    for: sampleType,
-                    anchor: storedAnchor
-                )
-
-                currentStage = .persistDB
-                let addedCount = try persistAdded(result.added)
-                let deletedCount = try persistDeleted(result.deleted)
-
-                if let newAnchor = result.newAnchor {
-                    currentStage = .saveAnchor
-                    try saveAnchor(newAnchor, for: identifier)
-                }
-
+    private func syncType(_ sampleType: HKSampleType, identifier: String) async -> TypeOutcome {
+        do {
+            guard let claim = try workStore.claim(type: identifier, token: UUID()) else {
                 return TypeOutcome(
                     identifier: identifier,
-                    added: addedCount,
-                    deleted: deletedCount,
-                    attempts: attempt,
+                    added: 0,
+                    deleted: 0,
+                    pages: 0,
+                    hasPending: (try workStore.work(for: identifier)?.isPending) ?? false,
                     error: nil,
                     failedStage: nil
                 )
-            } catch {
-                lastError = error
-                lastStage = currentStage
-                // Authorization denial won't succeed on retry — abort retries early.
-                if SyncTypeError.isAuthorizationDenied(error) { break }
-                if attempt < maxAttempts {
-                    // Exponential backoff: 0.5s, 1.5s (capped well under BG task budget)
-                    let delayNs = UInt64(pow(2.0, Double(attempt - 1)) * 0.5 * 1_000_000_000)
-                    try? await Task.sleep(nanoseconds: delayNs)
-                }
             }
-        }
 
-        return TypeOutcome(
-            identifier: identifier,
-            added: 0,
-            deleted: 0,
-            attempts: attempt,
-            error: lastError,
-            failedStage: lastStage
-        )
-    }
-
-    // MARK: - Anchor persistence
-
-    private func loadAnchor(for identifier: String) throws -> HKQueryAnchor? {
-        let row: SyncAnchor? = try database.read { db in
-            try SyncAnchor.fetchOne(db, key: identifier)
-        }
-        guard let row else { return nil }
-        do {
-            return try NSKeyedUnarchiver.unarchivedObject(
-                ofClass: HKQueryAnchor.self,
-                from: row.anchorData
+            let anchorData = try loadAnchorData(for: identifier)
+            _ = try Self.decodeAnchor(anchorData, type: identifier)
+            let runner = SyncPageRunner(workStore: workStore)
+            let result = try await runner.run(
+                claim: claim,
+                initialAnchorData: anchorData,
+                budget: SyncPageBudget(
+                    maximumPages: maximumPagesPerType,
+                    deadline: Date().addingTimeInterval(sliceDuration)
+                )
+            ) { [healthKitManager] currentAnchorData, limit in
+                let anchor = try Self.decodeAnchor(currentAnchorData, type: identifier)
+                let fetched = try await healthKitManager.anchoredFetch(
+                    for: sampleType,
+                    anchor: anchor,
+                    limit: limit
+                )
+                let ingestedAt = Date()
+                var rows: [HealthSampleRaw] = []
+                rows.reserveCapacity(fetched.added.count)
+                for sample in fetched.added {
+                    guard let row = SampleMapper.map(sample, ingestedAt: ingestedAt) else {
+                        throw SyncPageRunnerError.mappingFailed(
+                            type: identifier,
+                            sampleID: sample.uuid.uuidString
+                        )
+                    }
+                    rows.append(row)
+                }
+                let archivedAnchor = try fetched.newAnchor.map(Self.archiveAnchor)
+                return SyncFetchedPage(
+                    addedRows: rows,
+                    deletedUUIDs: fetched.deleted.map { $0.uuid.uuidString },
+                    newAnchorData: archivedAnchor
+                )
+            }
+            return TypeOutcome(
+                identifier: identifier,
+                added: result.actualInserted,
+                deleted: result.actualDeleted,
+                pages: result.pagesCommitted,
+                hasPending: result.state == .hasPending,
+                error: nil,
+                failedStage: nil
             )
         } catch {
-            // Stored anchor blob is corrupt or written by an incompatible SDK version.
-            // Drop the row and re-fetch the full set; INSERT OR IGNORE on sample_uuid dedupes.
-            AppLogger.shared.sync.warning(
-                "Anchor decode failed for \(identifier, privacy: .public); resetting. Underlying: \(error.localizedDescription, privacy: .public)"
+            await deferFailedType(identifier: identifier, error: error)
+            return TypeOutcome(
+                identifier: identifier,
+                added: 0,
+                deleted: 0,
+                pages: 0,
+                hasPending: true,
+                error: error,
+                failedStage: Self.stage(for: error)
             )
-            try? database.write { db in
-                try db.execute(
-                    sql: "DELETE FROM sync_anchors WHERE hk_type = ?",
-                    arguments: [identifier]
-                )
-            }
-            return nil
         }
     }
 
-    private func saveAnchor(_ anchor: HKQueryAnchor, for identifier: String) throws {
-        let data = try NSKeyedArchiver.archivedData(
-            withRootObject: anchor,
-            requiringSecureCoding: true
+    private func deferFailedType(identifier: String, error: Error) async {
+        guard let claim = try? workStore.claim(type: identifier, token: UUID()) else { return }
+        let reason: SyncDeferredReason
+        if case SyncPageRunnerError.repairRequired = error {
+            reason = .repairRequired
+        } else {
+            switch SyncFailurePolicy.classify(error) {
+            case .waitForUnlock: reason = .waitForUnlock
+            case .authorizationCheck: reason = .authorizationCheck
+            case .cancelled: reason = .cancelled
+            case .transient: reason = .transient
+            case .repairRequired: reason = .repairRequired
+            case .failure, .unknown: reason = .failure
+            }
+        }
+        try? workStore.deferClaim(
+            claim,
+            reason: reason,
+            retryAt: nil,
+            errorCode: String(describing: error)
         )
-        let row = SyncAnchor(
-            hkType: identifier,
-            anchorData: data,
-            updatedAt: Int64(Date().timeIntervalSince1970)
+    }
+
+    private func deferUnknownType(_ identifier: String, error: Error) {
+        guard let claim = try? workStore.claim(type: identifier, token: UUID()) else { return }
+        try? workStore.deferClaim(
+            claim,
+            reason: .repairRequired,
+            retryAt: nil,
+            errorCode: String(describing: error)
         )
-        try database.write { db in
-            // UPSERT on primary key (hk_type)
-            try row.insert(db, onConflict: .replace)
+    }
+
+    private func deferUnqueriedTypes(_ identifiers: [String], reason: SyncDeferredReason) {
+        for identifier in identifiers {
+            guard let claim = try? workStore.claim(type: identifier, token: UUID()) else { continue }
+            try? workStore.deferClaim(
+                claim,
+                reason: reason,
+                retryAt: nil,
+                errorCode: "protected_data_unavailable"
+            )
         }
     }
 
-    // MARK: - Sample persistence
-
-    private func persistAdded(_ samples: [HKSample]) throws -> Int {
-        guard !samples.isEmpty else { return 0 }
-        let ingestedAt = Date()
-        let rows = samples.compactMap { SampleMapper.map($0, ingestedAt: ingestedAt) }
-        guard !rows.isEmpty else { return 0 }
-        try database.write { db in
-            for row in rows {
-                try row.insert(db, onConflict: .ignore)
-            }
+    private func loadAnchorData(for identifier: String) throws -> Data? {
+        try database.read { db in
+            try Data.fetchOne(
+                db,
+                sql: "SELECT anchor_data FROM sync_anchors WHERE hk_type = ?",
+                arguments: [identifier]
+            )
         }
-        return rows.count
     }
 
-    private func persistDeleted(_ deleted: [HKDeletedObject]) throws -> Int {
-        guard !deleted.isEmpty else { return 0 }
-        let uuids = deleted.map { $0.uuid.uuidString }
-        try database.write { db in
-            // Chunk to keep SQL parameter count well under SQLite's default 999 limit.
-            for chunk in uuids.chunked(into: 400) {
-                let placeholders = Array(repeating: "?", count: chunk.count).joined(separator: ",")
-                try db.execute(
-                    sql: "UPDATE health_samples_raw SET is_deleted = 1 WHERE sample_uuid IN (\(placeholders))",
-                    arguments: StatementArguments(chunk)
-                )
-            }
+    static func decodeAnchor(_ data: Data?, type: String) throws -> HKQueryAnchor? {
+        guard let data else { return nil }
+        do {
+            return try NSKeyedUnarchiver.unarchivedObject(ofClass: HKQueryAnchor.self, from: data)
+        } catch {
+            throw SyncPageRunnerError.repairRequired(type: type)
         }
-        return uuids.count
     }
-}
 
-private extension Array {
-    func chunked(into size: Int) -> [[Element]] {
-        guard size > 0 else { return [self] }
-        return stride(from: 0, to: count, by: size).map {
-            Array(self[$0..<Swift.min($0 + size, count)])
+    static func archiveAnchor(_ anchor: HKQueryAnchor) throws -> Data {
+        try NSKeyedArchiver.archivedData(withRootObject: anchor, requiringSecureCoding: true)
+    }
+
+    static func shouldDeferRemainingTypes(after error: Error) -> Bool {
+        SyncFailurePolicy.classify(error) == .waitForUnlock
+    }
+
+    private static func stage(for error: Error) -> SyncStage {
+        switch error {
+        case SyncPageRunnerError.repairRequired:
+            return .loadAnchor
+        case SyncPageRunnerError.mappingFailed:
+            return .persistDB
+        default:
+            return .hkQuery
         }
     }
 }

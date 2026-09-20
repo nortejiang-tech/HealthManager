@@ -79,6 +79,11 @@ struct BackupImporter {
             throw BackupImportError.unsupportedFormatVersion(manifest.formatVersion)
         }
 
+        // Restore starts a new bridge epoch even if import is later interrupted.
+        try await database.asyncWrite { db in
+            try BridgeSource.reset(db)
+            try db.execute(sql: "UPDATE bridge_state SET paused_reason='备份恢复尚未完成，请完成恢复或手动重建同步快照' WHERE id=1")
+        }
         let packageDir = manifestURL.deletingLastPathComponent()
         var importedCounts: [String: Int] = [:]
         var skippedCounts: [String: Int] = [:]
@@ -136,6 +141,7 @@ struct BackupImporter {
             }
         }
 
+        try await database.asyncWrite { try $0.execute(sql: "UPDATE bridge_state SET paused_reason=NULL WHERE id=1") }
         return BackupImportSummary(
             importedCounts: importedCounts,
             skippedCounts: skippedCounts

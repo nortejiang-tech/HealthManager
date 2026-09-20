@@ -20,9 +20,10 @@ struct HealthManagerApp: App {
         }
         .onChange(of: scenePhase) {
             guard scenePhase == .active else {
+                environment.applicationDidBecomeInactive()
                 // 退后台：自动导出备份包（已配置位置时）。
                 if scenePhase == .background {
-                    Task { await environment.backupManager.exportIfConfigured() }
+                    Task { await environment.applicationDidEnterBackground() }
                 }
                 return
             }
@@ -34,17 +35,11 @@ struct HealthManagerApp: App {
                 Task { @MainActor in
                     try? await Task.sleep(nanoseconds: 800_000_000)
                     environment.syncEngine.acknowledgeExternalSyncDone()
+                    await environment.applicationDidBecomeActive()
                 }
                 return
             }
-
-            // Auto incremental sync on every foreground entry. Skip if the user hasn't
-            // completed onboarding (no point firing HK queries that will all auth-deny).
-            // `runIncremental` itself drops calls when isBusy, so rapid app-switching is safe.
-            guard environment.isSyncStartupReady else { return }
-            let gate = environment.healthKitManager.authorizationGate
-            guard gate == .granted || gate == .partiallyGranted else { return }
-            Task { await environment.syncEngine.runIncremental(trigger: .timer) }
+            Task { await environment.applicationDidBecomeActive() }
         }
     }
 }

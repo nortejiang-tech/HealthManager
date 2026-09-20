@@ -1,0 +1,64 @@
+{
+  "schema_version": 1,
+  "date": "2026-09-20",
+  "task": "Apple Health sync and cold-start diagnosis",
+  "status": "ASSESSMENT_COMPLETE_IMPLEMENTATION_PENDING",
+  "baseline": {
+    "head": "1479db9e8aec80db1c557130315bcd0cb9e74949",
+    "branch": "main",
+    "dirty_worktree": "preserved",
+    "device_version": "0.8.1 (16)",
+    "source_hashes": "evidence/source-hashes.json"
+  },
+  "evo_calls": [],
+  "no_call_reason": "Diagnostic assessment only; no production implementation authorized by this task. Planner wrote a temporary scheduling probe and ran read-only queries.",
+  "model_parameters": "unavailable; no EVO invocation",
+  "metrics": {
+    "supervisor_pass_rate": {
+      "numerator": 0,
+      "denominator": 0,
+      "rate": null
+    },
+    "first_independent_acceptance_rate": {
+      "numerator": 0,
+      "denominator": 0,
+      "rate": null
+    },
+    "useful_output_adoption_rate": {
+      "numerator": 0,
+      "denominator": 0,
+      "rate": null
+    }
+  },
+  "production_changes": [],
+  "artifact_scope": "docs/planning/2026-09-20-apple-health-sync-review",
+  "independent_evidence": [
+    {
+      "kind": "device_database",
+      "integrity": "quick_check ok",
+      "raw_rows": 3597222,
+      "active_rows": 3547557,
+      "anchors": 28,
+      "phone_mutation": false
+    },
+    {
+      "kind": "production_method_scheduling_probe",
+      "trials": 3,
+      "red_reproductions": 3,
+      "boundary": "Extracted real method with controlled dependencies; not full phone E2E"
+    },
+    {
+      "kind": "read_only_sql_benchmark",
+      "path": "evidence/query-benchmark.json",
+      "boundary": "Mac on phone DB copy, not iPhone startup"
+    }
+  ],
+  "acceptance": "not_applicable_no_coder_output",
+  "rework": [],
+  "pending": [
+    "Real iPhone stage timings",
+    "Production fixes",
+    "Real cold launch and unlock recovery acceptance"
+  ],
+  "rollback": "No app code or device data mutated; added assessment artifacts only."
+}

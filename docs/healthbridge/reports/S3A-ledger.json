@@ -1,0 +1,49 @@
+{
+  "changed_paths": [
+    "BridgeToolCatalog.swift"
+  ],
+  "classification": "LOCAL_POSTWRITE_FAILURE",
+  "config_sha256": {
+    "extension": "292935a062d9e01f2bd7d37901ca5b6c725b89283c71b633affd6232ca123ffb",
+    "models": "8fc0d2b000a76990fa51d0183483b1f88ad94e972eea203327c20e267de6a9d4",
+    "policy": "252b0ea3a03840a9c24604d5e73629fd9460bb12f2473b6883b42a1b081cfee6",
+    "supervisor": "6882ac9922be5371079b93cd95af91b8579c82c0257bd5816c42202ac3d23761"
+  },
+  "duration_seconds": 86.145,
+  "failure_reason": "GUARD_VIOLATION",
+  "final_message_characters": 3279,
+  "final_message_sha256": "17456d67b3cb733fc789de76af8a438f9b5004b6a32d83ac0d2ecd90f304b04b",
+  "guard_violation_codes": [
+    "VERIFY_INDEX_NOT_ALLOWED",
+    "VERIFY_INDEX_NOT_ALLOWED",
+    "PATH_ESCAPE_DENIED",
+    "VERIFY_INDEX_NOT_ALLOWED",
+    "VERIFY_INDEX_NOT_ALLOWED"
+  ],
+  "interrupt_signal": null,
+  "max_context_tokens": 6826,
+  "max_output_tokens": 4096,
+  "model": "halogen-qwen3.8-flash-next",
+  "out_of_scope_paths": [],
+  "parse_errors": 0,
+  "prompt_sha256": "0c14cc97e2c687d0b8954a46f7acd6b73fb940b5a965e35ef3d24f8fc54f5d96",
+  "provider": "EVO-X2",
+  "run_id": "bb913d6b-2a89-4467-863c-61e50fb89741",
+  "schema_version": 1,
+  "source_generation": 1,
+  "started_at_unix": 1789822761.422,
+  "status": "BLOCKED",
+  "stderr_bytes": 0,
+  "stop_reason": "stop",
+  "structured_terminal": false,
+  "temperature": 0.0,
+  "tool_calls": 9,
+  "top_p": 1,
+  "turns": 9,
+  "verification_expected": 1,
+  "verification_pass_indexes": [],
+  "verification_passes": 0,
+  "verification_runs": 4,
+  "verification_source_generation": null,
+  "workdir": "/private/tmp/healthbridge-coder-s3a"
+}

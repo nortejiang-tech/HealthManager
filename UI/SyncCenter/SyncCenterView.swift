@@ -9,36 +9,55 @@ struct SyncCenterView: View {
     @State private var recentReports: [BackfillReport] = []
     @State private var reportsLoaded: Bool = false
     @State private var reportsLoadError: String?
+    @State private var runtimeEvidence = SyncRuntimePresentationEvidence.empty
 
     var body: some View {
         List {
             Section("状态") {
                 HStack {
                     HMEvidenceTag(
-                        tone: phasePresentation.tone,
-                        text: phasePresentation.label,
-                        systemImage: phasePresentation.icon
+                        tone: presentation.tone,
+                        text: presentation.label,
+                        systemImage: presentation.icon
                     )
                     Spacer()
                 }
                 if sync.isBusy {
-                    ProgressView(sync.progressDescription.isEmpty ? "处理中…" : sync.progressDescription)
-                } else if !sync.progressDescription.isEmpty {
-                    Text(sync.progressDescription).foregroundStyle(.secondary).font(.footnote)
+                    ProgressView(presentation.detail)
+                } else {
+                    Text(presentation.detail)
+                        .foregroundStyle(.secondary)
+                        .font(.footnote)
+                }
+                if let finishedAt = presentation.finishedAt {
+                    Text("本轮记录时间：\(finishedAt.formatted(date: .abbreviated, time: .standard))")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
                 }
                 if sync.phase == .waitingExternalSync {
                     Text("该阶段是请外部健康 App 回写后继续，不是同步失败。")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                 }
-                if syncPresentationFailed {
+                if presentation.isFailureLike {
                     HMEditorCallout(
-                        title: "本轮同步未完成",
-                        message: "已成功写入的数据会保留；失败原因见技术信息。",
+                        title: presentation.label,
+                        message: presentation.detail,
                         tone: .actionRequired,
                         systemImage: "exclamationmark.triangle.fill",
                         detail: sync.lastResult?.errorMessage ?? sync.progressDescription
                     )
+                }
+                if presentation.showsRetry, !sync.isBusy {
+                    Button {
+                        Task {
+                            await sync.runIncremental(trigger: .user)
+                            await refreshRuntimeEvidence()
+                        }
+                    } label: {
+                        Label("重试本地同步", systemImage: "arrow.clockwise")
+                    }
+                    .accessibilityIdentifier("sync-retry-local")
                 }
             }
 
@@ -168,8 +187,21 @@ struct SyncCenterView: View {
                 }
             }
         }
-        .task { await refreshReports() }
-        .refreshable { await refreshReports() }
+        .task {
+            async let reports: Void = refreshReports()
+            async let evidence: Void = refreshRuntimeEvidence()
+            _ = await (reports, evidence)
+        }
+        .onChange(of: sync.phase) { _, _ in
+            Task { await refreshRuntimeEvidence() }
+        }
+        .onChange(of: sync.lastResult) { _, _ in
+            Task { await refreshRuntimeEvidence() }
+        }
+        .refreshable {
+            await refreshReports()
+            await refreshRuntimeEvidence()
+        }
         .alert(
             sync.manualSyncPrompt?.title ?? "",
             isPresented: Binding(
@@ -184,21 +216,25 @@ struct SyncCenterView: View {
         }
     }
 
-    private var phasePresentation: (label: String, tone: HMSemanticTone, icon: String) {
-        if syncPresentationFailed {
-            return ("未完成", .actionRequired, "exclamationmark.triangle.fill")
+    private var presentation: SyncPresentation {
+        let result = sync.lastResult.map { result in
+            SyncPresentation.ResultSummary(
+                succeeded: result.succeeded,
+                totalSamples: result.totalSamples,
+                failedTypeCount: result.perTypeErrors.filter { !$0.isAuthDenied }.count,
+                authorizationDeniedCount: result.perTypeErrors.filter { $0.isAuthDenied }.count,
+                finishedAt: result.endedAt
+            )
         }
-        switch sync.phase {
-        case .idle: return ("空闲", .neutral, "pause.circle")
-        case .requestingAuth: return ("请求授权", .neutral, "lock.shield")
-        case .backfilling: return ("回补中", .comparison, "clock.arrow.circlepath")
-        case .syncingIncremental: return ("增量同步", .comparison, "arrow.down.circle")
-        case .waitingExternalSync: return ("等待外部 App 同步", .comparison, "arrow.triangle.2.circlepath")
-        case .syncingIncremental2: return ("二次增量", .comparison, "arrow.down.circle")
-        case .reconciling: return ("对账中", .comparison, "checkmark.seal")
-        case .completed: return ("完成", .confirmed, "checkmark.circle.fill")
-        case .failed: return ("未完成", .actionRequired, "exclamationmark.triangle.fill")
-        }
+        return SyncPresentation.make(.init(
+            phase: sync.phase,
+            isBusy: sync.isBusy,
+            progressDescription: sync.progressDescription,
+            result: result,
+            pendingTypeCount: runtimeEvidence.pendingTypeCount,
+            deferredReasons: runtimeEvidence.deferredReasons,
+            projectionPending: runtimeEvidence.projectionPending
+        ))
     }
 
     private var syncRailTitle: String {
@@ -274,11 +310,6 @@ struct SyncCenterView: View {
         }
     }
 
-    private var syncPresentationFailed: Bool {
-        sync.phase == .failed
-            || (sync.phase == .completed && sync.lastResult?.succeeded == false)
-    }
-
     private func refreshReports() async {
         do {
             let reports = try await environment.database.asyncRead { db -> [BackfillReport] in
@@ -297,6 +328,39 @@ struct SyncCenterView: View {
                 reportsLoadError = error.localizedDescription
             }
             AppLogger.shared.error("Reports refresh failed: \(error.localizedDescription)")
+        }
+    }
+
+    private func refreshRuntimeEvidence() async {
+        do {
+            let evidence = try await environment.database.asyncRead { db -> SyncRuntimePresentationEvidence in
+                let pending = try Int.fetchOne(
+                    db,
+                    sql: "SELECT COUNT(*) FROM sync_type_work WHERE completed_generation < requested_generation"
+                ) ?? 0
+                let rawReasons = try String.fetchAll(
+                    db,
+                    sql: """
+                        SELECT DISTINCT deferred_reason FROM sync_type_work
+                        WHERE completed_generation < requested_generation
+                          AND deferred_reason IS NOT NULL
+                        """
+                )
+                let projectionPending = try Bool.fetchOne(
+                    db,
+                    sql: "SELECT EXISTS(SELECT 1 FROM sync_projection_work)"
+                ) ?? false
+                return SyncRuntimePresentationEvidence(
+                    pendingTypeCount: pending,
+                    deferredReasons: rawReasons.compactMap(SyncDeferredReason.init(rawValue:)),
+                    projectionPending: projectionPending
+                )
+            }
+            await MainActor.run { runtimeEvidence = evidence }
+        } catch {
+            AppLogger.shared.sync.error(
+                "Sync presentation evidence load failed: \(error.localizedDescription, privacy: .public)"
+            )
         }
     }
 }

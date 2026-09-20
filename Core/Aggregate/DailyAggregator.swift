@@ -23,11 +23,20 @@ actor DailyAggregator {
 
     /// Recompute the past `days` days ending today (local tz). Older days unchanged.
     func rebuild(daysBack days: Int = 7) async throws {
-        let dates = recentDates(daysBack: days)
-        for date in dates {
-            try rebuildOneDay(date: date)
-        }
+        let dates = recentDates(daysBack: days, calendar: .current)
+        _ = try await rebuild(dates: Set(dates), calendar: .current)
         AppLogger.shared.database.info("DailyAggregator rebuilt \(dates.count) days")
+    }
+
+    /// Recompute only explicitly dirty local dates. The returned set contains dates whose
+    /// published values actually changed; computedAt-only differences are ignored.
+    @discardableResult
+    func rebuild(dates: Set<String>, calendar: Calendar) async throws -> Set<String> {
+        var changed: Set<String> = []
+        for date in dates.sorted() where try rebuildOneDay(date: date, calendar: calendar) {
+            changed.insert(date)
+        }
+        return changed
     }
 
     // MARK: - Per-day rollup
@@ -53,8 +62,8 @@ actor DailyAggregator {
         var height: Double?
     }
 
-    private func rebuildOneDay(date: String) throws {
-        let (s, e) = epochRange(for: date)
+    private func rebuildOneDay(date: String, calendar: Calendar) throws -> Bool {
+        let (s, e) = epochRange(for: date, calendar: calendar)
 
         let snap: DaySnapshot = try database.read { db in
             var d = DaySnapshot()
@@ -82,7 +91,8 @@ actor DailyAggregator {
         }
 
         let computedAt = Int64(Date().timeIntervalSince1970)
-        try database.write { db in
+        return try database.write { db in
+            var changed = false
             try db.execute(sql: """
                 INSERT INTO activity_metrics_daily
                   (date, step_count, active_energy_kcal, basal_energy_kcal, distance_m,
@@ -105,6 +115,19 @@ actor DailyAggregator {
                   sleep_seconds = excluded.sleep_seconds,
                   sleep_efficiency = excluded.sleep_efficiency,
                   computed_at = excluded.computed_at
+                WHERE activity_metrics_daily.step_count IS NOT excluded.step_count
+                   OR activity_metrics_daily.active_energy_kcal IS NOT excluded.active_energy_kcal
+                   OR activity_metrics_daily.basal_energy_kcal IS NOT excluded.basal_energy_kcal
+                   OR activity_metrics_daily.distance_m IS NOT excluded.distance_m
+                   OR activity_metrics_daily.exercise_minutes IS NOT excluded.exercise_minutes
+                   OR activity_metrics_daily.stand_minutes IS NOT excluded.stand_minutes
+                   OR activity_metrics_daily.flights_climbed IS NOT excluded.flights_climbed
+                   OR activity_metrics_daily.resting_hr_bpm IS NOT excluded.resting_hr_bpm
+                   OR activity_metrics_daily.avg_hr_bpm IS NOT excluded.avg_hr_bpm
+                   OR activity_metrics_daily.hrv_ms IS NOT excluded.hrv_ms
+                   OR activity_metrics_daily.vo2_max IS NOT excluded.vo2_max
+                   OR activity_metrics_daily.sleep_seconds IS NOT excluded.sleep_seconds
+                   OR activity_metrics_daily.sleep_efficiency IS NOT excluded.sleep_efficiency
                 """, arguments: [
                     date,
                     snap.steps > 0 ? Int(snap.steps) : nil,
@@ -118,6 +141,7 @@ actor DailyAggregator {
                     snap.sleepSeconds > 0 ? Int(snap.sleepSeconds) : nil,
                     computedAt
                 ])
+            changed = changed || db.changesCount > 0
 
             try db.execute(sql: """
                 INSERT INTO body_metrics_daily
@@ -133,12 +157,20 @@ actor DailyAggregator {
                   height_m = excluded.height_m,
                   basal_energy_kcal = excluded.basal_energy_kcal,
                   computed_at = excluded.computed_at
+                WHERE body_metrics_daily.weight_kg IS NOT excluded.weight_kg
+                   OR body_metrics_daily.body_fat_pct IS NOT excluded.body_fat_pct
+                   OR body_metrics_daily.bmi IS NOT excluded.bmi
+                   OR body_metrics_daily.lean_mass_kg IS NOT excluded.lean_mass_kg
+                   OR body_metrics_daily.height_m IS NOT excluded.height_m
+                   OR body_metrics_daily.basal_energy_kcal IS NOT excluded.basal_energy_kcal
                 """, arguments: [
                     date,
                     snap.weight, snap.bodyFat, snap.bmi, snap.leanMass, snap.height,
                     snap.basalEnergy > 0 ? snap.basalEnergy : nil,
                     computedAt
                 ])
+            changed = changed || db.changesCount > 0
+            return changed
         }
     }
 
@@ -211,26 +243,27 @@ actor DailyAggregator {
 
     // MARK: - Date helpers
 
-    private func recentDates(daysBack: Int) -> [String] {
+    private func recentDates(daysBack: Int, calendar: Calendar) -> [String] {
         let f = DateFormatter()
         f.dateFormat = "yyyy-MM-dd"
-        f.timeZone = .current
+        f.calendar = calendar
+        f.timeZone = calendar.timeZone
         f.locale = Locale(identifier: "en_US_POSIX")
-        let cal = Calendar.current
-        let today = cal.startOfDay(for: Date())
+        let today = calendar.startOfDay(for: Date())
         return (0..<daysBack).reversed().compactMap { off in
-            guard let d = cal.date(byAdding: .day, value: -off, to: today) else { return nil }
+            guard let d = calendar.date(byAdding: .day, value: -off, to: today) else { return nil }
             return f.string(from: d)
         }
     }
 
-    private func epochRange(for date: String) -> (Int64, Int64) {
+    private func epochRange(for date: String, calendar: Calendar) -> (Int64, Int64) {
         let f = DateFormatter()
         f.dateFormat = "yyyy-MM-dd"
-        f.timeZone = .current
+        f.calendar = calendar
+        f.timeZone = calendar.timeZone
         f.locale = Locale(identifier: "en_US_POSIX")
         guard let day = f.date(from: date) else { return (0, 0) }
-        let end = Calendar.current.date(byAdding: .day, value: 1, to: day) ?? day
+        let end = calendar.date(byAdding: .day, value: 1, to: day) ?? day
         return (Int64(day.timeIntervalSince1970), Int64(end.timeIntervalSince1970) - 1)
     }
 }

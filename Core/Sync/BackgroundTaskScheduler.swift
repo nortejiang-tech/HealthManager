@@ -108,19 +108,25 @@ final class BackgroundTaskScheduler {
         }
         scheduleIncrementalIfNeeded() // always reschedule next slot first
 
+        let completionGate = SyncCompletionGate { success in
+            task.setTaskCompleted(success: success)
+        }
         let work = Task { @MainActor in
             await self.syncEngine.runIncremental(trigger: .bgTask)
-            // If the system already called expirationHandler, this is a no-op (Apple's
-            // documented contract); otherwise it tells the system we're done.
-            if !Task.isCancelled {
-                task.setTaskCompleted(success: true)
+            let workStore = SyncWorkStore(database: self.syncEngine.database)
+            let assessments = HealthKitTypeCatalog.allReadSampleTypes.map {
+                SyncDeliveryAssessment.assess(try? workStore.work(for: $0.identifier))
             }
+            let succeeded = !Task.isCancelled
+                && !assessments.isEmpty
+                && assessments.allSatisfy(\.backgroundSucceeded)
+            _ = completionGate.finish(success: succeeded)
         }
 
         task.expirationHandler = {
             AppLogger.shared.bg.warning("Incremental BG task expired — cancelling sync")
             work.cancel()
-            task.setTaskCompleted(success: false)
+            _ = completionGate.finish(success: false)
         }
     }
 
@@ -132,17 +138,18 @@ final class BackgroundTaskScheduler {
         }
         scheduleReconcileIfNeeded()
 
+        let completionGate = SyncCompletionGate { success in
+            task.setTaskCompleted(success: success)
+        }
         let work = Task { @MainActor in
             await self.syncEngine.runReconcile(trigger: .bgTask)
-            if !Task.isCancelled {
-                task.setTaskCompleted(success: true)
-            }
+            _ = completionGate.finish(success: !Task.isCancelled)
         }
 
         task.expirationHandler = {
             AppLogger.shared.bg.warning("Reconcile BG task expired — cancelling")
             work.cancel()
-            task.setTaskCompleted(success: false)
+            _ = completionGate.finish(success: false)
         }
     }
 }

@@ -1,0 +1,6 @@
+{
+  "source": "Core/Sync/SyncEngine.swift",
+  "method": "runIncremental",
+  "method_sha256": "77c52e40f70348fff3d099c489811f9e1c196036f25afd653a22312b3f9f322d",
+  "boundary": "Production method extracted verbatim; HealthKit, DB, aggregation and lifecycle use controlled doubles. Tests request scheduling only, not device HealthKit delivery."
+}

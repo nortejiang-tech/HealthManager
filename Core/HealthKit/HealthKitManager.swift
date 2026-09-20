@@ -326,7 +326,10 @@ final class HealthKitManager: ObservableObject {
         to endDate: Date,
         limit: Int = HKObjectQueryNoLimit
     ) async throws -> [HKSample] {
-        try await withCheckedThrowingContinuation { (cont: CheckedContinuation<[HKSample], Error>) in
+        try await HealthKitQueryExecutor.run(
+            execute: { [store] query in store.execute(query) },
+            stop: { [store] query in store.stop(query) }
+        ) { callback in
             let predicate = HKQuery.predicateForSamples(
                 withStart: startDate,
                 end: endDate,
@@ -340,12 +343,12 @@ final class HealthKitManager: ObservableObject {
                 sortDescriptors: [sort]
             ) { _, samples, error in
                 if let error {
-                    cont.resume(throwing: HKError.queryFailed(underlying: error))
+                    callback(.failure(HKError.queryFailed(underlying: error)))
                 } else {
-                    cont.resume(returning: samples ?? [])
+                    callback(.success(samples ?? []))
                 }
             }
-            store.execute(query)
+            return query
         }
     }
 
@@ -367,7 +370,10 @@ final class HealthKitManager: ObservableObject {
         anchor: HKQueryAnchor?,
         limit: Int = HKObjectQueryNoLimit
     ) async throws -> AnchoredResult {
-        try await withCheckedThrowingContinuation { (cont: CheckedContinuation<AnchoredResult, Error>) in
+        try await HealthKitQueryExecutor.run(
+            execute: { [store] query in store.execute(query) },
+            stop: { [store] query in store.stop(query) }
+        ) { callback in
             let query = HKAnchoredObjectQuery(
                 type: sampleType,
                 predicate: nil,
@@ -375,16 +381,16 @@ final class HealthKitManager: ObservableObject {
                 limit: limit
             ) { _, samples, deleted, newAnchor, error in
                 if let error {
-                    cont.resume(throwing: HKError.queryFailed(underlying: error))
+                    callback(.failure(HKError.queryFailed(underlying: error)))
                 } else {
-                    cont.resume(returning: AnchoredResult(
+                    callback(.success(AnchoredResult(
                         added: samples ?? [],
                         deleted: deleted ?? [],
                         newAnchor: newAnchor
-                    ))
+                    )))
                 }
             }
-            store.execute(query)
+            return query
         }
     }
 
@@ -406,7 +412,10 @@ final class HealthKitManager: ObservableObject {
         interval.day = 1
         let predicate = HKQuery.predicateForSamples(withStart: anchorDate, end: endDate)
 
-        return try await withCheckedThrowingContinuation { (cont: CheckedContinuation<[DailyCumulativeStatistic], Error>) in
+        return try await HealthKitQueryExecutor.run(
+            execute: { [store] query in store.execute(query) },
+            stop: { [store] query in store.stop(query) }
+        ) { callback in
             let query = HKStatisticsCollectionQuery(
                 quantityType: quantityType,
                 quantitySamplePredicate: predicate,
@@ -417,11 +426,11 @@ final class HealthKitManager: ObservableObject {
 
             query.initialResultsHandler = { _, collection, error in
                 if let error {
-                    cont.resume(throwing: HKError.queryFailed(underlying: error))
+                    callback(.failure(HKError.queryFailed(underlying: error)))
                     return
                 }
                 guard let collection else {
-                    cont.resume(returning: [])
+                    callback(.success([]))
                     return
                 }
 
@@ -432,9 +441,9 @@ final class HealthKitManager: ObservableObject {
                         value: stats.sumQuantity()?.doubleValue(for: unit)
                     ))
                 }
-                cont.resume(returning: output)
+                callback(.success(output))
             }
-            store.execute(query)
+            return query
         }
     }
 }

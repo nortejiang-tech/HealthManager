@@ -29,8 +29,8 @@ struct SettingsView: View {
         List {
             Section {
                 HMDecisionLens(
-                    title: "默认留在本机，可选 AI 才外发",
-                    text: "Apple 健康记录按系统授权读取后写入本机数据库。只有你启用并实际使用 AI 时，日报 / 周报会发送聚合摘要文本，餐食照片分析会发送本次主动选择的图片。",
+                    title: "默认存本机，可选同步与 AI",
+                    text: "Apple 健康记录按系统授权读取后写入本机数据库。启用健康管家同步后，指定数据会经 iCloud 传到 Mac 并可供 Agent 读取。使用 AI 时，日报 / 周报发送聚合摘要，餐食分析发送主动选择的图片。",
                     tone: .confirmed,
                     systemImage: "lock.shield"
                 )
@@ -61,6 +61,12 @@ struct SettingsView: View {
                         )
                     ]
                 )
+            }
+
+            Section("健康管家") {
+                NavigationLink("健康管家同步（iCloud）") {
+                    HealthBridgeSettingsView(bridge: environment.healthBridge)
+                }
             }
 
             Section("应用") {

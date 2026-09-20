@@ -1,0 +1,572 @@
+{
+  "schema_version": 1,
+  "baseline_head": "1479db9e8aec80db1c557130315bcd0cb9e74949",
+  "status": "ACCEPTANCE_PENDING",
+  "stages": [
+    {
+      "id": "S01",
+      "title": "首屏移除无用 raw 全表读取",
+      "depends_on": [],
+      "risk_route": "LOW_MEDIUM",
+      "status": "PASS",
+      "allowed_paths": [
+        "UI/Dashboard/DashboardData.swift",
+        "Tests/DashboardIndexMigrationTests.swift"
+      ],
+      "contracts": [
+        "C01"
+      ],
+      "verification_commands": [
+        "xcodebuild -project /Users/nortepro/HealthManager/HealthManager.xcodeproj -scheme HealthManager -destination 'platform=iOS Simulator,id=6364DCEB-82DF-448C-91D9-2C19FD844AA8' -clonedSourcePackagesDirPath /Users/nortepro/Library/Developer/Xcode/DerivedData/HealthManager-ggcivopbkrhyayfzwvojpwacksqd/SourcePackages -disableAutomaticPackageResolution -onlyUsePackageVersionsFromResolvedFile -skipPackageUpdates -parallel-testing-enabled NO -only-testing:HealthManagerTests/DashboardIndexMigrationTests -only-testing:HealthManagerTests/DashboardNutritionEvidenceTests test CODE_SIGNING_ALLOWED=NO -quiet"
+      ],
+      "tests": [
+        "DashboardIndexMigrationTests",
+        "DashboardNutritionEvidenceTests"
+      ],
+      "acceptance": [
+        "在现有 DashboardIndexMigrationTests 中新增真实 DashboardLoader.loadSnapshot 的 async 回归；隔离测试数据库先插入日汇总，再 DROP TABLE health_samples_raw，只操作合成fixture，仍应得到相同体重等卡片数据。旧代码应因真实 raw 查询报 no such table 而失败。",
+        "既有索引测试保留；首屏不再依赖 raw 表，所有 nil/合法0/已知营养值的语义不变。",
+        "不修改 DataQualityDetailView、索引/迁移、授权、SyncEngine 或 HealthBridge，不加入缓存。"
+      ]
+    },
+    {
+      "id": "S02",
+      "title": "首屏阶段计时",
+      "depends_on": [
+        "S01"
+      ],
+      "risk_route": "LOW_MEDIUM",
+      "status": "PASS",
+      "allowed_paths": [
+        "Core/Diagnostics/StartupMetrics.swift",
+        "App/AppEnvironment.swift",
+        "UI/Dashboard/DashboardView.swift"
+      ],
+      "contracts": [
+        "C01"
+      ],
+      "verification_commands": [
+        "/opt/homebrew/bin/xcodegen generate --spec /Users/nortepro/HealthManager/project.yml",
+        "xcodebuild -project /Users/nortepro/HealthManager/HealthManager.xcodeproj -scheme HealthManager -destination 'platform=iOS Simulator,id=6364DCEB-82DF-448C-91D9-2C19FD844AA8' -clonedSourcePackagesDirPath /Users/nortepro/Library/Developer/Xcode/DerivedData/HealthManager-ggcivopbkrhyayfzwvojpwacksqd/SourcePackages -disableAutomaticPackageResolution -onlyUsePackageVersionsFromResolvedFile -skipPackageUpdates -parallel-testing-enabled NO -only-testing:HealthManagerTests/StartupMetricsTests -only-testing:HealthManagerTests/SyncEngineStartupGateTests test CODE_SIGNING_ALLOWED=NO -quiet"
+      ],
+      "tests": [
+        "StartupMetricsTests",
+        "SyncEngineStartupGateTests"
+      ],
+      "acceptance": [
+        "使用确定clock验证有序阶段、重复完成幂等、失败不被记成available。每个session有独立ID，仅日志耗时和阶段，不输出健康值。",
+        "把接收快照事件称 snapshotAvailable；实际渲染由后续UITest测，不在这里假报firstContentVisible。",
+        "现有启动恢复 fail-closed/Bridge身份初始化原样保留；不移动任务、不加延迟。"
+      ]
+    },
+    {
+      "id": "S03",
+      "title": "纯请求合并与公平调度状态",
+      "depends_on": [
+        "S02"
+      ],
+      "risk_route": "LOW_MEDIUM",
+      "status": "PASS",
+      "allowed_paths": [
+        "Core/Sync/SyncDemand.swift",
+        "Core/Sync/SyncSchedulingState.swift"
+      ],
+      "contracts": [
+        "C02",
+        "C03"
+      ],
+      "verification_commands": [
+        "/opt/homebrew/bin/xcodegen generate --spec /Users/nortepro/HealthManager/project.yml",
+        "xcodebuild -project /Users/nortepro/HealthManager/HealthManager.xcodeproj -scheme HealthManager -destination 'platform=iOS Simulator,id=6364DCEB-82DF-448C-91D9-2C19FD844AA8' -clonedSourcePackagesDirPath /Users/nortepro/Library/Developer/Xcode/DerivedData/HealthManager-ggcivopbkrhyayfzwvojpwacksqd/SourcePackages -disableAutomaticPackageResolution -onlyUsePackageVersionsFromResolvedFile -skipPackageUpdates -parallel-testing-enabled NO -only-testing:HealthManagerTests/SyncSchedulingStateTests test CODE_SIGNING_ALLOWED=NO -quiet"
+      ],
+      "tests": [
+        "SyncSchedulingStateTests"
+      ],
+      "acceptance": [
+        "覆盖空闲请求、busy新增已查类型、busy新增未查类型、同intent重复、1000事件只形成一个类型集合、token不匹配释放、代次溢出和deferred不忙循环。",
+        "逐个测试C02例子：claimed A 后再到A必须pending；不得直接全量clear。",
+        "无Task、数据库、HealthKit或MainActor副作用；测试纯状态通过不能宣布自动同步已修好。"
+      ]
+    },
+    {
+      "id": "S04A",
+      "title": "HealthKit错误分类",
+      "depends_on": [
+        "S03"
+      ],
+      "risk_route": "LOW_MEDIUM",
+      "status": "PASS",
+      "allowed_paths": [
+        "Core/Sync/SyncFailurePolicy.swift"
+      ],
+      "contracts": [
+        "C07"
+      ],
+      "verification_commands": [
+        "/opt/homebrew/bin/xcodegen generate --spec /Users/nortepro/HealthManager/project.yml",
+        "xcodebuild -project /Users/nortepro/HealthManager/HealthManager.xcodeproj -scheme HealthManager -destination 'platform=iOS Simulator,id=6364DCEB-82DF-448C-91D9-2C19FD844AA8' -clonedSourcePackagesDirPath /Users/nortepro/Library/Developer/Xcode/DerivedData/HealthManager-ggcivopbkrhyayfzwvojpwacksqd/SourcePackages -disableAutomaticPackageResolution -onlyUsePackageVersionsFromResolvedFile -skipPackageUpdates -parallel-testing-enabled NO -only-testing:HealthManagerTests/SyncFailurePolicyTests test CODE_SIGNING_ALLOWED=NO -quiet"
+      ],
+      "tests": [
+        "SyncFailurePolicyTests"
+      ],
+      "acceptance": [
+        "用真实HKErrorDomain+SDK enum构造测试，errorDatabaseInaccessible必须waitForUnlock，CancellationError必须cancelled。",
+        "空查询不是授权错误；未知domain/code保留unknown，禁止英文message字符串匹配。",
+        "暂不修改HealthKitManager、重试循环或UI；实际枚举签名按本机SDK编译确认。"
+      ]
+    },
+    {
+      "id": "S04B",
+      "title": "可取消且有deadline的HK查询",
+      "depends_on": [
+        "S04A"
+      ],
+      "risk_route": "PLANNER_OWNED",
+      "status": "PASS",
+      "allowed_paths": [
+        "Core/HealthKit/HealthKitQueryExecutor.swift",
+        "Core/HealthKit/HealthKitManager.swift",
+        "Tests/HealthKitQueryLifecycleTests.swift"
+      ],
+      "contracts": [
+        "C07"
+      ],
+      "verification_commands": [
+        "/opt/homebrew/bin/xcodegen generate --spec /Users/nortepro/HealthManager/project.yml",
+        "xcodebuild -project /Users/nortepro/HealthManager/HealthManager.xcodeproj -scheme HealthManager -destination 'platform=iOS Simulator,id=6364DCEB-82DF-448C-91D9-2C19FD844AA8' -clonedSourcePackagesDirPath /Users/nortepro/Library/Developer/Xcode/DerivedData/HealthManager-ggcivopbkrhyayfzwvojpwacksqd/SourcePackages -disableAutomaticPackageResolution -onlyUsePackageVersionsFromResolvedFile -skipPackageUpdates -parallel-testing-enabled NO -only-testing:HealthManagerTests/HealthKitQueryLifecycleTests -only-testing:HealthManagerTests/SyncFailurePolicyTests test CODE_SIGNING_ALLOWED=NO -quiet"
+      ],
+      "tests": [
+        "HealthKitQueryLifecycleTests",
+        "SyncFailurePolicyTests"
+      ],
+      "acceptance": [
+        "fake execute/stop与fake clock驱动真正executor，覆盖取消先于注册、execute并发取消、完成/取消同刻、timeout后late callback、重复callback。",
+        "每个query resume最多一次；取消胜出后不再execute；deadline终止stop一次并清理timer，不存在悬挂continuation。",
+        "不要用withThrowingTaskGroup单纯race一个不响应取消的continuation，避免group等待子任务永不退出。"
+      ]
+    },
+    {
+      "id": "S05",
+      "title": "durable work和原子页提交",
+      "depends_on": [
+        "S03",
+        "S04A"
+      ],
+      "risk_route": "PLANNER_OWNED",
+      "status": "PASS",
+      "allowed_paths": [
+        "Core/Database/Migrations.swift",
+        "Core/Sync/SyncWorkStore.swift",
+        "Core/Sync/SyncJobRecovery.swift",
+        "Tests/SyncWorkStoreTests.swift"
+      ],
+      "contracts": [
+        "C04",
+        "C05",
+        "C10"
+      ],
+      "verification_commands": [
+        "/opt/homebrew/bin/xcodegen generate --spec /Users/nortepro/HealthManager/project.yml",
+        "xcodebuild -project /Users/nortepro/HealthManager/HealthManager.xcodeproj -scheme HealthManager -destination 'platform=iOS Simulator,id=6364DCEB-82DF-448C-91D9-2C19FD844AA8' -clonedSourcePackagesDirPath /Users/nortepro/Library/Developer/Xcode/DerivedData/HealthManager-ggcivopbkrhyayfzwvojpwacksqd/SourcePackages -disableAutomaticPackageResolution -onlyUsePackageVersionsFromResolvedFile -skipPackageUpdates -parallel-testing-enabled NO -only-testing:HealthManagerTests/SyncWorkStoreTests -only-testing:HealthManagerTests/SyncJobRecoveryTests -only-testing:HealthManagerTests/BackupV3Tests test CODE_SIGNING_ALLOWED=NO -quiet"
+      ],
+      "tests": [
+        "SyncWorkStoreTests",
+        "SyncJobRecoveryTests",
+        "BackupV3Tests"
+      ],
+      "acceptance": [
+        "只追加新migration，保留全部既有迁移哈希；跨重开数据库pending和dirty仍在。",
+        "插入/删除/anchor/dirty中途故障整页rollback；新代次不被旧claim清除；未知tombstone不伪造日期；实际插入数使用真实变化数。",
+        "设计origin/backup汇总保留策略，不在无raw证据时清掉恢复值；restore marker失败保持；新表不扩充备份格式。"
+      ]
+    },
+    {
+      "id": "S06",
+      "title": "分页增量执行器",
+      "depends_on": [
+        "S04B",
+        "S05"
+      ],
+      "risk_route": "PLANNER_OWNED",
+      "status": "PASS",
+      "allowed_paths": [
+        "Core/Sync/IncrementalSyncCoordinator.swift",
+        "Core/Sync/SyncPageRunner.swift",
+        "Tests/SyncPageRunnerTests.swift"
+      ],
+      "contracts": [
+        "C02",
+        "C03",
+        "C05"
+      ],
+      "verification_commands": [
+        "/opt/homebrew/bin/xcodegen generate --spec /Users/nortepro/HealthManager/project.yml",
+        "xcodebuild -project /Users/nortepro/HealthManager/HealthManager.xcodeproj -scheme HealthManager -destination 'platform=iOS Simulator,id=6364DCEB-82DF-448C-91D9-2C19FD844AA8' -clonedSourcePackagesDirPath /Users/nortepro/Library/Developer/Xcode/DerivedData/HealthManager-ggcivopbkrhyayfzwvojpwacksqd/SourcePackages -disableAutomaticPackageResolution -onlyUsePackageVersionsFromResolvedFile -skipPackageUpdates -parallel-testing-enabled NO -only-testing:HealthManagerTests/SyncPageRunnerTests -only-testing:HealthManagerTests/SyncWorkStoreTests test CODE_SIGNING_ALLOWED=NO -quiet"
+      ],
+      "tests": [
+        "SyncPageRunnerTests",
+        "SyncWorkStoreTests"
+      ],
+      "acceptance": [
+        "分页尺寸1000；added/deleted同时为空才drain；只有deleted的页必须持久化并继续。",
+        "查询返回后事务失败保持旧anchor；超过slice预算返回hasPending，下一次从成功页anchor继续；nil初始anchor有界全历史，损坏anchor报告repairRequired。",
+        "fakeHK+真实fixture WorkStore覆盖2501个added、多页删除、重复页、第二页失败、映射错误；无数据变化时不安排dirty。"
+      ]
+    },
+    {
+      "id": "S07",
+      "title": "唯一runner接入现有SyncEngine",
+      "depends_on": [
+        "S06"
+      ],
+      "risk_route": "PLANNER_OWNED",
+      "status": "PASS",
+      "allowed_paths": [
+        "Core/Sync/SyncRunner.swift",
+        "Core/Sync/SyncEngine.swift",
+        "Core/Sync/SyncStateMachine.swift",
+        "Tests/SyncRunnerIntegrationTests.swift"
+      ],
+      "contracts": [
+        "C02",
+        "C03",
+        "C08"
+      ],
+      "verification_commands": [
+        "/opt/homebrew/bin/xcodegen generate --spec /Users/nortepro/HealthManager/project.yml",
+        "xcodebuild -project /Users/nortepro/HealthManager/HealthManager.xcodeproj -scheme HealthManager -destination 'platform=iOS Simulator,id=6364DCEB-82DF-448C-91D9-2C19FD844AA8' -clonedSourcePackagesDirPath /Users/nortepro/Library/Developer/Xcode/DerivedData/HealthManager-ggcivopbkrhyayfzwvojpwacksqd/SourcePackages -disableAutomaticPackageResolution -onlyUsePackageVersionsFromResolvedFile -skipPackageUpdates -parallel-testing-enabled NO -only-testing:HealthManagerTests/SyncRunnerIntegrationTests -only-testing:HealthManagerTests/SyncEngineStartupGateTests -only-testing:HealthManagerTests/SyncStateMachineTests test CODE_SIGNING_ALLOWED=NO -quiet"
+      ],
+      "tests": [
+        "SyncRunnerIntegrationTests",
+        "SyncEngineStartupGateTests",
+        "SyncStateMachineTests"
+      ],
+      "acceptance": [
+        "将上轮busy-drop探针时序升级为真实SyncEngine+Runner+fixture WorkStore测试；正在查询A后收到A，最终无需第二次手动调用即导入新版本。",
+        "1000个observer请求不产生1000全量扫描；旧backfill不能与新runner并发写同一anchor；失败/取消无孤立busy。",
+        "此阶段先保留现有投影实现但返回显式失败；completed不得早于该请求必需阶段。manual waiting改动由S10完成，期间保持兼容并记已知边界。"
+      ]
+    },
+    {
+      "id": "S08A",
+      "title": "启动与授权就绪补触发",
+      "depends_on": [
+        "S07"
+      ],
+      "risk_route": "PLANNER_OWNED",
+      "status": "PASS",
+      "allowed_paths": [
+        "App/AppEnvironment.swift",
+        "App/HealthManagerApp.swift",
+        "App/RootView.swift",
+        "Tests/SyncStartupLifecycleTests.swift"
+      ],
+      "contracts": [
+        "C01",
+        "C02",
+        "C07"
+      ],
+      "verification_commands": [
+        "/opt/homebrew/bin/xcodegen generate --spec /Users/nortepro/HealthManager/project.yml",
+        "xcodebuild -project /Users/nortepro/HealthManager/HealthManager.xcodeproj -scheme HealthManager -destination 'platform=iOS Simulator,id=6364DCEB-82DF-448C-91D9-2C19FD844AA8' -clonedSourcePackagesDirPath /Users/nortepro/Library/Developer/Xcode/DerivedData/HealthManager-ggcivopbkrhyayfzwvojpwacksqd/SourcePackages -disableAutomaticPackageResolution -onlyUsePackageVersionsFromResolvedFile -skipPackageUpdates -parallel-testing-enabled NO -only-testing:HealthManagerTests/SyncStartupLifecycleTests -only-testing:HealthManagerTests/SyncEngineStartupGateTests test CODE_SIGNING_ALLOWED=NO -quiet"
+      ],
+      "tests": [
+        "SyncStartupLifecycleTests",
+        "SyncEngineStartupGateTests"
+      ],
+      "acceptance": [
+        "fake lifecycle分别排列active/authReady/recoveryReady；每个允许顺序都最终执行一次必要全类型检查，失败恢复门仍完全关闭。",
+        "BG handler依旧在launch完成前一次注册；observer不依赖某个View出现，不在SwiftUI onChange重复注册。",
+        "旧用户unknown检查中显示已有记录但HK gate仍关闭；首次安装保留onboarding；读权限为空不能显示授权全成功。"
+      ]
+    },
+    {
+      "id": "S08B",
+      "title": "Observer与后台机会适配",
+      "depends_on": [
+        "S08A"
+      ],
+      "risk_route": "PLANNER_OWNED",
+      "status": "PASS",
+      "allowed_paths": [
+        "Core/Sync/HealthKitObserver.swift",
+        "Core/Sync/BackgroundTaskScheduler.swift",
+        "Tests/SyncDeliveryLifecycleTests.swift"
+      ],
+      "contracts": [
+        "C02",
+        "C03",
+        "C07",
+        "C08"
+      ],
+      "verification_commands": [
+        "/opt/homebrew/bin/xcodegen generate --spec /Users/nortepro/HealthManager/project.yml",
+        "xcodebuild -project /Users/nortepro/HealthManager/HealthManager.xcodeproj -scheme HealthManager -destination 'platform=iOS Simulator,id=6364DCEB-82DF-448C-91D9-2C19FD844AA8' -clonedSourcePackagesDirPath /Users/nortepro/Library/Developer/Xcode/DerivedData/HealthManager-ggcivopbkrhyayfzwvojpwacksqd/SourcePackages -disableAutomaticPackageResolution -onlyUsePackageVersionsFromResolvedFile -skipPackageUpdates -parallel-testing-enabled NO -only-testing:HealthManagerTests/SyncDeliveryLifecycleTests -only-testing:HealthManagerTests/SyncRunnerIntegrationTests test CODE_SIGNING_ALLOWED=NO -quiet"
+      ],
+      "tests": [
+        "SyncDeliveryLifecycleTests",
+        "SyncRunnerIntegrationTests"
+      ],
+      "acceptance": [
+        "busy时不丢通知，不以engine返回Void认为已同步；持久defer后结束delivery但显示deferred，持久失败不得无条件ack。",
+        "normal completion/expiration同时到达只setTaskCompleted一次；BG expiry不取消无关前台所有者；locked阶段无28倍重试，解锁后补跑。",
+        "enableBackgroundDelivery失败可诊断并允许后续合法重试，模拟器结果不冒充真实后台投递。"
+      ]
+    },
+    {
+      "id": "S09",
+      "title": "按受影响日期投影",
+      "depends_on": [
+        "S07",
+        "S05"
+      ],
+      "risk_route": "PLANNER_OWNED",
+      "status": "PASS",
+      "allowed_paths": [
+        "Core/Aggregate/DailyAggregator.swift",
+        "Core/Sync/ProjectionWorker.swift",
+        "Core/Sync/SyncRunner.swift",
+        "Tests/IncrementalProjectionTests.swift"
+      ],
+      "contracts": [
+        "C05",
+        "C06",
+        "C08",
+        "C10"
+      ],
+      "verification_commands": [
+        "/opt/homebrew/bin/xcodegen generate --spec /Users/nortepro/HealthManager/project.yml",
+        "xcodebuild -project /Users/nortepro/HealthManager/HealthManager.xcodeproj -scheme HealthManager -destination 'platform=iOS Simulator,id=6364DCEB-82DF-448C-91D9-2C19FD844AA8' -clonedSourcePackagesDirPath /Users/nortepro/Library/Developer/Xcode/DerivedData/HealthManager-ggcivopbkrhyayfzwvojpwacksqd/SourcePackages -disableAutomaticPackageResolution -onlyUsePackageVersionsFromResolvedFile -skipPackageUpdates -parallel-testing-enabled NO -only-testing:HealthManagerTests/IncrementalProjectionTests -only-testing:HealthManagerTests/DailyAggregatorSleepTests -only-testing:HealthManagerTests/DailyAggregatorEnergyTests -only-testing:HealthManagerTests/DashboardNutritionEvidenceTests test CODE_SIGNING_ALLOWED=NO -quiet"
+      ],
+      "tests": [
+        "IncrementalProjectionTests",
+        "DailyAggregatorSleepTests",
+        "DailyAggregatorEnergyTests",
+        "DashboardNutritionEvidenceTests"
+      ],
+      "acceptance": [
+        "覆盖90天前添加/删除、删除前查旧日期、sleep跨午夜保持start-day、activeEnergy重叠跨日workout、DST23/25小时、timezone变更、投影期间新代次。",
+        "零变化零投影写入；同值更新不产生Bridge噪声；统计查询失败保留明确fallback/pending，不吞error。",
+        "无raw但有备份汇总不清空；raw实际删除可清相应字段；原有sleep/energy/nutrition测试均保持通过。"
+      ]
+    },
+    {
+      "id": "S10",
+      "title": "手动两次同步最终状态",
+      "depends_on": [
+        "S07",
+        "S09"
+      ],
+      "risk_route": "LOW_MEDIUM_AFTER_SEAM_REVIEW",
+      "status": "PASS",
+      "allowed_paths": [
+        "Core/Sync/ManualSyncCoordinator.swift",
+        "Core/Sync/SyncEngine.swift",
+        "Tests/ManualSyncOutcomeTests.swift"
+      ],
+      "contracts": [
+        "C03",
+        "C08"
+      ],
+      "verification_commands": [
+        "/opt/homebrew/bin/xcodegen generate --spec /Users/nortepro/HealthManager/project.yml",
+        "xcodebuild -project /Users/nortepro/HealthManager/HealthManager.xcodeproj -scheme HealthManager -destination 'platform=iOS Simulator,id=6364DCEB-82DF-448C-91D9-2C19FD844AA8' -clonedSourcePackagesDirPath /Users/nortepro/Library/Developer/Xcode/DerivedData/HealthManager-ggcivopbkrhyayfzwvojpwacksqd/SourcePackages -disableAutomaticPackageResolution -onlyUsePackageVersionsFromResolvedFile -skipPackageUpdates -parallel-testing-enabled NO -only-testing:HealthManagerTests/ManualSyncOutcomeTests -only-testing:HealthManagerTests/MealNutritionSyncTests -only-testing:HealthManagerTests/SyncStateMachineTests test CODE_SIGNING_ALLOWED=NO -quiet"
+      ],
+      "tests": [
+        "ManualSyncOutcomeTests",
+        "MealNutritionSyncTests",
+        "SyncStateMachineTests"
+      ],
+      "acceptance": [
+        "pass1错误/pass2成功且零新增必须恢复为成功；pass2另一个类型失败仍保留，不能全清错误。",
+        "等待prompt期间observer可执行；重复ack、取消等待、回前台ack只释放一次；manual父job有自己的ID并在最终关闭。",
+        "已有饮食稳定syncID、授权提示与delete-before-write合同保留；不更改外部App跳转业务。"
+      ]
+    },
+    {
+      "id": "S10B",
+      "title": "备份恢复与新同步互锁",
+      "depends_on": [
+        "S09",
+        "S08A"
+      ],
+      "risk_route": "PLANNER_OWNED",
+      "status": "PENDING_KEYCHAIN_ENVIRONMENT",
+      "allowed_paths": [
+        "Core/Backup/BackupManager.swift",
+        "Core/Backup/BackupImporter.swift",
+        "App/AppEnvironment.swift",
+        "Tests/SyncRestoreIntegrationTests.swift"
+      ],
+      "contracts": [
+        "C04",
+        "C05",
+        "C10"
+      ],
+      "verification_commands": [
+        "/opt/homebrew/bin/xcodegen generate --spec /Users/nortepro/HealthManager/project.yml",
+        "xcodebuild -project /Users/nortepro/HealthManager/HealthManager.xcodeproj -scheme HealthManager -destination 'platform=iOS Simulator,id=6364DCEB-82DF-448C-91D9-2C19FD844AA8' -clonedSourcePackagesDirPath /Users/nortepro/Library/Developer/Xcode/DerivedData/HealthManager-ggcivopbkrhyayfzwvojpwacksqd/SourcePackages -disableAutomaticPackageResolution -onlyUsePackageVersionsFromResolvedFile -skipPackageUpdates -parallel-testing-enabled NO -only-testing:HealthManagerTests/SyncRestoreIntegrationTests -only-testing:HealthManagerTests/BackupV3Tests -only-testing:HealthManagerTests/BackupExportImportTests test CODE_SIGNING_ALLOWED=NO -quiet"
+      ],
+      "tests": [
+        "SyncRestoreIntegrationTests",
+        "BackupV3Tests",
+        "BackupExportImportTests"
+      ],
+      "acceptance": [
+        "模拟HKquery中开始restore，先停止/排空writer通道后才导入；late callback不能覆盖恢复值。",
+        "中途kill/reopen后marker与pending都在；恢复成功解除pause并按实际原始覆盖安排投影；无raw的恢复汇总不变全空。",
+        "Backup V3格式与导出表列表保持；不导出新pending/control表，不重置旧HKanchor，不修改restore原有内容合并规则。"
+      ]
+    },
+    {
+      "id": "S11A",
+      "title": "Bridge payload读取与维护有界化",
+      "depends_on": [
+        "S09"
+      ],
+      "risk_route": "PLANNER_OWNED",
+      "status": "PASS",
+      "allowed_paths": [
+        "HealthBridge/Sources/BridgeCore/Source.swift",
+        "Core/Bridge/HealthBridgeManager.swift",
+        "HealthBridge/Tests/BridgeCoreTests/BridgePublishSchedulingTests.swift"
+      ],
+      "contracts": [
+        "C09"
+      ],
+      "verification_commands": [
+        "swift test --package-path /Users/nortepro/HealthManager/HealthBridge --skip-update --disable-automatic-resolution --filter BridgePublishSchedulingTests"
+      ],
+      "tests": [
+        "BridgePublishSchedulingTests"
+      ],
+      "acceptance": [
+        "synthetic 418批/411ack/7pending验证payload reader只为实际需发送/重放批次调用，回执验证路径不跳过；输出字节/manifest/hash一致。",
+        "故障在write后ack前可幂等重放；确认之后7天内数据保留；维护游标要公平，无无界while。",
+        "不改初始快照事务、密钥、iCloud bookmark或CLI/MCP部署。若持久游标需schema，先回Planner重拆，不自行加迁移。"
+      ]
+    },
+    {
+      "id": "S11B",
+      "title": "首轮本地加载后再安排维护",
+      "depends_on": [
+        "S02",
+        "S08A",
+        "S10",
+        "S11A",
+        "S10B"
+      ],
+      "risk_route": "LOW_MEDIUM_AFTER_SEAM_REVIEW",
+      "status": "PASS",
+      "allowed_paths": [
+        "App/AppEnvironment.swift",
+        "App/HealthManagerApp.swift",
+        "UI/Dashboard/DashboardView.swift",
+        "Tests/StartupMaintenanceGateTests.swift"
+      ],
+      "contracts": [
+        "C01",
+        "C09"
+      ],
+      "verification_commands": [
+        "/opt/homebrew/bin/xcodegen generate --spec /Users/nortepro/HealthManager/project.yml",
+        "xcodebuild -project /Users/nortepro/HealthManager/HealthManager.xcodeproj -scheme HealthManager -destination 'platform=iOS Simulator,id=6364DCEB-82DF-448C-91D9-2C19FD844AA8' -clonedSourcePackagesDirPath /Users/nortepro/Library/Developer/Xcode/DerivedData/HealthManager-ggcivopbkrhyayfzwvojpwacksqd/SourcePackages -disableAutomaticPackageResolution -onlyUsePackageVersionsFromResolvedFile -skipPackageUpdates -parallel-testing-enabled NO -only-testing:HealthManagerTests/StartupMaintenanceGateTests -only-testing:HealthManagerTests/SyncStartupLifecycleTests -only-testing:HealthManagerTests/SyncRestoreIntegrationTests test CODE_SIGNING_ALLOWED=NO -quiet"
+      ],
+      "tests": [
+        "StartupMaintenanceGateTests",
+        "SyncStartupLifecycleTests",
+        "SyncRestoreIntegrationTests"
+      ],
+      "acceptance": [
+        "fake snapshot成功/失败/页面未创建分别验证维护可达；任何维护未完成都不阻塞已完成本地snapshot发布。",
+        "重复active/多个refresh不重复安排同一maintenance；没有长期持续轮询或固定sleep放行。",
+        "初始化聚合检查先看版本和已知状态，用EXISTS代替raw全表COUNT；无raw保留备份汇总；不得提前推进projectionVersion。"
+      ]
+    },
+    {
+      "id": "S12",
+      "title": "真实阶段状态与显示",
+      "depends_on": [
+        "S09",
+        "S10",
+        "S08B"
+      ],
+      "risk_route": "LOW_MEDIUM_AFTER_SEAM_REVIEW",
+      "status": "PASS",
+      "allowed_paths": [
+        "UI/SyncCenter/SyncPresentation.swift",
+        "UI/SyncCenter/SyncCenterView.swift",
+        "UI/Dashboard/DashboardView.swift",
+        "Tests/SyncPresentationTests.swift"
+      ],
+      "contracts": [
+        "C01",
+        "C08"
+      ],
+      "verification_commands": [
+        "/opt/homebrew/bin/xcodegen generate --spec /Users/nortepro/HealthManager/project.yml",
+        "xcodebuild -project /Users/nortepro/HealthManager/HealthManager.xcodeproj -scheme HealthManager -destination 'platform=iOS Simulator,id=6364DCEB-82DF-448C-91D9-2C19FD844AA8' -clonedSourcePackagesDirPath /Users/nortepro/Library/Developer/Xcode/DerivedData/HealthManager-ggcivopbkrhyayfzwvojpwacksqd/SourcePackages -disableAutomaticPackageResolution -onlyUsePackageVersionsFromResolvedFile -skipPackageUpdates -parallel-testing-enabled NO -only-testing:HealthManagerTests/SyncPresentationTests -only-testing:HealthManagerTests/SyncStateMachineTests test CODE_SIGNING_ALLOWED=NO -quiet"
+      ],
+      "tests": [
+        "SyncPresentationTests",
+        "SyncStateMachineTests"
+      ],
+      "acceptance": [
+        "zero changes+checked不是无数据；读取完成投影失败不是completed；deferred不显示读取权限全部拒绝。",
+        "旧snapshot刷新失败保持数据和error，进度/时间来自真实outcome；无估算百分比。",
+        "复用现有组件/颜色/无障碍，手动排查入口可用；不改业务结果或隐藏错误来让页面显得成功。"
+      ]
+    },
+    {
+      "id": "S13",
+      "title": "软件回归与真实设备验收",
+      "depends_on": [
+        "S01",
+        "S02",
+        "S03",
+        "S04A",
+        "S04B",
+        "S05",
+        "S06",
+        "S07",
+        "S08A",
+        "S08B",
+        "S09",
+        "S10",
+        "S10B",
+        "S11A",
+        "S11B",
+        "S12"
+      ],
+      "risk_route": "PLANNER_ACCEPTANCE",
+      "status": "ACCEPTANCE_PENDING",
+      "allowed_paths": [
+        "UITests/SyncLifecycleUITests.swift"
+      ],
+      "contracts": [
+        "C01",
+        "C02",
+        "C03",
+        "C04",
+        "C05",
+        "C06",
+        "C07",
+        "C08",
+        "C09",
+        "C10"
+      ],
+      "verification_commands": [
+        "/opt/homebrew/bin/xcodegen generate --spec /Users/nortepro/HealthManager/project.yml",
+        "xcodebuild -project /Users/nortepro/HealthManager/HealthManager.xcodeproj -scheme HealthManager -destination 'platform=iOS Simulator,id=6364DCEB-82DF-448C-91D9-2C19FD844AA8' -clonedSourcePackagesDirPath /Users/nortepro/Library/Developer/Xcode/DerivedData/HealthManager-ggcivopbkrhyayfzwvojpwacksqd/SourcePackages -disableAutomaticPackageResolution -onlyUsePackageVersionsFromResolvedFile -skipPackageUpdates -parallel-testing-enabled NO -only-testing:HealthManagerUITests/SyncLifecycleUITests test CODE_SIGNING_ALLOWED=NO -quiet"
+      ],
+      "tests": [
+        "HealthManagerUITests/SyncLifecycleUITests"
+      ],
+      "acceptance": [
+        "先软件回归；真机安装/解锁/外部样本产生属于单独操作门，文档本身不授权部署。",
+        "冷启动≥20次，分别报告进程到有效卡片、snapshot阶段、同步到可见时间；保留单次分布，目标p95不是平均值。",
+        "没有真实后台/锁屏数据不得给最终PASS；测试使用合成数据或已授权真实只读观察，不在用户健康库制造/删除测试记录。"
+      ]
+    }
+  ]
+}

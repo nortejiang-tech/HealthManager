@@ -1,0 +1,38 @@
+{
+  "status": "ACCEPTANCE_PENDING",
+  "stage_count": 17,
+  "prompt_count": 19,
+  "contract_ids": [
+    "C01",
+    "C02",
+    "C03",
+    "C04",
+    "C05",
+    "C06",
+    "C07",
+    "C08",
+    "C09",
+    "C10"
+  ],
+  "acceptance_cases": 26,
+  "validation": [
+    "All local Markdown links resolve after implementation",
+    "All design JSON files parse",
+    "Prompt and manifest statuses updated through S13",
+    "git diff --check passes",
+    "Simulator build passes",
+    "HealthBridge full package tests: 20 passed",
+    "Relevant UI tests: 3 passed",
+    "HealthManager unit tests: 418 passed, 1 Keychain environment failure"
+  ],
+  "issues": [
+    "BackupExportImportTests.test_locationStore_saveLoadClearRoundTrip returns Keychain -34018 in the unsigned CODE_SIGNING_ALLOWED=NO test host"
+  ],
+  "not_run": [
+    "Signed-host or real-device Keychain bookmark round-trip",
+    "Twenty-run real-device cold-start baseline and candidate distribution",
+    "Real HealthKit foreground, locked-device, and background-interruption recovery scenarios",
+    "Real-device data-preservation comparison",
+    "Deployment, commit, push, or release"
+  ]
+}

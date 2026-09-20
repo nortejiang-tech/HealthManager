@@ -1,0 +1,194 @@
+{
+  "schema_version": 1,
+  "task": "HealthManager HealthBridge",
+  "date": "2026-09-19",
+  "baseline": "1479db9",
+  "calls": [
+    {
+      "changed_paths": [
+        "BridgeToolCatalog.swift"
+      ],
+      "classification": "LOCAL_POSTWRITE_FAILURE",
+      "config_sha256": {
+        "extension": "292935a062d9e01f2bd7d37901ca5b6c725b89283c71b633affd6232ca123ffb",
+        "models": "8fc0d2b000a76990fa51d0183483b1f88ad94e972eea203327c20e267de6a9d4",
+        "policy": "252b0ea3a03840a9c24604d5e73629fd9460bb12f2473b6883b42a1b081cfee6",
+        "supervisor": "6882ac9922be5371079b93cd95af91b8579c82c0257bd5816c42202ac3d23761"
+      },
+      "duration_seconds": 86.145,
+      "failure_reason": "GUARD_VIOLATION",
+      "final_message_characters": 3279,
+      "final_message_sha256": "17456d67b3cb733fc789de76af8a438f9b5004b6a32d83ac0d2ecd90f304b04b",
+      "guard_violation_codes": [
+        "VERIFY_INDEX_NOT_ALLOWED",
+        "VERIFY_INDEX_NOT_ALLOWED",
+        "PATH_ESCAPE_DENIED",
+        "VERIFY_INDEX_NOT_ALLOWED",
+        "VERIFY_INDEX_NOT_ALLOWED"
+      ],
+      "interrupt_signal": null,
+      "max_context_tokens": 6826,
+      "max_output_tokens": 4096,
+      "model": "halogen-qwen3.8-flash-next",
+      "out_of_scope_paths": [],
+      "parse_errors": 0,
+      "prompt_sha256": "0c14cc97e2c687d0b8954a46f7acd6b73fb940b5a965e35ef3d24f8fc54f5d96",
+      "provider": "EVO-X2",
+      "run_id": "bb913d6b-2a89-4467-863c-61e50fb89741",
+      "schema_version": 1,
+      "source_generation": 1,
+      "started_at_unix": 1789822761.422,
+      "status": "BLOCKED",
+      "stderr_bytes": 0,
+      "stop_reason": "stop",
+      "structured_terminal": false,
+      "temperature": 0.0,
+      "tool_calls": 9,
+      "top_p": 1,
+      "turns": 9,
+      "verification_expected": 1,
+      "verification_pass_indexes": [],
+      "verification_passes": 0,
+      "verification_runs": 4,
+      "verification_source_generation": null,
+      "workdir": "/private/tmp/healthbridge-coder-s3a",
+      "stage": "S3A catalog",
+      "baseline": "1479db9; isolated reviewed fixture",
+      "allowed_paths": [
+        "BridgeToolCatalog.swift"
+      ],
+      "planner_review": "PARTIAL_ACCEPTANCE_WITH_DESCRIPTION_FIXES",
+      "independent_evidence": "9 contracts / 7 compile-harness checks passed; 4 description claims corrected",
+      "total_tokens": "unavailable",
+      "enable_thinking_ledger": "unavailable"
+    },
+    {
+      "changed_paths": [
+        "BridgeCalendarWindow.swift"
+      ],
+      "classification": "LOCAL_POSTWRITE_FAILURE",
+      "config_sha256": {
+        "extension": "292935a062d9e01f2bd7d37901ca5b6c725b89283c71b633affd6232ca123ffb",
+        "models": "8fc0d2b000a76990fa51d0183483b1f88ad94e972eea203327c20e267de6a9d4",
+        "policy": "252b0ea3a03840a9c24604d5e73629fd9460bb12f2473b6883b42a1b081cfee6",
+        "supervisor": "6882ac9922be5371079b93cd95af91b8579c82c0257bd5816c42202ac3d23761"
+      },
+      "duration_seconds": 43.647,
+      "failure_reason": "GUARD_VIOLATION",
+      "final_message_characters": 25,
+      "final_message_sha256": "4c877b8ffc7e6a3a03d28b8a6c6e42685dd2347935725abb1485fc8b35ee8f0e",
+      "guard_violation_codes": [
+        "VERIFY_INDEX_NOT_ALLOWED",
+        "VERIFY_INDEX_NOT_ALLOWED"
+      ],
+      "interrupt_signal": null,
+      "max_context_tokens": 5097,
+      "max_output_tokens": 4096,
+      "model": "halogen-qwen3.8-flash-next",
+      "out_of_scope_paths": [],
+      "parse_errors": 0,
+      "prompt_sha256": "e039ea585ceae5b4869687f21a04ecd5e8cdd5b32773d41edffb3c4184de1eee",
+      "provider": "EVO-X2",
+      "run_id": "2aa6bb9d-0356-4733-96da-2d8da4a6b9ca",
+      "schema_version": 1,
+      "source_generation": 1,
+      "started_at_unix": 1789823039.254,
+      "status": "BLOCKED",
+      "stderr_bytes": 0,
+      "stop_reason": "stop",
+      "structured_terminal": false,
+      "temperature": 0.0,
+      "tool_calls": 7,
+      "top_p": 1,
+      "turns": 7,
+      "verification_expected": 1,
+      "verification_pass_indexes": [],
+      "verification_passes": 0,
+      "verification_runs": 2,
+      "verification_source_generation": null,
+      "workdir": "/private/tmp/healthbridge-coder-s3b",
+      "stage": "S3B civil calendar",
+      "baseline": "1479db9; isolated reviewed fixture",
+      "allowed_paths": [
+        "BridgeCalendarWindow.swift"
+      ],
+      "planner_review": "DIRECT_ACCEPTANCE",
+      "independent_evidence": "Normal 24h, DST 23h/25h, strict invalid input harness passed; package regression passed",
+      "total_tokens": "unavailable",
+      "enable_thinking_ledger": "unavailable"
+    },
+    {
+      "changed_paths": [],
+      "classification": "LOCAL_PREWRITE_FAILURE",
+      "config_sha256": {
+        "extension": "292935a062d9e01f2bd7d37901ca5b6c725b89283c71b633affd6232ca123ffb",
+        "models": "8fc0d2b000a76990fa51d0183483b1f88ad94e972eea203327c20e267de6a9d4",
+        "policy": "252b0ea3a03840a9c24604d5e73629fd9460bb12f2473b6883b42a1b081cfee6",
+        "supervisor": "6882ac9922be5371079b93cd95af91b8579c82c0257bd5816c42202ac3d23761"
+      },
+      "duration_seconds": 9.051,
+      "failure_reason": "GUARD_VIOLATION",
+      "final_message_characters": 25,
+      "final_message_sha256": "4c877b8ffc7e6a3a03d28b8a6c6e42685dd2347935725abb1485fc8b35ee8f0e",
+      "guard_violation_codes": [
+        "VERIFY_INDEX_NOT_ALLOWED"
+      ],
+      "interrupt_signal": null,
+      "max_context_tokens": 4460,
+      "max_output_tokens": 4096,
+      "model": "halogen-qwen3.8-flash-next",
+      "out_of_scope_paths": [],
+      "parse_errors": 0,
+      "prompt_sha256": "a637b24859e4289c6bf09552fe1f3ffeb27f30e3a75a7f5d1adab336aa6bca55",
+      "provider": "EVO-X2",
+      "run_id": "a9d3679f-4eaf-4742-a1b9-9c6faf8376fa",
+      "schema_version": 1,
+      "source_generation": 0,
+      "started_at_unix": 1789823149.648,
+      "status": "BLOCKED",
+      "stderr_bytes": 0,
+      "stop_reason": "stop",
+      "structured_terminal": false,
+      "temperature": 0.0,
+      "tool_calls": 3,
+      "top_p": 1,
+      "turns": 4,
+      "verification_expected": 1,
+      "verification_pass_indexes": [],
+      "verification_passes": 0,
+      "verification_runs": 1,
+      "verification_source_generation": null,
+      "workdir": "/private/tmp/healthbridge-coder-s3b",
+      "stage": "S3B verify recovery",
+      "baseline": "1479db9; isolated reviewed fixture",
+      "allowed_paths": [
+        "BridgeCalendarWindow.swift"
+      ],
+      "planner_review": "NO_NEW_ARTIFACT",
+      "independent_evidence": "No source changes; verification guard still rejected; no automatic fallback",
+      "total_tokens": "unavailable",
+      "enable_thinking_ledger": "unavailable"
+    }
+  ],
+  "rates": {
+    "supervisor_pass": {
+      "numerator": 0,
+      "denominator": 3
+    },
+    "first_independent_acceptance_artifact_calls": {
+      "numerator": 1,
+      "denominator": 2
+    },
+    "useful_artifact_acceptance": {
+      "numerator": 2,
+      "denominator": 2
+    }
+  },
+  "notes": [
+    "No file-touch contribution percentage. max_context_tokens is not total tokens.",
+    "Guard failures are not automatically routed to Spark. No wrapper changes.",
+    "S3B prompt used commandIndex incorrectly; reviewed recovery used index but still failed; exact root cause unproven.",
+    "Planner owns transactions/recovery/deployment; initial stage-documentation delay is explicitly recorded."
+  ],
+  "overall_acceptance": "PENDING_PHYSICAL_ICLOUD_AGENT_AND_48H"
+}

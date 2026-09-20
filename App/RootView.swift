@@ -5,21 +5,42 @@ struct RootView: View {
 
     var body: some View {
         Group {
-            switch healthKit.authorizationGate {
-            case .unknown, .needsRequest:
+            switch RootDestination.resolve(
+                gate: healthKit.authorizationGate,
+                hasRequestedAuthorization: healthKit.hasRequestedAuthorization
+            ) {
+            case .onboarding:
                 OnboardingView()
-            case .partiallyGranted, .granted:
+            case .main:
                 MainTabView()
-            case .denied:
+            case .unavailable:
                 AuthorizationUnavailableView()
             }
         }
-        .task {
-            await healthKit.refreshAuthorizationGate()
-            AppEnvironment.shared.onAuthorizationChange()
-        }
         .onChange(of: healthKit.authorizationGate) { _, _ in
             AppEnvironment.shared.onAuthorizationChange()
+        }
+    }
+}
+
+enum RootDestination: Equatable {
+    case onboarding
+    case main
+    case unavailable
+
+    static func resolve(
+        gate: HealthKitManager.AuthorizationGate,
+        hasRequestedAuthorization: Bool
+    ) -> RootDestination {
+        switch gate {
+        case .unknown:
+            return hasRequestedAuthorization ? .main : .onboarding
+        case .needsRequest:
+            return .onboarding
+        case .partiallyGranted, .granted:
+            return .main
+        case .denied:
+            return .unavailable
         }
     }
 }

@@ -41,3 +41,6 @@ HealthManager.xcodeproj
 
 ## Logs
 *.log
+
+# HealthBridge pins reviewed dependency graph
+!HealthBridge/Package.resolved

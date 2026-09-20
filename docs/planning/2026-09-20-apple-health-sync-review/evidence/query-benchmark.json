@@ -1,0 +1,82 @@
+{
+  "current_max": {
+    "sql": "SELECT MAX(ingested_at) FROM health_samples_raw",
+    "plan": [
+      [
+        3,
+        0,
+        216,
+        "SEARCH health_samples_raw"
+      ]
+    ],
+    "milliseconds": [
+      222.78,
+      216.73,
+      210.109
+    ]
+  },
+  "active_max_candidate": {
+    "sql": "SELECT MAX(ingested_at) FROM health_samples_raw WHERE is_deleted=0",
+    "plan": [
+      [
+        3,
+        0,
+        196,
+        "SEARCH health_samples_raw USING COVERING INDEX idx_raw_ingested_active"
+      ]
+    ],
+    "milliseconds": [
+      0.017,
+      0.003,
+      0.002
+    ]
+  },
+  "current_count": {
+    "sql": "SELECT COUNT(*) FROM health_samples_raw WHERE is_deleted=0",
+    "plan": [
+      [
+        3,
+        0,
+        196,
+        "SCAN health_samples_raw USING COVERING INDEX idx_raw_ingested_active"
+      ]
+    ],
+    "milliseconds": [
+      26.87,
+      31.923,
+      31.424
+    ]
+  },
+  "daily_first_card": {
+    "sql": "SELECT step_count, active_energy_kcal, distance_m, exercise_minutes FROM activity_metrics_daily WHERE date='2026-09-20'",
+    "plan": [
+      [
+        3,
+        0,
+        39,
+        "SEARCH activity_metrics_daily USING INDEX sqlite_autoindex_activity_metrics_daily_1 (date=?)"
+      ]
+    ],
+    "milliseconds": [
+      0.017,
+      0.004,
+      0.002
+    ]
+  },
+  "daily_chart": {
+    "sql": "SELECT date,active_energy_kcal FROM activity_metrics_daily WHERE date BETWEEN '2026-09-14' AND '2026-09-20' ORDER BY date",
+    "plan": [
+      [
+        4,
+        0,
+        164,
+        "SEARCH activity_metrics_daily USING INDEX sqlite_autoindex_activity_metrics_daily_1 (date>? AND date<?)"
+      ]
+    ],
+    "milliseconds": [
+      0.014,
+      0.004,
+      0.004
+    ]
+  }
+}

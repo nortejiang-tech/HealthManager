@@ -7,6 +7,10 @@ import CryptoKit
 /// 导出 → 全新库导入 → 逐表比对；幂等重导；版本/校验/未知文件/未知字段的防御。
 final class BackupExportImportTests: XCTestCase {
 
+    private enum ExportFixtureError: Error {
+        case interruptedBeforeCommit
+    }
+
     private var source: DatabaseManager!
     private var target: DatabaseManager!
 
@@ -135,6 +139,73 @@ final class BackupExportImportTests: XCTestCase {
         XCTAssertEqual(dict["calories_kcal"] as? Double, 600)
     }
 
+    func test_interruptedReexportPreservesPreviousCommittedPackageByteForByte() async throws {
+        try insertFixtures(into: source)
+        let root = makeTempDir()
+        let packageDir = root.appendingPathComponent("HealthManagerBackup", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        _ = try await BackupExporter(database: source).export(to: packageDir)
+        let committedBefore = try packageBytes(at: packageDir)
+
+        try source.write { db in
+            try db.execute(sql: """
+                INSERT INTO meal_records
+                  (id, meal_type, eaten_at, calories_kcal, created_at)
+                VALUES (2, 'dinner', 1_700_000_100, 700, 1_700_000_100)
+                """)
+        }
+
+        do {
+            _ = try await BackupExporter(database: source).export(
+                to: packageDir,
+                beforeCommit: { stagingURL in
+                    let stagedManifest = try JSONDecoder().decode(
+                        BackupManifest.self,
+                        from: Data(contentsOf: stagingURL.appendingPathComponent("manifest.json"))
+                    )
+                    XCTAssertEqual(
+                        stagedManifest.files.first { $0.file == "meal_records.jsonl" }?.recordCount,
+                        2
+                    )
+                    throw ExportFixtureError.interruptedBeforeCommit
+                }
+            )
+            XCTFail("Expected injected interruption")
+        } catch ExportFixtureError.interruptedBeforeCommit {}
+
+        XCTAssertEqual(try packageBytes(at: packageDir), committedBefore)
+        XCTAssertTrue(try stagingDirectories(in: root).isEmpty)
+
+        let restored = DatabaseManager.makeInMemoryForTesting()
+        let summary = try await BackupImporter(database: restored).importPackage(from: packageDir)
+        XCTAssertEqual(summary.totalImported, 11)
+    }
+
+    func test_successfulReexportPublishesOneCoherentPackageAndRemovesStaging() async throws {
+        try insertFixtures(into: source)
+        let root = makeTempDir()
+        let packageDir = root.appendingPathComponent("HealthManagerBackup", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        _ = try await BackupExporter(database: source).export(to: packageDir)
+        try source.write { db in
+            try db.execute(sql: """
+                INSERT INTO meal_records
+                  (id, meal_type, eaten_at, calories_kcal, created_at)
+                VALUES (2, 'dinner', 1_700_000_100, 700, 1_700_000_100)
+                """)
+        }
+
+        let manifest = try await BackupExporter(database: source).export(to: packageDir)
+        XCTAssertEqual(
+            manifest.files.first { $0.file == "meal_records.jsonl" }?.recordCount,
+            2
+        )
+        try assertManifestMatchesFiles(in: packageDir)
+        XCTAssertTrue(try stagingDirectories(in: root).isEmpty)
+    }
+
     func test_reimport_isIdempotent_onlyFillsMissing() async throws {
         try insertFixtures(into: source)
         let packageDir = makeTempDir()
@@ -158,6 +229,35 @@ final class BackupExportImportTests: XCTestCase {
             try String.fetchOne(db, sql: "SELECT notes FROM meal_records WHERE id = 1")
         }
         XCTAssertEqual(notes, "本地修改")
+    }
+
+    private func packageBytes(at packageURL: URL) throws -> [String: Data] {
+        let names = try FileManager.default.contentsOfDirectory(
+            at: packageURL,
+            includingPropertiesForKeys: nil
+        ).map(\.lastPathComponent).sorted()
+        return try Dictionary(uniqueKeysWithValues: names.map { name in
+            (name, try Data(contentsOf: packageURL.appendingPathComponent(name)))
+        })
+    }
+
+    private func stagingDirectories(in parentURL: URL) throws -> [URL] {
+        try FileManager.default.contentsOfDirectory(
+            at: parentURL,
+            includingPropertiesForKeys: nil
+        ).filter { $0.lastPathComponent.hasPrefix(".HealthManagerBackup.staging-") }
+    }
+
+    private func assertManifestMatchesFiles(in packageURL: URL) throws {
+        let manifest = try JSONDecoder().decode(
+            BackupManifest.self,
+            from: Data(contentsOf: packageURL.appendingPathComponent("manifest.json"))
+        )
+        for entry in manifest.files {
+            let data = try Data(contentsOf: packageURL.appendingPathComponent(entry.file))
+            XCTAssertEqual(data.count, entry.bytes, entry.file)
+            XCTAssertEqual(SHA256Digest(data), entry.sha256, entry.file)
+        }
     }
 
     func test_import_rejectsUnsupportedFormatVersion() async throws {

@@ -1,0 +1,272 @@
+{
+  "schema_version": 1,
+  "captured_date": "2026-09-20",
+  "head": "1479db9e8aec80db1c557130315bcd0cb9e74949",
+  "branch": "main",
+  "dirty_status_at_design": [
+    " M .gitignore",
+    " M App/AppEnvironment.swift",
+    " M App/HealthManagerApp.swift",
+    " M App/Info.plist",
+    " M Core/Backup/BackupImporter.swift",
+    " M Core/Database/Migrations.swift",
+    " M Core/Sync/SyncEngine.swift",
+    " M NEXT_TASK.md",
+    " M UI/Settings/SettingsView.swift",
+    " M WORKLOG.md",
+    " M project.yml",
+    "?? \"Codex \\345\\233\\276\\345\\203\\217 2026\\345\\271\\2649\\346\\234\\21019\\346\\227\\245 19_09_17.png\"",
+    "?? Core/Bridge/",
+    "?? HealthBridge/",
+    "?? Tests/HealthBridgeIntegrationTests.swift",
+    "?? UI/Settings/HealthBridgeSettingsView.swift",
+    "?? UITests/HealthBridgeSmokeTests.swift",
+    "?? docs/healthbridge/",
+    "?? docs/planning/2026-09-20-apple-health-sync-review/",
+    "?? \"\\344\\270\\211\\346\\254\\241\\345\\214\\226\\351\\252\\214\\346\\243\\200\\346\\237\\245\\345\\205\\250\\346\\214\\207\\346\\240\\207\\345\\257\\271\\347\\205\\247\\350\\241\\250_2026-09-19.md\"",
+    "?? \"\\346\\233\\277\\345\\260\\224\\346\\263\\212\\350\\202\\275\\345\\207\\217\\351\\207\\215\\344\\270\\216\\344\\273\\243\\350\\260\\242\\345\\201\\245\\345\\272\\267\\345\\256\\214\\346\\225\\264\\350\\256\\260\\345\\275\\225_2026-09-19.md\""
+  ],
+  "target_files": {
+    "App/AppEnvironment.swift": {
+      "exists": true,
+      "sha256": "88f9d23ad219441888e62489827a5326a24b4ea7a8990913fb37f5ac052ebd04"
+    },
+    "App/HealthManager.entitlements": {
+      "exists": true,
+      "sha256": "374fe83f902029726ba57ad7d9e425fcb1aac719b0134d51cd5f3757f952bc04"
+    },
+    "App/HealthManagerApp.swift": {
+      "exists": true,
+      "sha256": "6c415fd5cca8880ca009c1a13771c2b2433bbdcf323fb1d89381878897464992"
+    },
+    "App/RootView.swift": {
+      "exists": true,
+      "sha256": "e752484c03157583820dad98d436b24700b1c63582d89ae60c5713d4de9fad47"
+    },
+    "Core/Aggregate/ActivityEnergyCalculator.swift": {
+      "exists": true,
+      "sha256": "70909a593244f4300df4148d90be759112fcbced25637a96b10103d518591089"
+    },
+    "Core/Aggregate/DailyAggregator.swift": {
+      "exists": true,
+      "sha256": "d0b0967e6f26b078fe9c255830ca1eec27e1690233746c89c838a7df942435ae"
+    },
+    "Core/Backup/BackupExporter.swift": {
+      "exists": true,
+      "sha256": "d35b4052a36783f54a42bc93a04249d4f119ee9331eb6abcfe4e246a14c5fa64"
+    },
+    "Core/Backup/BackupImporter.swift": {
+      "exists": true,
+      "sha256": "5fddca1c1c499aafcee15fdd1ea207094dadc5134e42be6b207d24f373766361"
+    },
+    "Core/Backup/BackupManager.swift": {
+      "exists": true,
+      "sha256": "573ee802e46057c080b6d5d3fc5528d6b5e4bf5eac7398476359c410e941dd22"
+    },
+    "Core/Bridge/HealthBridgeManager.swift": {
+      "exists": true,
+      "sha256": "75b8a2b1a3f34f82a930e02d47cba6d838e3463ac39cd2274af1248290107e45"
+    },
+    "Core/Database/DatabaseManager.swift": {
+      "exists": true,
+      "sha256": "ed268ae2dad9da71b56c92216e8a1652af3a28b63b660c35747d64017f2f6a58"
+    },
+    "Core/Database/Migrations.swift": {
+      "exists": true,
+      "sha256": "4609997ff3a0a0dd2b4d99f08c5ac797901ff32bb4a94ccddafa991ba45f990a"
+    },
+    "Core/Database/Models/HealthSampleRaw.swift": {
+      "exists": true,
+      "sha256": "b6101902d3408b3eb3324ebd6164c42d068ea50fb97a172110ded6cc9e548322"
+    },
+    "Core/Diagnostics/StartupMetrics.swift": {
+      "exists": false,
+      "sha256": null
+    },
+    "Core/HealthKit/HealthKitManager.swift": {
+      "exists": true,
+      "sha256": "fa2270b9e54f63a9605225b27ee48b33bcb3a1bce8e8199d7f81c70548a63b23"
+    },
+    "Core/HealthKit/HealthKitQueryExecutor.swift": {
+      "exists": false,
+      "sha256": null
+    },
+    "Core/HealthKit/HealthKitTypeCatalog.swift": {
+      "exists": true,
+      "sha256": "38fd81765a6a9770f7cf637b08a89bd07fe3cf1fce246e4f58e11952ecaac0d6"
+    },
+    "Core/HealthKit/SampleMapper.swift": {
+      "exists": true,
+      "sha256": "8038f8aa8a12f5973688dd5d1f4d51253254e7e5cc533e8aaad9fe01aa56ef95"
+    },
+    "Core/Sync/BackgroundTaskScheduler.swift": {
+      "exists": true,
+      "sha256": "502f05dd30cb27a973be311e024061a657899d544673c7e7080bab4e46d2a135"
+    },
+    "Core/Sync/HealthKitObserver.swift": {
+      "exists": true,
+      "sha256": "4e242bc6ade143aa19d502dfd0132c2d9d015e2c996ae08bee50706565de0722"
+    },
+    "Core/Sync/IncrementalSyncCoordinator.swift": {
+      "exists": true,
+      "sha256": "2427984bb72a5d765dbd86e9f711a780f796c9a0d121c122e2f1cc68836099a2"
+    },
+    "Core/Sync/ManualSyncCoordinator.swift": {
+      "exists": true,
+      "sha256": "612c8510e9077df520622de8a7aeda28f1d0dad4e00a46f389ea48702a37012e"
+    },
+    "Core/Sync/ProjectionWorker.swift": {
+      "exists": false,
+      "sha256": null
+    },
+    "Core/Sync/SyncDemand.swift": {
+      "exists": false,
+      "sha256": null
+    },
+    "Core/Sync/SyncEngine.swift": {
+      "exists": true,
+      "sha256": "cf50dbf9f0c9fdd7e64289551f4bc91ba82acfd915c2de5affebe1719b1067ab"
+    },
+    "Core/Sync/SyncFailurePolicy.swift": {
+      "exists": false,
+      "sha256": null
+    },
+    "Core/Sync/SyncJobRecovery.swift": {
+      "exists": true,
+      "sha256": "bd9b079886b78e3c6d042cf10a7111138f8713b70aabe5154b983654cf053840"
+    },
+    "Core/Sync/SyncPageRunner.swift": {
+      "exists": false,
+      "sha256": null
+    },
+    "Core/Sync/SyncRunner.swift": {
+      "exists": false,
+      "sha256": null
+    },
+    "Core/Sync/SyncSchedulingState.swift": {
+      "exists": false,
+      "sha256": null
+    },
+    "Core/Sync/SyncStateMachine.swift": {
+      "exists": true,
+      "sha256": "3d28c8001c441ebb546fed1a62515eb883ad5ba0327a37615b0cb51c99fa4eec"
+    },
+    "Core/Sync/SyncWorkStore.swift": {
+      "exists": false,
+      "sha256": null
+    },
+    "HealthBridge/Package.resolved": {
+      "exists": true,
+      "sha256": "aa2cd861aa971f4a969feeaa5c0157db536bbe7d471d53b4d0401c78a887e4f6"
+    },
+    "HealthBridge/Package.swift": {
+      "exists": true,
+      "sha256": "ea799b4a5e6b64fae7c41d31295ed1a49ce6830eb3631189961d49a1000f7850"
+    },
+    "HealthBridge/Sources/BridgeCore/Source.swift": {
+      "exists": true,
+      "sha256": "bb20644d38dcd3fa3699853ac9b2045cde415d2ae6e15fa2373ddc0ba9271610"
+    },
+    "HealthBridge/Tests/BridgeCoreTests/BridgePublishSchedulingTests.swift": {
+      "exists": false,
+      "sha256": null
+    },
+    "Tests/DashboardIndexMigrationTests.swift": {
+      "exists": true,
+      "sha256": "7bec496d67793a4ffb30680d0ebe338e703f37b35c1c069ba9d8d198801bcc56"
+    },
+    "Tests/HealthKitQueryLifecycleTests.swift": {
+      "exists": false,
+      "sha256": null
+    },
+    "Tests/IncrementalProjectionTests.swift": {
+      "exists": false,
+      "sha256": null
+    },
+    "Tests/ManualSyncOutcomeTests.swift": {
+      "exists": false,
+      "sha256": null
+    },
+    "Tests/StartupMaintenanceGateTests.swift": {
+      "exists": false,
+      "sha256": null
+    },
+    "Tests/StartupMetricsTests.swift": {
+      "exists": false,
+      "sha256": null
+    },
+    "Tests/SyncDeliveryLifecycleTests.swift": {
+      "exists": false,
+      "sha256": null
+    },
+    "Tests/SyncFailurePolicyTests.swift": {
+      "exists": false,
+      "sha256": null
+    },
+    "Tests/SyncPageRunnerTests.swift": {
+      "exists": false,
+      "sha256": null
+    },
+    "Tests/SyncPresentationTests.swift": {
+      "exists": false,
+      "sha256": null
+    },
+    "Tests/SyncRestoreIntegrationTests.swift": {
+      "exists": false,
+      "sha256": null
+    },
+    "Tests/SyncRunnerIntegrationTests.swift": {
+      "exists": false,
+      "sha256": null
+    },
+    "Tests/SyncSchedulingStateTests.swift": {
+      "exists": false,
+      "sha256": null
+    },
+    "Tests/SyncStartupLifecycleTests.swift": {
+      "exists": false,
+      "sha256": null
+    },
+    "Tests/SyncWorkStoreTests.swift": {
+      "exists": false,
+      "sha256": null
+    },
+    "UI/Dashboard/DashboardData.swift": {
+      "exists": true,
+      "sha256": "31b8a9b941c37eb11346139539441a38c6ed3918e7390e7085e3eb2dada581f3"
+    },
+    "UI/Dashboard/DashboardView.swift": {
+      "exists": true,
+      "sha256": "c5624a164172f764b03a60d1d25c2d454c28996dc7305c9a92d8cd0e921c675e"
+    },
+    "UI/SyncCenter/SyncCenterView.swift": {
+      "exists": true,
+      "sha256": "39628c3ba766e8de2ea510ea219097794f68774fa32d0fc6b487bed53271a22c"
+    },
+    "UI/SyncCenter/SyncPresentation.swift": {
+      "exists": false,
+      "sha256": null
+    },
+    "UITests/SyncLifecycleUITests.swift": {
+      "exists": false,
+      "sha256": null
+    },
+    "project.yml": {
+      "exists": true,
+      "sha256": "fa4b360c6d5149093aae7a79a84ccd3d6deb8f5684bd85045807235d08c1ae67"
+    }
+  },
+  "environment": {
+    "xcode": "27.0 (27A266a)",
+    "swift": "6.4",
+    "simulator_os": "iOS 26.5",
+    "simulator_id": "6364DCEB-82DF-448C-91D9-2C19FD844AA8",
+    "xcodegen": "/opt/homebrew/bin/xcodegen",
+    "scheme": "HealthManager",
+    "scheme_list_verified_offline": true,
+    "grdb_cache": "/Users/nortepro/Library/Developer/Xcode/DerivedData/HealthManager-ggcivopbkrhyayfzwvojpwacksqd/SourcePackages"
+  },
+  "trust_gate": "FULL_WORKTREE_NOT_ADMITTED_TO_LOCAL_CODER; hashes identify files, not instruction trust",
+  "tests_run_this_design_turn": false,
+  "device_operations_this_design_turn": []
+}

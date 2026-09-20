@@ -1,0 +1,551 @@
+{
+  "schema_version": 1,
+  "summary": {
+    "supervisor_pass": {
+      "numerator": 0,
+      "denominator": 5
+    },
+    "first_independent_acceptance_pass": {
+      "numerator": 0,
+      "denominator": 5
+    },
+    "useful_output_adoption": {
+      "numerator": 4,
+      "denominator": 5
+    },
+    "dispositions": {
+      "direct_accept": 0,
+      "partial_accept_with_planner_changes": 4,
+      "reject": 1,
+      "pending_review": 0
+    }
+  },
+  "postmortem_2026_09_20": {
+    "status": "TOOL_CONTRACT_RECOVERED",
+    "historical_call_statuses_unchanged": true,
+    "root_causes": [
+      "prompt-relative parent-directory language conflicted with repository-root process cwd",
+      "verification command filtering silently changed original indexes",
+      "no pre-model prompt-contract validation"
+    ],
+    "recovery_stage": "/Users/nortepro/Documents/Local Network Manager/evo-x2-prep/stages/STAGE-036-EVO-CODER-PROMPT-CONTRACT-RECOVERY-2026-09-20.md",
+    "negative_preflight_run_id": "90574402-8c16-4909-9397-96974942b76d",
+    "positive_canary_run_id": "24c2495e-b24c-4c4c-b026-89275cf24309",
+    "positive_canary_result": {
+      "status": "PASS",
+      "verification_passes": 2,
+      "verification_expected": 2,
+      "guard_violation_codes": [],
+      "planner_acceptance": "direct_accept"
+    }
+  },
+  "calls": [
+    {
+      "stage": "S02",
+      "run_id": "a97074a7-85db-4c48-841e-277269d3940a",
+      "provider": "EVO-X2",
+      "model": "halogen-qwen3.8-flash-next",
+      "parameters": {
+        "temperature": 0,
+        "top_p": 1,
+        "max_output_tokens": 4096,
+        "max_context_tokens_observed": 16012,
+        "total_tokens": "unavailable"
+      },
+      "prompt_sha256": "5c33a5c2501e9823242a811e14c0fd61432cccf144df294033bdfad31eac1f1b",
+      "baseline_head": "1479db9e8aec80db1c557130315bcd0cb9e74949",
+      "isolation": "current_dirty_worktree_with_hash_baseline",
+      "allowed_paths": [
+        "Core/Diagnostics/StartupMetrics.swift",
+        "App/AppEnvironment.swift",
+        "UI/Dashboard/DashboardView.swift"
+      ],
+      "changed_paths": [
+        "Core/Diagnostics/StartupMetrics.swift"
+      ],
+      "duration_seconds": 72.361,
+      "turns": 12,
+      "tool_calls": 16,
+      "verification": {
+        "expected": 2,
+        "runs": 0,
+        "passes": 0
+      },
+      "status": "FAIL",
+      "classification": "LOCAL_POSTWRITE_FAILURE",
+      "failure_reason": "INTERRUPTED",
+      "guard_violation_codes": [
+        "PATH_ESCAPE_DENIED"
+      ],
+      "stop_reason": "toolUse",
+      "interrupt_signal": "SIGINT",
+      "disposition": "partial_accept_with_planner_changes",
+      "planner_first_acceptance": "FAIL",
+      "planner_final_acceptance": {
+        "status": "PASS",
+        "tests_passed": 5,
+        "tests_failed": 0,
+        "tests_skipped": 0,
+        "xcresult": "/Users/nortepro/Library/Developer/Xcode/DerivedData/HealthManager-ggcivopbkrhyayfzwvojpwacksqd/Logs/Test/Test-HealthManager-2026.09.20_07-03-59-+0800.xcresult"
+      }
+    },
+    {
+      "stage": "S03",
+      "run_id": "717fb03d-315f-48fe-b81f-23a5baf76a96",
+      "provider": "EVO-X2",
+      "model": "halogen-qwen3.8-flash-next",
+      "parameters": {
+        "temperature": 0,
+        "top_p": 1,
+        "max_output_tokens": 4096,
+        "max_context_tokens_observed": 16201,
+        "total_tokens": "unavailable"
+      },
+      "prompt_sha256": "85cb85158140fe114223db235ae99b93c7df5ca3343cb3925fdcf7597e3376bb",
+      "baseline_head": "1479db9e8aec80db1c557130315bcd0cb9e74949",
+      "isolation": "current_dirty_worktree_with_hash_baseline",
+      "allowed_paths": [
+        "Core/Sync/SyncDemand.swift",
+        "Core/Sync/SyncSchedulingState.swift"
+      ],
+      "changed_paths": [
+        "Core/Sync/SyncDemand.swift"
+      ],
+      "duration_seconds": 68.835,
+      "turns": 11,
+      "tool_calls": 17,
+      "verification": {
+        "expected": 2,
+        "runs": 0,
+        "passes": 0
+      },
+      "status": "FAIL",
+      "classification": "LOCAL_POSTWRITE_FAILURE",
+      "failure_reason": "INTERRUPTED",
+      "guard_violation_codes": [
+        "PATH_ESCAPE_DENIED"
+      ],
+      "stop_reason": "toolUse",
+      "interrupt_signal": "SIGINT",
+      "disposition": "partial_accept_with_planner_changes",
+      "planner_first_acceptance": "FAIL",
+      "planner_final_acceptance": {
+        "status": "PASS",
+        "tests_passed": 9,
+        "tests_failed": 0,
+        "tests_skipped": 0,
+        "xcresult": "/Users/nortepro/Library/Developer/Xcode/DerivedData/HealthManager-ggcivopbkrhyayfzwvojpwacksqd/Logs/Test/Test-HealthManager-2026.09.20_07-10-06-+0800.xcresult"
+      }
+    },
+    {
+      "stage": "S04A",
+      "run_id": "5cdc697f-99a4-4db0-bdbc-323fba02c34d",
+      "provider": "EVO-X2",
+      "model": "halogen-qwen3.8-flash-next",
+      "parameters": {
+        "temperature": 0,
+        "top_p": 1,
+        "max_output_tokens": 4096,
+        "max_context_tokens_observed": 16322,
+        "total_tokens": "unavailable"
+      },
+      "prompt_sha256": "6b7d52f8a79bb67ac1f5ec9d4e65a6c736dd0ffd48e8cb3a951df9ff0b4c04f3",
+      "baseline_head": "1479db9e8aec80db1c557130315bcd0cb9e74949",
+      "isolation": "current_dirty_worktree_with_hash_baseline",
+      "allowed_paths": [
+        "Core/Sync/SyncFailurePolicy.swift"
+      ],
+      "changed_paths": [
+        "Core/Sync/SyncFailurePolicy.swift"
+      ],
+      "duration_seconds": 70.172,
+      "turns": 11,
+      "tool_calls": 13,
+      "verification": {
+        "expected": 2,
+        "runs": 4,
+        "passes": 0
+      },
+      "status": "FAIL",
+      "classification": "LOCAL_POSTWRITE_FAILURE",
+      "failure_reason": "INTERRUPTED",
+      "guard_violation_codes": [
+        "VERIFY_INDEX_NOT_ALLOWED",
+        "VERIFY_INDEX_NOT_ALLOWED"
+      ],
+      "stop_reason": "toolUse",
+      "interrupt_signal": "SIGINT",
+      "disposition": "partial_accept_with_planner_changes",
+      "planner_first_acceptance": "FAIL",
+      "planner_final_acceptance": {
+        "status": "PASS",
+        "tests_passed": 9,
+        "tests_failed": 0,
+        "tests_skipped": 0,
+        "xcresult": "/Users/nortepro/Library/Developer/Xcode/DerivedData/HealthManager-ggcivopbkrhyayfzwvojpwacksqd/Logs/Test/Test-HealthManager-2026.09.20_07-16-06-+0800.xcresult"
+      }
+    },
+    {
+      "stage": "S13_DEVICE_DEFECT_FIX_1",
+      "run_id": "471d6f95-5cc3-49ad-a2bf-e0df68f4d6da",
+      "provider": "EVO-X2",
+      "model": "halogen-qwen3.8-flash-next",
+      "parameters": {
+        "temperature": 0,
+        "top_p": 1,
+        "max_output_tokens": 4096,
+        "max_context_tokens_observed": 26718,
+        "total_tokens": "unavailable"
+      },
+      "prompt_sha256": "553c956f4cc345c45e0abafb06e68d097207ef400802898aad2d7332c7bef7e2",
+      "config_sha256": {
+        "extension": "28743c2cf6792ea1bbf5bad62e973fcd632f5e8c8304f1ebcdb0e7fb329f4d29",
+        "models": "8fc0d2b000a76990fa51d0183483b1f88ad94e972eea203327c20e267de6a9d4",
+        "policy": "87096fc22ab6b9b9a90c73464bf1c2559d30d5f01fa0536e088d2352072568ea",
+        "supervisor": "f11605d243b6b7561c1191a6f3e8196e709139bfacf964fa3489783514fb65bf"
+      },
+      "baseline_head": "1479db9e8aec80db1c557130315bcd0cb9e74949",
+      "isolation": "current_dirty_worktree_preserved",
+      "allowed_paths": "unavailable_in_secret_free_ledger",
+      "changed_paths": [],
+      "duration_seconds": 72.714,
+      "turns": 15,
+      "tool_calls": 17,
+      "verification": {
+        "expected": "unavailable",
+        "runs": 0,
+        "passes": 0
+      },
+      "status": "FAIL",
+      "classification": "LOCAL_PREWRITE_FAILURE",
+      "failure_reason": "INTERRUPTED",
+      "guard_violation_codes": [
+        "OTHER_GUARD_VIOLATION",
+        "PATH_ESCAPE_DENIED"
+      ],
+      "stop_reason": "toolUse",
+      "interrupt_signal": "SIGINT",
+      "disposition": "reject",
+      "planner_first_acceptance": "FAIL",
+      "planner_final_acceptance": {
+        "status": "NOT_APPLICABLE_NO_OUTPUT",
+        "note": "Planner corrected the prompt read boundary before a separate second invocation."
+      }
+    },
+    {
+      "stage": "S13_DEVICE_DEFECT_FIX_2",
+      "run_id": "34a2684d-52f4-40d8-90ff-26625992aa73",
+      "provider": "EVO-X2",
+      "model": "halogen-qwen3.8-flash-next",
+      "parameters": {
+        "temperature": 0,
+        "top_p": 1,
+        "max_output_tokens": 4096,
+        "max_context_tokens_observed": 33731,
+        "total_tokens": "unavailable"
+      },
+      "prompt_sha256": "f0770240607d647cee07f63b56e5381c88d00f2c647397b549e1e4929c25c4c8",
+      "config_sha256": {
+        "extension": "28743c2cf6792ea1bbf5bad62e973fcd632f5e8c8304f1ebcdb0e7fb329f4d29",
+        "models": "8fc0d2b000a76990fa51d0183483b1f88ad94e972eea203327c20e267de6a9d4",
+        "policy": "87096fc22ab6b9b9a90c73464bf1c2559d30d5f01fa0536e088d2352072568ea",
+        "supervisor": "f11605d243b6b7561c1191a6f3e8196e709139bfacf964fa3489783514fb65bf"
+      },
+      "baseline_head": "1479db9e8aec80db1c557130315bcd0cb9e74949",
+      "isolation": "current_dirty_worktree_preserved",
+      "allowed_paths": "unavailable_in_secret_free_ledger",
+      "changed_paths": [
+        "Core/Sync/HealthKitObserver.swift",
+        "Core/Sync/SyncEngine.swift"
+      ],
+      "duration_seconds": 131.429,
+      "turns": 19,
+      "tool_calls": 25,
+      "verification": {
+        "expected": "unavailable",
+        "runs": 0,
+        "passes": 0
+      },
+      "status": "FAIL",
+      "classification": "LOCAL_POSTWRITE_FAILURE",
+      "failure_reason": "TOOL_LIMIT_EXCEEDED",
+      "guard_violation_codes": [],
+      "stop_reason": "aborted",
+      "disposition": "partial_accept_with_planner_changes",
+      "planner_first_acceptance": "FAIL",
+      "planner_final_acceptance": {
+        "status": "PENDING",
+        "accepted_scope": "SyncEngine explicit type-scope API direction",
+        "planner_takeover": [
+          "HealthKitObserver rewrite",
+          "remove duplicate coordinator request",
+          "SyncRunner quiescence race fix",
+          "startup initial delivery coverage"
+        ],
+        "focused_tests": {
+          "passed": 21,
+          "failed": 0,
+          "skipped": 0
+        },
+        "full_unit_tests": {
+          "passed": 426,
+          "failed": 1,
+          "skipped": 0,
+          "environment_failure": "Keychain -34018"
+        },
+        "device_evidence": "Four consecutive final-candidate foreground/cold launches ended with no pending generations."
+      }
+    }
+  ],
+  "planner_only_stages": [
+    {
+      "stage": "S04B",
+      "reason": "PLANNER_OWNED cancellation and continuation race boundary after repeated EVO guard violations",
+      "planner_final_acceptance": {
+        "status": "PASS",
+        "tests_passed": 14,
+        "tests_failed": 0,
+        "tests_skipped": 0,
+        "xcresult": "/Users/nortepro/Library/Developer/Xcode/DerivedData/HealthManager-ggcivopbkrhyayfzwvojpwacksqd/Logs/Test/Test-HealthManager-2026.09.20_07-20-44-+0800.xcresult"
+      }
+    },
+    {
+      "stage": "S05",
+      "reason": "PLANNER_OWNED durable transaction and restore barrier boundary after repeated EVO guard violations",
+      "planner_final_acceptance": {
+        "status": "PASS",
+        "tests_passed": 12,
+        "tests_failed": 0,
+        "tests_skipped": 0,
+        "xcresult": "/Users/nortepro/Library/Developer/Xcode/DerivedData/HealthManager-ggcivopbkrhyayfzwvojpwacksqd/Logs/Test/Test-HealthManager-2026.09.20_07-26-40-+0800.xcresult"
+      }
+    },
+    {
+      "stage": "S06",
+      "reason": "PLANNER_OWNED HealthKit anchor paging and atomic progress boundary after repeated EVO guard violations",
+      "planner_final_acceptance": {
+        "status": "PASS",
+        "tests_passed": 15,
+        "tests_failed": 0,
+        "tests_skipped": 0,
+        "xcresult": "/Users/nortepro/Library/Developer/Xcode/DerivedData/HealthManager-ggcivopbkrhyayfzwvojpwacksqd/Logs/Test/Test-HealthManager-2026.09.20_07-34-57-+0800.xcresult"
+      }
+    },
+    {
+      "stage": "S07",
+      "reason": "PLANNER_OWNED single worker ownership and durable concurrency boundary after repeated EVO guard violations",
+      "planner_final_acceptance": {
+        "status": "PASS",
+        "tests_passed": 13,
+        "tests_failed": 0,
+        "tests_skipped": 0,
+        "xcresult": "/Users/nortepro/Library/Developer/Xcode/DerivedData/HealthManager-ggcivopbkrhyayfzwvojpwacksqd/Logs/Test/Test-HealthManager-2026.09.20_07-40-40-+0800.xcresult"
+      }
+    },
+    {
+      "stage": "S08A",
+      "reason": "PLANNER_OWNED app lifecycle, recovery and authorization ordering boundary after repeated EVO guard violations",
+      "planner_final_acceptance": {
+        "status": "PASS",
+        "tests_passed": 7,
+        "tests_failed": 0,
+        "tests_skipped": 0,
+        "xcresult": "/Users/nortepro/Library/Developer/Xcode/DerivedData/HealthManager-ggcivopbkrhyayfzwvojpwacksqd/Logs/Test/Test-HealthManager-2026.09.20_07-43-10-+0800.xcresult"
+      }
+    },
+    {
+      "stage": "S08B",
+      "reason": "PLANNER_OWNED observer and BG completion lifecycle boundary after repeated EVO guard violations",
+      "planner_final_acceptance": {
+        "status": "PASS",
+        "tests_passed": 9,
+        "tests_failed": 0,
+        "tests_skipped": 0,
+        "xcresult": "/Users/nortepro/Library/Developer/Xcode/DerivedData/HealthManager-ggcivopbkrhyayfzwvojpwacksqd/Logs/Test/Test-HealthManager-2026.09.20_07-51-31-+0800.xcresult"
+      }
+    },
+    {
+      "stage": "S09",
+      "reason": "PLANNER_OWNED dirty generation and restored aggregate evidence boundary after repeated EVO guard violations",
+      "planner_final_acceptance": {
+        "status": "PASS",
+        "tests_passed": 32,
+        "tests_failed": 0,
+        "tests_skipped": 0,
+        "xcresult": "/Users/nortepro/Library/Developer/Xcode/DerivedData/HealthManager-ggcivopbkrhyayfzwvojpwacksqd/Logs/Test/Test-HealthManager-2026.09.20_07-50-58-+0800.xcresult"
+      }
+    },
+    {
+      "stage": "S10",
+      "reason": "Planner takeover of shared runner, two-pass merge, and cancellable user wait after repeated EVO guard violations",
+      "planner_final_acceptance": {
+        "status": "PASS",
+        "tests_passed": 17,
+        "tests_failed": 0,
+        "tests_skipped": 0,
+        "xcresult": "/Users/nortepro/Library/Developer/Xcode/DerivedData/HealthManager-ggcivopbkrhyayfzwvojpwacksqd/Logs/Test/Test-HealthManager-2026.09.20_07-55-13-+0800.xcresult"
+      }
+    },
+    {
+      "stage": "S10B",
+      "reason": "PLANNER_OWNED restore drain and durable marker boundary after repeated EVO guard violations",
+      "planner_final_acceptance": {
+        "status": "PENDING",
+        "tests_passed": 18,
+        "tests_failed": 1,
+        "tests_skipped": 0,
+        "xcresult": "/Users/nortepro/Library/Developer/Xcode/DerivedData/HealthManager-ggcivopbkrhyayfzwvojpwacksqd/Logs/Test/Test-HealthManager-2026.09.20_07-57-49-+0800.xcresult",
+        "environment_failure": "BackupExportImportTests.test_locationStore_saveLoadClearRoundTrip Keychain -34018 with CODE_SIGNING_ALLOWED=NO"
+      }
+    },
+    {
+      "stage": "S11A",
+      "reason": "PLANNER_OWNED receipt validation, byte-exact replay, retention, and durable cursor boundary",
+      "planner_final_acceptance": {
+        "status": "PASS",
+        "tests_passed": 20,
+        "tests_failed": 0,
+        "tests_skipped": 0,
+        "xcresult": null,
+        "additional_verification": "HealthBridge full package; 20 passed including 5 new scheduling tests"
+      }
+    },
+    {
+      "stage": "S11B",
+      "reason": "Planner takeover of snapshot-settled and background lifecycle seam after repeated EVO guard violations",
+      "planner_final_acceptance": {
+        "status": "PASS",
+        "tests_passed": 16,
+        "tests_failed": 0,
+        "tests_skipped": 0,
+        "xcresult": "/Users/nortepro/Library/Developer/Xcode/DerivedData/HealthManager-ggcivopbkrhyayfzwvojpwacksqd/Logs/Test/Test-HealthManager-2026.09.20_08-21-48-+0800.xcresult"
+      }
+    },
+    {
+      "stage": "S12",
+      "reason": "Planner-owned final mapping from durable runtime evidence to user-visible truth states",
+      "planner_final_acceptance": {
+        "status": "PASS",
+        "tests_passed": 14,
+        "tests_failed": 0,
+        "tests_skipped": 0,
+        "xcresult": "/Users/nortepro/Library/Developer/Xcode/DerivedData/HealthManager-ggcivopbkrhyayfzwvojpwacksqd/Logs/Test/Test-HealthManager-2026.09.20_08-12-41-+0800.xcresult"
+      }
+    },
+    {
+      "stage": "S13_MEAL_SAVE_STALL_FIX",
+      "reason": "PLANNER_OWNED SQLite writer transaction, WAL reader, interactive persistence and real-device data consistency boundary",
+      "evo_invoked": false,
+      "implementation": {
+        "changed_paths": [
+          "Core/Sync/ProjectionWorker.swift",
+          "Tests/IncrementalProjectionTests.swift"
+        ],
+        "summary": "Move the 3.55M-row calendar evidence scan to a WAL read snapshot, stream with a cursor, reuse one formatter, and publish only deduplicated dates in a short writer transaction."
+      },
+      "planner_final_acceptance": {
+        "status": "PASS_WITH_DEVICE_INTERACTION_PENDING",
+        "focused_tests": {
+          "passed": 9,
+          "failed": 0,
+          "skipped": 0,
+          "xcresult": "/tmp/healthmanager-meal-save-hang/projection-fix-targeted-1.xcresult"
+        },
+        "complete_tests": {
+          "passed": 437,
+          "failed": 0,
+          "skipped": 0,
+          "unit_passed": 428,
+          "ui_passed": 9,
+          "xcresult": "/tmp/healthmanager-meal-save-hang/full-unit-after-projection-fix.xcresult"
+        },
+        "signed_device_build": "PASS",
+        "device_install": "PASS",
+        "locked_database_quick_check": "ok",
+        "device_interaction_replay": "PENDING_DEVICE_LOCKED"
+      }
+    }
+  ],
+  "s13_final_acceptance": {
+    "status": "PENDING",
+    "software_regression": {
+      "complete_tests": {
+        "passed": 437,
+        "failed": 0,
+        "skipped": 0,
+        "unit_passed": 428,
+        "ui_passed": 9
+      },
+      "complete_xcresult": "/tmp/healthmanager-meal-save-hang/full-unit-after-projection-fix.xcresult",
+      "meal_save_projection_focused_tests": {
+        "passed": 9,
+        "failed": 0,
+        "skipped": 0
+      },
+      "meal_save_projection_xcresult": "/tmp/healthmanager-meal-save-hang/projection-fix-targeted-1.xcresult",
+      "signed_device_build": "PASS",
+      "signed_device_dylib_sha256": "f9a29aed3a840f7e2c1c424c61effd559f21204452aec85e3527a437402d4f32"
+    },
+    "device_evidence": {
+      "baseline_cold_launches": 20,
+      "candidate_startup_sessions": 20,
+      "snapshot_available_ms": {
+        "p50": 783,
+        "p95": 815,
+        "max": 833
+      },
+      "final_candidate_additional_cold_launches": 3,
+      "final_durable_pending": 0,
+      "preserved_baseline_raw_uuids": 3598537,
+      "automatic_new_raw_samples": 59,
+      "final_signed_dylib_sha256": "f3bd93ef8e4e6e181b9b437f3c45cdcc735fc4597289155f47c27c8c42f254fb",
+      "final_device_summary": "/tmp/healthmanager-s13-acceptance/final-backup-fix-device-summary.json",
+      "final_candidate_cold_launches": 20,
+      "final_candidate_launch_command_ms": {
+        "p50": 801.2925,
+        "p95_nearest_rank": 871.789,
+        "max": 981.654
+      },
+      "final_candidate_first_screenshot_loaded_count": 19,
+      "first_screenshot_nonloaded_explanation": "Trial 1 captured the Home Screen before foreground activation; it was not an in-app blank state.",
+      "final_pending_type_count": 0,
+      "final_20_sync_jobs_all_succeeded": true,
+      "final_20_analysis": "/tmp/healthmanager-s13-acceptance/final-candidate-20/analysis.json",
+      "final_20_database_summary": "/tmp/healthmanager-s13-acceptance/final-candidate-20/final-db-summary.json"
+    },
+    "pending": [
+      "precise first-card visual p95",
+      "foreground source-to-card 3 rounds",
+      "lock/unlock recovery 3 rounds",
+      "background expiration recovery 3 rounds",
+      "isolated backup and signed Keychain round-trip"
+    ],
+    "planner_only_backup_fix": {
+      "reason": "Recovery consistency boundary after device evidence proved in-place export can invalidate the committed package when background execution is interrupted.",
+      "implementation": "Export to same-parent staging package, then publish with same-volume replacement; reject concurrent BackupManager exports.",
+      "focused_tests": {
+        "passed": 3,
+        "failed": 0,
+        "skipped": 0
+      },
+      "device_status": "PENDING isolated signed-device export/import and Keychain round-trip"
+    },
+    "meal_save_stall_fix": {
+      "status": "PASS_SOFTWARE_DEVICE_INTERACTION_PENDING",
+      "incident_database": {
+        "raw_total": 3598600,
+        "raw_active": 3548930,
+        "meal_records": 338,
+        "meal_max_id": 357,
+        "projection_time_zone": null
+      },
+      "old_algorithm_100k_seconds": 10.2159,
+      "old_algorithm_estimated_full_seconds": 354.9,
+      "new_algorithm_full_scan_seconds": 5.9797,
+      "implementation": "WAL async reader plus Row.fetchCursor and shared DateFormatter; compact date set committed in a short rechecked writer transaction",
+      "device_install": "PASS_PRESERVED_DATA_CONTAINER",
+      "postinstall_database_quick_check": "ok",
+      "device_interaction_replay": "PENDING_DEVICE_LOCKED"
+    }
+  }
+}

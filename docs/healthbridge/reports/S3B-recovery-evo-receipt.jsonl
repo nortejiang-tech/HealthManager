@@ -1,0 +1,11 @@
+{"run_id": "a9d3679f-4eaf-4742-a1b9-9c6faf8376fa", "type": "evo_coder_start", "workdir": "/private/tmp/healthbridge-coder-s3b"}
+{"index": 1, "type": "evo_coder_turn"}
+{"index": 1, "name": "read", "type": "evo_coder_tool"}
+{"index": 2, "type": "evo_coder_turn"}
+{"index": 2, "name": "verify", "type": "evo_coder_tool"}
+{"reason_code": "VERIFY_INDEX_NOT_ALLOWED", "type": "evo_coder_guard_violation"}
+{"index": 3, "type": "evo_coder_turn"}
+{"index": 3, "name": "read", "type": "evo_coder_tool"}
+{"index": 4, "type": "evo_coder_turn"}
+{"characters": 25, "sha256": "4c877b8ffc7e6a3a03d28b8a6c6e42685dd2347935725abb1485fc8b35ee8f0e", "type": "evo_coder_final_digest"}
+{"changed_paths": [], "classification": "LOCAL_PREWRITE_FAILURE", "duration_seconds": 9.051, "failure_reason": "GUARD_VIOLATION", "interrupt_signal": null, "max_context_tokens": 4460, "out_of_scope_paths": [], "run_id": "a9d3679f-4eaf-4742-a1b9-9c6faf8376fa", "status": "BLOCKED", "stop_reason": "stop", "structured_terminal": false, "tool_calls": 3, "turns": 4, "type": "evo_coder_result", "verification_expected": 1, "verification_passes": 0, "verification_runs": 1}

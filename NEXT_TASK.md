@@ -1,3 +1,28 @@
+# Latest: Apple Health 同步/冷启动重构已完成软件验收并装入真机
+
+2026-09-21：S01–S12 已完成；S13 的自动同步收敛、20 次冷启动、升级数据保全和餐次保存卡死修复已有证据。最终有签名完整回归 `437/437`、HealthBridge `20/20`、真机签名构建与覆盖安装通过。餐次卡死根因是 354 万条 raw 时区扫描长期占用唯一 SQLite writer，现已移到 WAL reader；并发回归证明扫描期间 `MealStore.save` 仍能完成。设备在安装后锁定，真实点按重放仍为 `PENDING`。
+
+下次解锁后只需执行四类操作：
+
+1. 同一真机对基线/候选各做至少 20 次进程冷启动，记录首批有效卡片、snapshotAvailable、首次新数据可见，计算 p50/p95/max。
+2. 外部来源写入后的前台追新、锁屏失败后解锁恢复、后台预算中断后前台恢复各 3 轮，全程不点击手动同步。
+3. 对照升级前后 raw UUID 摘要、anchor、饮食 syncID、历史删除、Bridge acknowledged sequence 和备份恢复结果。
+4. 先重录一次此前未落库的餐次并确认保存/重开；再在隔离目录完成 backup bookmark save/load/clear round-trip。
+
+详细操作见 `docs/planning/2026-09-20-apple-health-sync-review/design/S13-DEVICE-ACCEPTANCE-RUNBOOK.md`，证据见同目录 `STAGE-RESULTS.md` 的 S13。不要重新回补、reset Bridge、删除记录或把一次成功当整体 PASS。
+
+# Previous: 0.8.1 (16) snapshot crash hotfix installed
+
+Read docs/healthbridge/STAGE-FIX-snapshot-memory.md first. Snapshot autoreleased JSON objects exceeded iPhone memory limit; actual60000-record failing regression fixed,600000 pressure PASS.331 iOS/12 Mac tests PASS. Device successfully launched, same PID survived repeated checks and real batches are being ingested. Do not re-backfill/reset records. Full snapshot receipt and sustained stability PENDING.
+
+# 当前交接：HealthBridge 0.8.0 (15)
+
+2026-09-19：软件和合成测试已通过，设备首次 iCloud 同步、OpenClaw 实际调用及48小时观察 **PENDING**。继续前先读 [HealthBridge HANDOFF](docs/healthbridge/HANDOFF.md)。已安装 Mac 接收器和 iPhone 新版；需用户解锁、选择 iCloud 文件夹并开启同步。不要重复部署、抢 OpenClaw 迁移锁或把安装成功当端到端通过。
+
+---
+
+以下保留上轮0.7.1交接，属于历史状态：
+
 # NEXT_TASK
 
 > 当前状态（2026-09-18）：**v0.7.1（build 14）已完成真机安装与用户验收**——在 v0.7.0 基础上追加「USDA 每份总营养」（官方 foodPortions 显示与记录预填，v11 迁移）；v0.7.0/0.7.1 交付内容：参考食材增删、USDA 可信检索添加、可编辑推测配方。——参考食材增删、USDA 可信检索添加、可编辑推测配方三项全部交付；用户已在手机配置 USDA key 并试用通过。tag `v0.7.0` 已打；正式分发按用户既有流程执行。

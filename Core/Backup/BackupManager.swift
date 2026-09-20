@@ -16,13 +16,16 @@ final class BackupManager: ObservableObject {
 
     private let database: DatabaseManager
     private let locationStore: BackupLocationStore
+    private let syncRunner: SyncRunner?
 
     init(
         database: DatabaseManager,
-        locationStore: BackupLocationStore = BackupLocationStore()
+        locationStore: BackupLocationStore = BackupLocationStore(),
+        syncRunner: SyncRunner? = nil
     ) {
         self.database = database
         self.locationStore = locationStore
+        self.syncRunner = syncRunner
         self.configuredLocationURL = locationStore.load()
         self.lastExportAt = locationStore.lastExportAt
     }
@@ -53,6 +56,7 @@ final class BackupManager: ObservableObject {
 
     /// 手动「立即备份」。
     func exportNow() async {
+        guard !isExporting else { return }
         guard let location = configuredLocationURL else {
             lastExportError = "尚未选择备份位置。请先在下方设置备份文件夹。"
             return
@@ -94,12 +98,27 @@ final class BackupManager: ObservableObject {
             if accessing { pickedURL.stopAccessingSecurityScopedResource() }
         }
         do {
+            if let syncRunner {
+                try await syncRunner.beginRestore()
+            } else {
+                try SyncWorkStore(database: database).setRestoreInProgress(
+                    true,
+                    pausedReason: "backup_restore"
+                )
+            }
             let summary = try await BackupImporter(database: database)
                 .importPackage(from: pickedURL)
+            if let syncRunner {
+                try await syncRunner.finishRestore(success: true)
+            } else {
+                try SyncWorkStore(database: database).setRestoreInProgress(false)
+            }
             lastRestoreSummary = summary
             lastRestoreError = nil
             AppEnvironment.shared.notifyLocalDataChanged()
         } catch {
+            // Deliberately keep sync_runtime_state.restore_in_progress set. A failed or
+            // interrupted restore must be explicitly retried before HealthKit writers reopen.
             lastRestoreSummary = nil
             lastRestoreError = "恢复失败：\(error.localizedDescription)"
             AppLogger.shared.error("Backup restore failed: \(error.localizedDescription)")

@@ -1,0 +1,154 @@
+[
+  {
+    "path": "HealthBridge/Sources/BridgeCore/Query.swift",
+    "sha256": "ca86a8f94d3b56007bf201a8a0ee9a61f966f0bc153764eb4c7769598817cce3"
+  },
+  {
+    "path": "HealthBridge/Sources/BridgeCore/BridgeCalendarWindow.swift",
+    "sha256": "98fc7ede7e4f94d16dbcb3fafc02cbe734e30709c298eb3d6f67a0856a406fa5"
+  },
+  {
+    "path": "HealthBridge/Sources/BridgeCore/Source.swift",
+    "sha256": "bb20644d38dcd3fa3699853ac9b2045cde415d2ae6e15fa2373ddc0ba9271610"
+  },
+  {
+    "path": "HealthBridge/Sources/BridgeCore/Receiver.swift",
+    "sha256": "6861c3825e732b4693b644d60c1f737f83f7da47dd11a056ff9e0863e503722f"
+  },
+  {
+    "path": "HealthBridge/Sources/BridgeCore/Protocol.swift",
+    "sha256": "770556ff93e04d297204555e42d671751c519a4595aceecd56c25cd4900f12f6"
+  },
+  {
+    "path": "HealthBridge/Sources/BridgeCore/BridgeToolCatalog.swift",
+    "sha256": "9b1e910cb105f89aef34c98d90a07393255473860827a45617734129c472d04d"
+  },
+  {
+    "path": "HealthBridge/Sources/HealthBridgeCLI/main.swift",
+    "sha256": "b737cf50dd1681e525857e18598578a93dbc14f2302abf8c7537626086693e21"
+  },
+  {
+    "path": "HealthBridge/Tests/BridgeCoreTests/BridgeCoreTests.swift",
+    "sha256": "a168cc267f8ed6ef4125cc0ab2d063a8e1690920a57600d28064c2ac95b2ecef"
+  },
+  {
+    "path": "Core/Bridge/HealthBridgeManager.swift",
+    "sha256": "75b8a2b1a3f34f82a930e02d47cba6d838e3463ac39cd2274af1248290107e45"
+  },
+  {
+    "path": "docs/healthbridge/STAGES.md",
+    "sha256": "d98c157ede5493990d0021eb810d313ef8c990aa611a8a44a92a56aa8ce0c307"
+  },
+  {
+    "path": "docs/healthbridge/ADR-006-healthbridge.md",
+    "sha256": "4d874fded0abd2480a4416a87844a10fc4fca7adaa0b63b28cf8d1257bbe4101"
+  },
+  {
+    "path": "docs/healthbridge/STAGE-FIX-snapshot-memory.md",
+    "sha256": "f41c4f52495b1ba2d2e7919f423d804a960256e051d944e28b95e23af3c7dc5c"
+  },
+  {
+    "path": "docs/healthbridge/CONTRACT.md",
+    "sha256": "0c2f689d957bd057a9c9e4e8691e3aa7cce8612431c06d1092feacbb6bbbf3ee"
+  },
+  {
+    "path": "docs/healthbridge/STAGE-S3A-tool-catalog.md",
+    "sha256": "5e07f661289c1dc2c5dbdcc6f6121ab5bee02ab4e40bbc67d1cb934cbc935c85"
+  },
+  {
+    "path": "docs/healthbridge/STAGE-S4-deployment.md",
+    "sha256": "17a9e21c37d9f97834bcc084212ff162cd116a46f34a63edbb42c4fd8aacdfaa"
+  },
+  {
+    "path": "docs/healthbridge/STAGE-S1-S2-transaction-review.md",
+    "sha256": "208f7fe3c34259524e5113714611a8912db327cfdd6eb45777cfce74eb4cc63c"
+  },
+  {
+    "path": "docs/healthbridge/STAGE-S3B-calendar-window.md",
+    "sha256": "7c44243b81c55e37acea85b8a4ae32c30fd98fbfc196e46f875f1f855896cfd7"
+  },
+  {
+    "path": "docs/healthbridge/HANDOFF.md",
+    "sha256": "03f49a54e3a72bedda0122c3c15457f6e7555f6b03fe0937feb9c32afa0855eb"
+  },
+  {
+    "path": "docs/healthbridge/coder-prompts/S3B-review-recovery.md",
+    "sha256": "a637b24859e4289c6bf09552fe1f3ffeb27f30e3a75a7f5d1adab336aa6bca55"
+  },
+  {
+    "path": "docs/healthbridge/coder-prompts/S3B-calendar-window.md",
+    "sha256": "e039ea585ceae5b4869687f21a04ecd5e8cdd5b32773d41edffb3c4184de1eee"
+  },
+  {
+    "path": "docs/healthbridge/coder-prompts/S3A-tool-catalog.md",
+    "sha256": "0c14cc97e2c687d0b8954a46f7acd6b73fb940b5a965e35ef3d24f8fc54f5d96"
+  },
+  {
+    "path": "docs/healthbridge/reports/HOTFIX-CODER-REPORT.json",
+    "sha256": "eb9210c38625a924726d7962162b1538eddce4101afd6674f7402facf365bcca"
+  },
+  {
+    "path": "docs/healthbridge/reports/S3B-baseline.json",
+    "sha256": "285c2e1a8d35944078a5fc91167dee3919cfa0c49195c054f5e8edcd81f5071d"
+  },
+  {
+    "path": "docs/healthbridge/reports/S3A-baseline.json",
+    "sha256": "0a60f4dc7accf55a7dd5ef949eb45d5db6796860ebee8b93f3c171208006cedf"
+  },
+  {
+    "path": "docs/healthbridge/reports/ios-tests.json",
+    "sha256": "4df81bfdfcd3316efdff7ca90f2878f201d325cf0b558dc3f7b3a3346ced199d"
+  },
+  {
+    "path": "docs/healthbridge/reports/S3B-review.md",
+    "sha256": "199a9a62997fed86cd05f690ba74e5efd207c6e9411608f4f6df96c0b60a46f1"
+  },
+  {
+    "path": "docs/healthbridge/reports/S3A-ledger.json",
+    "sha256": "d14a51e36cb232c637cd23cb8e33ee37622496899513046911f583a49286a282"
+  },
+  {
+    "path": "docs/healthbridge/reports/hotfix-ios-tests.json",
+    "sha256": "24fcbc479d84f1ac27a8630fa39d2b2b0baf7886e42c2e949fbbf850ab4b2cac"
+  },
+  {
+    "path": "docs/healthbridge/reports/HOTFIX-CODER-REPORT.md",
+    "sha256": "f25a40f5bd4f4682bb83dfa224514144031d2dee42f422f8db31a04f9feb30e5"
+  },
+  {
+    "path": "docs/healthbridge/reports/EVO-CODER-REPORT.json",
+    "sha256": "7280f06e4cdfd7980dc7736ea182afe714fee9620fdf138a69fd8bdeace55857"
+  },
+  {
+    "path": "docs/healthbridge/reports/S3A-evo-receipt.jsonl",
+    "sha256": "9a7cf357080f0ea5302baab7ab6390a4a6250d3cbb2a530da5a1b111b181f0fa"
+  },
+  {
+    "path": "docs/healthbridge/reports/OBSERVATION.md",
+    "sha256": "77e072d93a64b770d3e4eba957ba3fa290b7e1d2865f2c89de3657d705d9aeb6"
+  },
+  {
+    "path": "docs/healthbridge/reports/EVO-CODER-REPORT.md",
+    "sha256": "dd02993b5154769d638cd71fa53c2894cc6ecb4e46668301eff70b7ec21ad8ae"
+  },
+  {
+    "path": "docs/healthbridge/reports/S3B-recovery-evo-receipt.jsonl",
+    "sha256": "37814ca31d7b23f1ad4c81e48e4c286b7df7ad4d123be75b75a7d34a8dc82d4b"
+  },
+  {
+    "path": "docs/healthbridge/reports/settings-disabled.png",
+    "sha256": "a194bcd1d3f3cbad6d15e51d4222e855ba9471f329dc150d051b69abc7c897c9"
+  },
+  {
+    "path": "docs/healthbridge/reports/S3A-review.md",
+    "sha256": "f58a5792ea59033b282e59abe161d5bd0f4ebc36b51cbdbf8dc2a09e0a2ac8fb"
+  },
+  {
+    "path": "docs/healthbridge/reports/S3B-evo-receipt.jsonl",
+    "sha256": "534d10249d68f03fc30635016be75921c8f7dd71454bae0e4b06ed487ec630d9"
+  },
+  {
+    "path": "docs/healthbridge/openclaw/healthbridge-read/SKILL.md",
+    "sha256": "deb5cf3f8ef52479e8e1552705b1d71d756269c31f6b27c1554d5193b92b946f"
+  }
+]

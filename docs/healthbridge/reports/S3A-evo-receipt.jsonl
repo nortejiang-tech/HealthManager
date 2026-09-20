@@ -1,0 +1,26 @@
+{"run_id": "bb913d6b-2a89-4467-863c-61e50fb89741", "type": "evo_coder_start", "workdir": "/private/tmp/healthbridge-coder-s3a"}
+{"index": 1, "type": "evo_coder_turn"}
+{"index": 1, "name": "ls", "type": "evo_coder_tool"}
+{"index": 2, "name": "read", "type": "evo_coder_tool"}
+{"index": 2, "type": "evo_coder_turn"}
+{"index": 3, "name": "read", "type": "evo_coder_tool"}
+{"index": 3, "type": "evo_coder_turn"}
+{"index": 4, "name": "write", "type": "evo_coder_tool"}
+{"index": 4, "type": "evo_coder_turn"}
+{"index": 5, "name": "verify", "type": "evo_coder_tool"}
+{"reason_code": "VERIFY_INDEX_NOT_ALLOWED", "type": "evo_coder_guard_violation"}
+{"index": 5, "type": "evo_coder_turn"}
+{"index": 6, "name": "verify", "type": "evo_coder_tool"}
+{"reason_code": "VERIFY_INDEX_NOT_ALLOWED", "type": "evo_coder_guard_violation"}
+{"index": 6, "type": "evo_coder_turn"}
+{"index": 7, "name": "ls", "type": "evo_coder_tool"}
+{"reason_code": "PATH_ESCAPE_DENIED", "type": "evo_coder_guard_violation"}
+{"index": 7, "type": "evo_coder_turn"}
+{"index": 8, "name": "verify", "type": "evo_coder_tool"}
+{"reason_code": "VERIFY_INDEX_NOT_ALLOWED", "type": "evo_coder_guard_violation"}
+{"index": 8, "type": "evo_coder_turn"}
+{"index": 9, "name": "verify", "type": "evo_coder_tool"}
+{"reason_code": "VERIFY_INDEX_NOT_ALLOWED", "type": "evo_coder_guard_violation"}
+{"index": 9, "type": "evo_coder_turn"}
+{"characters": 3279, "sha256": "17456d67b3cb733fc789de76af8a438f9b5004b6a32d83ac0d2ecd90f304b04b", "type": "evo_coder_final_digest"}
+{"changed_paths": ["BridgeToolCatalog.swift"], "classification": "LOCAL_POSTWRITE_FAILURE", "duration_seconds": 86.145, "failure_reason": "GUARD_VIOLATION", "interrupt_signal": null, "max_context_tokens": 6826, "out_of_scope_paths": [], "run_id": "bb913d6b-2a89-4467-863c-61e50fb89741", "status": "BLOCKED", "stop_reason": "stop", "structured_terminal": false, "tool_calls": 9, "turns": 9, "type": "evo_coder_result", "verification_expected": 1, "verification_passes": 0, "verification_runs": 4}

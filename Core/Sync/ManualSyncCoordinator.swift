@@ -1,88 +1,118 @@
 import Foundation
-import GRDB
 
-/// Manual one-shot sync (PRD F-002).
-///
-/// Why two passes around a user prompt:
-/// - HKObserver normally fires when external apps (Garmin / 米家) write to HealthKit, but only
-///   if iOS hasn't suspended us and the source app actually pushed within the last interval.
-/// - When the user pulls manual sync, the *reason* is usually "I think something is missing."
-///   Pass 1 sweeps whatever HK already has. Then we ask the user to open the third-party app
-///   (which forces *it* to flush its queue into HealthKit), and Pass 2 picks up the new writes.
-///
-/// State-machine path driven by the caller (SyncEngine):
-///     idle → syncingIncremental → waitingExternalSync → syncingIncremental2 → reconciling → completed
-///
-/// This coordinator stays UI-agnostic: it accepts a `promptForExternalSync` async closure and
-/// suspends until the caller returns. SyncEngine implements that closure with a CheckedContinuation
-/// that the UI (or scenePhase auto-ack) resumes.
+struct ManualSyncPassResult {
+    let perTypeCounts: [String: Int]
+    let perTypeErrors: [SyncTypeError]
+    let successfulTypes: Set<String>
+}
+
+struct ManualSyncMergedResult {
+    let perTypeCounts: [String: Int]
+    let perTypeErrors: [SyncTypeError]
+    let firstNonAuthorizationError: SyncTypeError?
+
+    var succeeded: Bool { firstNonAuthorizationError == nil }
+}
+
+actor ManualSyncWaiter {
+    private var continuation: CheckedContinuation<Void, Never>?
+    private var hasResumed = false
+
+    func wait() async {
+        await withTaskCancellationHandler {
+            await withCheckedContinuation { continuation in
+                if Task.isCancelled || hasResumed {
+                    hasResumed = true
+                    continuation.resume()
+                } else {
+                    self.continuation = continuation
+                }
+            }
+        } onCancel: {
+            Task { await self.resume() }
+        }
+    }
+
+    func resume() {
+        guard !hasResumed else { return }
+        hasResumed = true
+        if let continuation {
+            self.continuation = nil
+            continuation.resume()
+        }
+    }
+}
+
+/// Owns only the two-pass manual session/job envelope. Actual HealthKit work is supplied by
+/// SyncEngine through the same SyncRunner used by observer, foreground and BG opportunities.
 actor ManualSyncCoordinator {
+    typealias RunPass = @Sendable () async throws -> ManualSyncPassResult
 
-    private let incremental: IncrementalSyncCoordinator
     private let database: DatabaseManager
 
-    init(incremental: IncrementalSyncCoordinator, database: DatabaseManager) {
-        self.incremental = incremental
+    init(database: DatabaseManager) {
         self.database = database
     }
 
     func run(
         trigger: SyncJob.Trigger = .user,
-        progress: @escaping (String) -> Void,
-        promptForExternalSync: () async -> Void
+        progress: @escaping @Sendable (String) -> Void,
+        runPass: @escaping RunPass,
+        promptForExternalSync: @escaping @Sendable () async -> Void
     ) async throws -> SyncEngine.LastResult {
-
-        let jobStart = Date()
-        let jobId = try SyncJobRecorder(database: database).openJob(jobType: .manual, trigger: trigger, startedAt: jobStart)
-
-        progress("第 1 次拉取 HealthKit…")
-        let pass1 = await incremental.executePass(progress: progress)
-
-        progress("等待外部 App 推送至 HealthKit…")
-        await promptForExternalSync()
-
-        progress("第 2 次拉取 HealthKit…")
-        let pass2 = await incremental.executePass(progress: progress)
-
-        // Merge: sum per-type counts; report the first non-nil error so the user sees something.
-        var merged = pass1.perTypeCounts
-        for (k, v) in pass2.perTypeCounts {
-            merged[k, default: 0] += v
-        }
-        let firstError = pass1.firstError ?? pass2.firstError
-
-        // Merge per-type errors: keep the most recent occurrence per hk_type (pass 2 wins).
-        // Pass 2 is the authoritative state — if pass 1 failed but pass 2 succeeded for the
-        // same type, the user shouldn't see a stale error.
-        var mergedErrorsByType: [String: SyncTypeError] = [:]
-        for e in pass1.errors { mergedErrorsByType[e.hkType] = e }
-        let pass2Successes = Set(pass2.perTypeCounts.compactMap { $0.value > 0 ? $0.key : nil })
-        for k in pass2Successes { mergedErrorsByType.removeValue(forKey: k) }
-        for e in pass2.errors { mergedErrorsByType[e.hkType] = e }
-        let mergedErrors = Array(mergedErrorsByType.values)
-            .sorted { $0.hkType < $1.hkType }
-
-        let endedAt = Date()
-        let totalSamples = merged.values.reduce(0, +)
-        let succeeded = (firstError == nil)
-        try SyncJobRecorder(database: database).closeJob(
-            id: jobId,
-            endedAt: endedAt,
-            succeeded: succeeded,
-            errorMessage: firstError?.localizedDescription,
-            stats: merged
+        let startedAt = Date()
+        let jobID = try SyncJobRecorder(database: database).openJob(
+            jobType: .manual,
+            trigger: trigger,
+            startedAt: startedAt
         )
 
-        return SyncEngine.LastResult(
-            jobId: jobId,
-            jobType: .manual,
-            succeeded: succeeded,
-            startedAt: jobStart,
+        progress("第 1 次拉取 HealthKit…")
+        let pass1 = try await runPass()
+        progress("等待外部 App 推送至 HealthKit…")
+        await promptForExternalSync()
+        try Task.checkCancellation()
+        progress("第 2 次拉取 HealthKit…")
+        let pass2 = try await runPass()
+
+        let merged = Self.merge(pass1: pass1, pass2: pass2)
+        let endedAt = Date()
+        let total = merged.perTypeCounts.values.reduce(0, +)
+        try SyncJobRecorder(database: database).closeJob(
+            id: jobID,
             endedAt: endedAt,
-            totalSamples: totalSamples,
-            perTypeCounts: merged,
-            perTypeErrors: mergedErrors,
-            errorMessage: firstError?.localizedDescription
+            succeeded: merged.succeeded,
+            errorMessage: merged.firstNonAuthorizationError?.underlying,
+            stats: merged.perTypeCounts
+        )
+        return SyncEngine.LastResult(
+            jobId: jobID,
+            jobType: .manual,
+            succeeded: merged.succeeded,
+            startedAt: startedAt,
+            endedAt: endedAt,
+            totalSamples: total,
+            perTypeCounts: merged.perTypeCounts,
+            perTypeErrors: merged.perTypeErrors,
+            errorMessage: merged.firstNonAuthorizationError?.underlying
+        )
+    }
+
+    static func merge(
+        pass1: ManualSyncPassResult,
+        pass2: ManualSyncPassResult
+    ) -> ManualSyncMergedResult {
+        var counts = pass1.perTypeCounts
+        for (type, count) in pass2.perTypeCounts { counts[type, default: 0] += count }
+
+        var errors = Dictionary(uniqueKeysWithValues: pass1.perTypeErrors.map { ($0.hkType, $0) })
+        for type in pass2.successfulTypes { errors.removeValue(forKey: type) }
+        for error in pass2.perTypeErrors { errors[error.hkType] = error }
+        let ordered = errors.values.sorted { $0.hkType < $1.hkType }
+        return ManualSyncMergedResult(
+            perTypeCounts: counts,
+            perTypeErrors: ordered,
+            firstNonAuthorizationError: ordered.first(where: { !$0.isAuthDenied })
         )
     }
 }

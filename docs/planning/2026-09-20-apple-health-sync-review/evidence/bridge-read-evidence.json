@@ -1,0 +1,12 @@
+{
+  "total": 418,
+  "without_ack": 7,
+  "payload_bytes": 217869109,
+  "read_only_replay": {
+    "rows": 418,
+    "payload_bytes": 217869109,
+    "elapsed_ms": 27.714,
+    "boundary": "Only SQLite read phase; no iCloud operations or acknowledgment writes. Mac host, not iPhone launch timing."
+  },
+  "active_raw_count": 3547557
+}

@@ -1,0 +1,52 @@
+{
+  "stage": "snapshot-memory-hotfix",
+  "date": "2026-09-19",
+  "coder_calls": [],
+  "routing": "Planner",
+  "no_call_reason": "Snapshot transaction resource lifetime is excluded from local Coder routing; previous verify GUARD_VIOLATION remains unresolved, no automatic fallback.",
+  "baseline": "1479db9 plus existing uncommitted HealthBridge implementation; no reset or commit",
+  "production_changes": [
+    "HealthBridge/Sources/BridgeCore/Source.swift",
+    "project.yml",
+    "App/Info.plist"
+  ],
+  "device_evidence": {
+    "event": "2026-09-19 22:50:32",
+    "process": "HealthManager",
+    "reason": "per-process-limit",
+    "foreground": true,
+    "resident_pages": 216064,
+    "page_size": 16384
+  },
+  "regression": {
+    "pre_fix_60000_rows": {
+      "status": "FAIL",
+      "peak_growth_bytes": 557875200
+    },
+    "post_fix_60000_rows": {
+      "status": "PASS",
+      "peak_growth_bytes": 6848512
+    },
+    "post_fix_600000_rows": {
+      "status": "PASS",
+      "peak_growth_above_fixture_high_water_bytes": 0
+    }
+  },
+  "notes": [
+    "Memory values are macOS regression-process high-water differences, not iPhone live memory. Zero growth on600k means no new peak above fixture setup, not zero memory use.",
+    "Final physical confirmation pending; signed build passed."
+  ],
+  "validation": {
+    "ios_units": {
+      "passed": 331,
+      "failed": 0
+    },
+    "package": {
+      "passed": 12,
+      "failed": 0
+    },
+    "device_version": "0.8.1 (16)",
+    "device_launch": "PASS",
+    "physical_transport": "Partial:392 directories;16 batches/16000 records committed; final snapshot pending"
+  }
+}

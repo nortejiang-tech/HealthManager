@@ -1,0 +1,19 @@
+{"run_id": "2aa6bb9d-0356-4733-96da-2d8da4a6b9ca", "type": "evo_coder_start", "workdir": "/private/tmp/healthbridge-coder-s3b"}
+{"index": 1, "type": "evo_coder_turn"}
+{"index": 1, "name": "ls", "type": "evo_coder_tool"}
+{"index": 2, "type": "evo_coder_turn"}
+{"index": 2, "name": "read", "type": "evo_coder_tool"}
+{"index": 3, "name": "read", "type": "evo_coder_tool"}
+{"index": 3, "type": "evo_coder_turn"}
+{"index": 4, "name": "write", "type": "evo_coder_tool"}
+{"index": 4, "type": "evo_coder_turn"}
+{"index": 5, "name": "verify", "type": "evo_coder_tool"}
+{"reason_code": "VERIFY_INDEX_NOT_ALLOWED", "type": "evo_coder_guard_violation"}
+{"index": 5, "type": "evo_coder_turn"}
+{"index": 6, "name": "ls", "type": "evo_coder_tool"}
+{"index": 6, "type": "evo_coder_turn"}
+{"index": 7, "name": "verify", "type": "evo_coder_tool"}
+{"reason_code": "VERIFY_INDEX_NOT_ALLOWED", "type": "evo_coder_guard_violation"}
+{"index": 7, "type": "evo_coder_turn"}
+{"characters": 25, "sha256": "4c877b8ffc7e6a3a03d28b8a6c6e42685dd2347935725abb1485fc8b35ee8f0e", "type": "evo_coder_final_digest"}
+{"changed_paths": ["BridgeCalendarWindow.swift"], "classification": "LOCAL_POSTWRITE_FAILURE", "duration_seconds": 43.647, "failure_reason": "GUARD_VIOLATION", "interrupt_signal": null, "max_context_tokens": 5097, "out_of_scope_paths": [], "run_id": "2aa6bb9d-0356-4733-96da-2d8da4a6b9ca", "status": "BLOCKED", "stop_reason": "stop", "structured_terminal": false, "tool_calls": 7, "turns": 7, "type": "evo_coder_result", "verification_expected": 1, "verification_passes": 0, "verification_runs": 2}

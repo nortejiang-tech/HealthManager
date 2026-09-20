@@ -47,15 +47,21 @@ final class SyncEngine: ObservableObject {
         healthKitManager: healthKitManager,
         database: database
     )
+    private(set) lazy var projectionWorker = ProjectionWorker(database: database)
+    private(set) lazy var syncRunner = SyncRunner(
+        store: SyncWorkStore(database: database),
+        projectionWorker: projectionWorker
+    )
     private(set) lazy var manualCoordinator = ManualSyncCoordinator(
-        incremental: incrementalCoordinator,
         database: database
     )
     private(set) lazy var dailyReconciler = DailyReconciler(database: database)
     private(set) lazy var dailyAggregator = DailyAggregator(database: database)
 
     private var stateMachine = SyncStateMachine()
-    private var externalSyncContinuation: CheckedContinuation<Void, Never>?
+    private var manualSyncWaiter: ManualSyncWaiter?
+    private var activeIncrementalSubmissions = 0
+    private var manualSessionActive = false
 
     @Published private(set) var isReconciling: Bool = false
     @Published private(set) var lastReconcileOutcome: DailyReconciler.Outcome?
@@ -79,13 +85,23 @@ final class SyncEngine: ObservableObject {
         isStartupRecoveryReady = true
     }
 
+    var onDataSynchronized: (@MainActor () async -> Void)?
+
     // MARK: - Backfill (F-001A)
 
     func runBackfill(days: Int = 30, trigger: SyncJob.Trigger = .user) async {
         guard requireStartupRecoveryReady(operation: "历史回补") else { return }
         guard !isBusy else { return }
         isBusy = true
-        defer { isBusy = false }
+        defer {
+            isBusy = false
+            Task { await onDataSynchronized?() }
+            // Observer/foreground demand received during the exclusive legacy backfill was
+            // durably queued. Give the shared runner an execution opportunity now.
+            Task { @MainActor [weak self] in
+                await self?.runIncremental(trigger: .timer)
+            }
+        }
 
         do {
             // After a previous run the machine sits at .completed / .failed (terminal). Reset
@@ -120,50 +136,124 @@ final class SyncEngine: ObservableObject {
 
     // MARK: - Incremental (F-001)
 
+    /// Full-catalog incremental pass. Kept source-compatible with older callers.
     func runIncremental(trigger: SyncJob.Trigger = .timer) async {
+        await runIncremental(trigger: trigger, typeScope: nil)
+    }
+
+    /// Incremental pass restricted to `typeScope`.
+    ///
+    /// - Parameter typeScope: `nil` (default) requests the whole read catalog, which is what
+    ///   foreground/auth/unlock/background/manual opportunities do. An explicit set requests
+    ///   exactly those identifiers, so an observer delivery only marks the one type HealthKit
+    ///   actually delivered (design §5 / C02) instead of bumping all 28 generations.
+    ///   An explicitly empty set is not silently widened to the full catalog; the durable
+    ///   store rejects it and no demand is recorded.
+    func runIncremental(
+        trigger: SyncJob.Trigger = .timer,
+        typeScope: Set<String>?
+    ) async {
         guard requireStartupRecoveryReady(operation: "增量同步") else { return }
-        // Single-flight: observer / BG task / timer can all converge here in quick succession.
-        // Dropping concurrent calls is safe — whoever wins picks up everything new since the
-        // last anchor on the next pass.
-        guard !isBusy else {
-            AppLogger.shared.sync.info("runIncremental skipped: busy")
+
+        let types = typeScope ?? Set(HealthKitTypeCatalog.allReadSampleTypes.map(\.identifier))
+        let demand = SyncDemand(
+            types: types,
+            reason: Self.syncReason(for: trigger),
+            intentID: UUID()
+        )
+
+        // Backfill/manual still use their compatibility envelopes until S10. They remain
+        // mutually exclusive with incremental writes, but incoming demand is persisted now
+        // and is drained when the envelope releases instead of being dropped.
+        if isBusy, activeIncrementalSubmissions == 0, !manualSessionActive {
+            do {
+                try await syncRunner.enqueue(demand)
+                AppLogger.shared.sync.info("Incremental demand queued behind exclusive operation")
+            } catch {
+                progressDescription = "增量同步排队失败：\(error.localizedDescription)"
+            }
             return
         }
-        isBusy = true
-        defer { isBusy = false }
 
-        do {
+        let ownsPresentation = activeIncrementalSubmissions == 0 && !manualSessionActive
+        activeIncrementalSubmissions += 1
+        if ownsPresentation {
+            isBusy = true
             try? stateMachine.handle(.reset)
-            try stateMachine.handle(.startIncremental)
+            try? stateMachine.handle(.startIncremental)
             phase = stateMachine.phase
             progressDescription = "增量同步中…"
+        }
+        defer {
+            activeIncrementalSubmissions -= 1
+            if activeIncrementalSubmissions == 0, !manualSessionActive {
+                isBusy = false
+                Task { await onDataSynchronized?() }
+            }
+        }
 
-            let result = try await incrementalCoordinator.run(
-                trigger: trigger,
-                progress: { [weak self] desc in
-                    Task { @MainActor in self?.progressDescription = desc }
-                }
-            )
+        do {
+            let coordinator = incrementalCoordinator
+            let receipt = try await syncRunner.submit(demand) { [weak self] in
+                let result = try await coordinator.run(
+                    trigger: trigger,
+                    progress: { desc in
+                        Task { @MainActor [weak self] in self?.progressDescription = desc }
+                    }
+                )
+                return SyncRunnerSliceResult(
+                    jobID: result.jobId,
+                    startedAt: result.startedAt,
+                    endedAt: result.endedAt,
+                    perTypeCounts: result.perTypeCounts,
+                    perTypeErrors: result.perTypeErrors,
+                    errorMessage: result.errorMessage
+                )
+            }
 
+            await publishIncrementalProjection(changedDates: receipt.changedDates)
+            guard ownsPresentation else { return }
+            guard let jobID = receipt.lastJobID else {
+                throw SyncRunnerError.sliceLimitReached(0)
+            }
             try stateMachine.handle(.incrementalFinished)
             phase = stateMachine.phase
             try stateMachine.handle(.reconcileFinished)
             phase = stateMachine.phase
 
+            let result = LastResult(
+                jobId: jobID,
+                jobType: .incremental,
+                succeeded: receipt.firstErrorMessage == nil,
+                startedAt: receipt.startedAt,
+                endedAt: receipt.endedAt,
+                totalSamples: receipt.perTypeCounts.values.reduce(0, +),
+                perTypeCounts: receipt.perTypeCounts,
+                perTypeErrors: receipt.perTypeErrors,
+                errorMessage: receipt.firstErrorMessage
+            )
             lastResult = result
-            await rebuildDailyProjections(daysBack: 7)
-            // Silent catch-up: write any not-yet-synced meal nutrition into Apple Health.
             await pushMealNutritionToHealth(requestAuthIfNeeded: false)
             progressDescription = result.succeeded
                 ? "增量同步完成：本轮新增 \(result.totalSamples) 条。"
                 : "增量同步失败：\(result.errorMessage ?? "未知错误")"
         } catch {
+            guard ownsPresentation else { return }
             try? stateMachine.handle(.fail)
             phase = stateMachine.phase
             progressDescription = "增量同步失败：\(error.localizedDescription)"
             AppLogger.shared.sync.error(
                 "runIncremental failed: \(error.localizedDescription, privacy: .public)"
             )
+        }
+    }
+
+    private static func syncReason(for trigger: SyncJob.Trigger) -> SyncReason {
+        switch trigger {
+        case .user: return .manual
+        case .observer: return .observer
+        case .bgTask: return .background
+        case .timer, .app: return .foreground
         }
     }
 
@@ -177,15 +267,15 @@ final class SyncEngine: ObservableObject {
             AppLogger.shared.sync.info("runManualSync skipped: busy")
             return
         }
+        manualSessionActive = true
         isBusy = true
         defer {
+            manualSessionActive = false
             isBusy = false
             manualSyncPrompt = nil
-            // Defensive: if we exit while a continuation is pending (shouldn't happen on the
-            // happy path), resume it so we don't strand the coordinator's await.
-            if let cont = externalSyncContinuation {
-                externalSyncContinuation = nil
-                cont.resume()
+            if let waiter = manualSyncWaiter {
+                manualSyncWaiter = nil
+                Task { await waiter.resume() }
             }
         }
 
@@ -200,6 +290,10 @@ final class SyncEngine: ObservableObject {
                 progress: { [weak self] desc in
                     Task { @MainActor in self?.progressDescription = desc }
                 },
+                runPass: { [weak self] in
+                    guard let self else { throw CancellationError() }
+                    return try await self.executeManualRunnerPass()
+                },
                 promptForExternalSync: { [weak self] in
                     await self?.waitForExternalSync()
                 }
@@ -211,7 +305,6 @@ final class SyncEngine: ObservableObject {
             phase = stateMachine.phase
 
             lastResult = result
-            await rebuildDailyProjections(daysBack: 7)
             // User-initiated: also push diet nutrition to Apple Health (prompts for write
             // permission the first time).
             progressDescription = "正在把饮食营养写入 Apple 健康…"
@@ -232,9 +325,8 @@ final class SyncEngine: ObservableObject {
     /// Called by UI / scenePhase observer to tell the coordinator the user has finished
     /// (or skipped) the external-app step. Safe to call when no prompt is active — no-op.
     func acknowledgeExternalSyncDone() {
-        guard let cont = externalSyncContinuation else { return }
-        externalSyncContinuation = nil
-        cont.resume()
+        guard let waiter = manualSyncWaiter else { return }
+        Task { await waiter.resume() }
     }
 
     /// Coordinator-facing wait. Drives the state machine into `waitingExternalSync`, exposes
@@ -248,13 +340,46 @@ final class SyncEngine: ObservableObject {
             message: "打开 Garmin Connect / 米家 / 小米运动健康 等数据源 App，等待它们同步至「健康」后回到本 App 即可继续。"
         )
 
-        await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
-            externalSyncContinuation = cont
-        }
+        let waiter = ManualSyncWaiter()
+        manualSyncWaiter = waiter
+        await waiter.wait()
+        if manualSyncWaiter === waiter { manualSyncWaiter = nil }
 
         manualSyncPrompt = nil
         try? stateMachine.handle(.userResumedFromExternal)
         phase = stateMachine.phase
+    }
+
+    private func executeManualRunnerPass() async throws -> ManualSyncPassResult {
+        let demand = SyncDemand(
+            types: Set(HealthKitTypeCatalog.allReadSampleTypes.map(\.identifier)),
+            reason: .manual,
+            intentID: UUID()
+        )
+        let coordinator = incrementalCoordinator
+        let receipt = try await syncRunner.submit(demand) { [weak self] in
+            let result = try await coordinator.run(
+                trigger: .user,
+                progress: { desc in
+                    Task { @MainActor [weak self] in self?.progressDescription = desc }
+                }
+            )
+            return SyncRunnerSliceResult(
+                jobID: result.jobId,
+                startedAt: result.startedAt,
+                endedAt: result.endedAt,
+                perTypeCounts: result.perTypeCounts,
+                perTypeErrors: result.perTypeErrors,
+                errorMessage: result.errorMessage
+            )
+        }
+        await publishIncrementalProjection(changedDates: receipt.changedDates)
+        let failedTypes = Set(receipt.perTypeErrors.map(\.hkType))
+        return ManualSyncPassResult(
+            perTypeCounts: receipt.perTypeCounts,
+            perTypeErrors: receipt.perTypeErrors,
+            successfulTypes: Set(receipt.perTypeCounts.keys).subtracting(failedTypes)
+        )
     }
 
     // MARK: - Reconcile (R-001)
@@ -358,9 +483,10 @@ final class SyncEngine: ObservableObject {
     /// `AppEnvironment.bootstrap` when raw data exists but the daily tables are empty
     /// (e.g. user upgraded from a build that didn't run `DailyAggregator`). Bumps
     /// `aggregationTick` so observers re-fetch.
-    func runCatchUpAggregation(windowDays: Int) async {
-        guard requireStartupRecoveryReady(operation: "聚合刷新") else { return }
-        await rebuildDailyProjections(daysBack: windowDays)
+    @discardableResult
+    func runCatchUpAggregation(windowDays: Int) async -> Bool {
+        guard requireStartupRecoveryReady(operation: "聚合刷新") else { return false }
+        return await rebuildDailyProjections(daysBack: windowDays)
     }
 
     @discardableResult
@@ -375,8 +501,32 @@ final class SyncEngine: ObservableObject {
         return true
     }
 
-    private func rebuildDailyProjections(daysBack: Int) async {
-        try? await dailyAggregator.rebuild(daysBack: daysBack)
+    @discardableResult
+    private func rebuildDailyProjections(daysBack: Int) async -> Bool {
+        var rawProjectionSucceeded = true
+        do {
+            try await dailyAggregator.rebuild(daysBack: daysBack)
+        } catch {
+            rawProjectionSucceeded = false
+            AppLogger.shared.sync.error(
+                "Daily projection rebuild failed: \(error.localizedDescription, privacy: .public)"
+            )
+        }
+        await projectAppleHealthStepStatistics(daysBack: daysBack)
+        await projectAppleHealthBasalEnergyStatistics(daysBack: daysBack)
+        aggregationTick &+= 1
+        return rawProjectionSucceeded
+    }
+
+    private func publishIncrementalProjection(changedDates: Set<String>) async {
+        guard !changedDates.isEmpty else { return }
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+        let earliest = changedDates.compactMap { DashboardLoader.dateKey.date(from: $0) }.min() ?? today
+        let distance = calendar.dateComponents([.day], from: earliest, to: today).day ?? 0
+        let daysBack = max(1, distance + 1)
+        // Exact raw aggregation already ran in ProjectionWorker. HealthKit statistics remain
+        // a bounded override/fallback for the same affected span; failures preserve raw output.
         await projectAppleHealthStepStatistics(daysBack: daysBack)
         await projectAppleHealthBasalEnergyStatistics(daysBack: daysBack)
         aggregationTick &+= 1
@@ -415,6 +565,7 @@ final class SyncEngine: ObservableObject {
                         ON CONFLICT(date) DO UPDATE SET
                           step_count = excluded.step_count,
                           computed_at = excluded.computed_at
+                        WHERE activity_metrics_daily.step_count IS NOT excluded.step_count
                         """, arguments: [date, stepCount, computedAt])
                 }
             }
@@ -458,6 +609,7 @@ final class SyncEngine: ObservableObject {
                         ON CONFLICT(date) DO UPDATE SET
                           basal_energy_kcal = excluded.basal_energy_kcal,
                           computed_at = excluded.computed_at
+                        WHERE activity_metrics_daily.basal_energy_kcal IS NOT excluded.basal_energy_kcal
                         """, arguments: [date, basalKcal, computedAt])
 
                     try db.execute(sql: """
@@ -466,6 +618,7 @@ final class SyncEngine: ObservableObject {
                         ON CONFLICT(date) DO UPDATE SET
                           basal_energy_kcal = excluded.basal_energy_kcal,
                           computed_at = excluded.computed_at
+                        WHERE body_metrics_daily.basal_energy_kcal IS NOT excluded.basal_energy_kcal
                         """, arguments: [date, basalKcal, computedAt])
                 }
             }

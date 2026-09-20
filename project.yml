@@ -34,14 +34,15 @@ targets:
     sources:
       - path: App
       - path: Core
+      - path: HealthBridge/Sources/BridgeCore
       - path: UI
       - path: Resources
     info:
       path: App/Info.plist
       properties:
         CFBundleDisplayName: 健康管理
-        CFBundleShortVersionString: "0.7.1"
-        CFBundleVersion: "14"
+        CFBundleShortVersionString: "0.8.1"
+        CFBundleVersion: "16"
         LSRequiresIPhoneOS: true
         UILaunchScreen:
           UIColorName: ""

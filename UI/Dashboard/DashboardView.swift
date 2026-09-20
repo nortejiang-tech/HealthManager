@@ -153,6 +153,7 @@ struct DashboardView: View {
         let generation = refreshGeneration
         let shouldShowInitialLoading = !hasLoadedSnapshot
         if shouldShowInitialLoading {
+            environment.startupMetrics.record(.initialSnapshotRequested)
             isLoading = true
         }
         loadError = nil
@@ -165,12 +166,20 @@ struct DashboardView: View {
                 self.loadError = nil
                 self.hasLoadedSnapshot = true
                 self.isLoading = false
+                if shouldShowInitialLoading {
+                    self.environment.startupMetrics.record(.snapshotAvailable)
+                    self.environment.initialDashboardSnapshotDidSettle(succeeded: true)
+                }
             }
         } catch {
             await MainActor.run {
                 guard generation == self.refreshGeneration else { return }
                 self.loadError = "加载失败：\(error.localizedDescription)"
                 self.isLoading = false
+                if shouldShowInitialLoading {
+                    self.environment.startupMetrics.record(.initialSnapshotError)
+                    self.environment.initialDashboardSnapshotDidSettle(succeeded: false)
+                }
             }
             AppLogger.shared.error("Dashboard refresh failed: \(error.localizedDescription)")
         }

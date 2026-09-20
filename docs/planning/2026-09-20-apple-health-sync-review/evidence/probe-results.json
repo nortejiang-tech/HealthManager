@@ -1,0 +1,17 @@
+[
+  {
+    "run": 1,
+    "exit_code": 1,
+    "stdout": "passes=1, sourceVersion=1, importedVersion=0, observerAcknowledged=true, isBusy=false\nFAIL: observer event acknowledged but new data not imported; no follow-up pass scheduled\n"
+  },
+  {
+    "run": 2,
+    "exit_code": 1,
+    "stdout": "passes=1, sourceVersion=1, importedVersion=0, observerAcknowledged=true, isBusy=false\nFAIL: observer event acknowledged but new data not imported; no follow-up pass scheduled\n"
+  },
+  {
+    "run": 3,
+    "exit_code": 1,
+    "stdout": "passes=1, sourceVersion=1, importedVersion=0, observerAcknowledged=true, isBusy=false\nFAIL: observer event acknowledged but new data not imported; no follow-up pass scheduled\n"
+  }
+]

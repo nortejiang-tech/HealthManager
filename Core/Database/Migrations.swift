@@ -632,6 +632,62 @@ enum Migrations {
             }
         }
 
+        migrator.registerMigration("v12_healthbridge_outbox") { db in
+            try BridgeSource.migrate(db)
+        }
+
+        migrator.registerMigration("v13_healthbridge_restore_suspension") { db in
+            try db.alter(table: "bridge_state") { t in t.add(column: "paused_reason", .text) }
+        }
+
+        // MARK: v14 — durable sync demand, dirty projections, and restore coordination
+        //
+        // These are runtime control tables, not user content. They intentionally stay out
+        // of backup packages. Pending generations and dirty dates survive process death;
+        // in-memory worker tokens and callbacks do not.
+        migrator.registerMigration("v14_sync_work_queue") { db in
+            try db.create(table: "sync_type_work") { t in
+                t.column("hk_type", .text).primaryKey()
+                t.column("requested_generation", .integer).notNull().defaults(to: 0)
+                    .check(sql: "requested_generation >= 0")
+                t.column("completed_generation", .integer).notNull().defaults(to: 0)
+                    .check(sql: "completed_generation >= 0 AND completed_generation <= requested_generation")
+                t.column("reason_mask", .integer).notNull().defaults(to: 0)
+                t.column("deferred_reason", .text)
+                t.column("retry_at", .double)
+                t.column("last_checked_at", .double)
+                t.column("last_error_code", .text)
+            }
+            try db.create(
+                index: "idx_sync_type_work_ready",
+                on: "sync_type_work",
+                columns: ["deferred_reason", "retry_at", "hk_type"]
+            )
+
+            try db.create(table: "sync_projection_work") { t in
+                t.column("local_date", .text).notNull()
+                t.column("time_zone", .text).notNull()
+                t.column("projection_version", .integer).notNull()
+                t.column("generation", .integer).notNull().defaults(to: 1)
+                    .check(sql: "generation > 0")
+                t.primaryKey(["local_date", "time_zone", "projection_version"])
+            }
+
+            try db.create(table: "sync_runtime_state") { t in
+                t.column("id", .integer).primaryKey().check(sql: "id = 1")
+                t.column("restore_in_progress", .boolean).notNull().defaults(to: false)
+                t.column("projection_time_zone", .text)
+                t.column("projection_version", .integer).notNull().defaults(to: 1)
+                t.column("runner_paused_reason", .text)
+                t.column("updated_at", .double).notNull().defaults(to: 0)
+            }
+            try db.execute(sql: """
+                INSERT INTO sync_runtime_state
+                    (id, restore_in_progress, projection_version, updated_at)
+                VALUES (1, 0, 1, 0)
+                """)
+        }
+
         return migrator
     }
 

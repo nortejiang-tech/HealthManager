@@ -1,0 +1,18 @@
+{
+  "App/HealthManagerApp.swift": "6c415fd5cca8880ca009c1a13771c2b2433bbdcf323fb1d89381878897464992",
+  "App/AppEnvironment.swift": "88f9d23ad219441888e62489827a5326a24b4ea7a8990913fb37f5ac052ebd04",
+  "App/RootView.swift": "e752484c03157583820dad98d436b24700b1c63582d89ae60c5713d4de9fad47",
+  "UI/Dashboard/DashboardData.swift": "31b8a9b941c37eb11346139539441a38c6ed3918e7390e7085e3eb2dada581f3",
+  "UI/Dashboard/DashboardView.swift": "c5624a164172f764b03a60d1d25c2d454c28996dc7305c9a92d8cd0e921c675e",
+  "Core/HealthKit/HealthKitManager.swift": "fa2270b9e54f63a9605225b27ee48b33bcb3a1bce8e8199d7f81c70548a63b23",
+  "Core/HealthKit/HealthKitTypeCatalog.swift": "38fd81765a6a9770f7cf637b08a89bd07fe3cf1fce246e4f58e11952ecaac0d6",
+  "Core/Sync/SyncEngine.swift": "cf50dbf9f0c9fdd7e64289551f4bc91ba82acfd915c2de5affebe1719b1067ab",
+  "Core/Sync/IncrementalSyncCoordinator.swift": "2427984bb72a5d765dbd86e9f711a780f796c9a0d121c122e2f1cc68836099a2",
+  "Core/Sync/HealthKitObserver.swift": "4e242bc6ade143aa19d502dfd0132c2d9d015e2c996ae08bee50706565de0722",
+  "Core/Sync/BackgroundTaskScheduler.swift": "502f05dd30cb27a973be311e024061a657899d544673c7e7080bab4e46d2a135",
+  "Core/Sync/ManualSyncCoordinator.swift": "612c8510e9077df520622de8a7aeda28f1d0dad4e00a46f389ea48702a37012e",
+  "Core/Aggregate/DailyAggregator.swift": "d0b0967e6f26b078fe9c255830ca1eec27e1690233746c89c838a7df942435ae",
+  "Core/Database/Migrations.swift": "4609997ff3a0a0dd2b4d99f08c5ac797901ff32bb4a94ccddafa991ba45f990a",
+  "Core/Bridge/HealthBridgeManager.swift": "75b8a2b1a3f34f82a930e02d47cba6d838e3463ac39cd2274af1248290107e45",
+  "HealthBridge/Sources/BridgeCore/Source.swift": "bb20644d38dcd3fa3699853ac9b2045cde415d2ae6e15fa2373ddc0ba9271610"
+}

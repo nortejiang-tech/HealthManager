@@ -107,9 +107,6 @@ struct DashboardSnapshot: Sendable, Equatable {
     var criticalAlertCount: Int = 0
     /// 未确认告警涉及的指标类数（“有 N 类数据待检查”，不展示历史长串总数）。
     var unackMetricCount: Int = 0
-
-    var rawSampleCount: Int = 0
-    var lastIngest: Date?
 }
 
 // MARK: - Per-card payloads
@@ -206,14 +203,6 @@ struct DashboardLoader {
             let last30Cutoff = cal.date(byAdding: .day, value: -29, to: todayStart) ?? todayStart
             let last7Key = Self.dateKey.string(from: last7Cutoff)
             let last30Key = Self.dateKey.string(from: last30Cutoff)
-
-            // -- raw counts / freshness for hero --
-            snap.rawSampleCount = try Int.fetchOne(db,
-                sql: "SELECT COUNT(*) FROM health_samples_raw WHERE is_deleted = 0") ?? 0
-            if let maxIngested = try Int64.fetchOne(db,
-                sql: "SELECT MAX(ingested_at) FROM health_samples_raw") {
-                snap.lastIngest = Date(timeIntervalSince1970: TimeInterval(maxIngested))
-            }
 
             // -- activity (today + 7d) --
             if let row = try Row.fetchOne(db, sql: """

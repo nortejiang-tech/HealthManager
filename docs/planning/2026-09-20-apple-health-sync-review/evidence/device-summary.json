@@ -1,0 +1,159 @@
+{
+  "integrity": {
+    "rows": [
+      {
+        "quick_check": "ok"
+      }
+    ],
+    "elapsed_seconds": 1.241
+  },
+  "job_groups": {
+    "rows": [
+      {
+        "job_type": "backfill",
+        "trigger": "user",
+        "state": "succeeded",
+        "n": 2,
+        "avg_seconds": 12.5,
+        "max_seconds": 21
+      },
+      {
+        "job_type": "incremental",
+        "trigger": "bg_task",
+        "state": "failed",
+        "n": 19,
+        "avg_seconds": 24.47,
+        "max_seconds": 27
+      },
+      {
+        "job_type": "incremental",
+        "trigger": "bg_task",
+        "state": "succeeded",
+        "n": 5,
+        "avg_seconds": 1.0,
+        "max_seconds": 2
+      },
+      {
+        "job_type": "incremental",
+        "trigger": "observer",
+        "state": "failed",
+        "n": 16,
+        "avg_seconds": 1097.88,
+        "max_seconds": 7217
+      },
+      {
+        "job_type": "incremental",
+        "trigger": "observer",
+        "state": "succeeded",
+        "n": 130,
+        "avg_seconds": 172.18,
+        "max_seconds": 5749
+      },
+      {
+        "job_type": "incremental",
+        "trigger": "timer",
+        "state": "failed",
+        "n": 3,
+        "avg_seconds": 397.67,
+        "max_seconds": 752
+      },
+      {
+        "job_type": "incremental",
+        "trigger": "timer",
+        "state": "running",
+        "n": 1,
+        "avg_seconds": null,
+        "max_seconds": null
+      },
+      {
+        "job_type": "incremental",
+        "trigger": "timer",
+        "state": "succeeded",
+        "n": 11,
+        "avg_seconds": 24.0,
+        "max_seconds": 150
+      },
+      {
+        "job_type": "manual",
+        "trigger": "user",
+        "state": "succeeded",
+        "n": 13,
+        "avg_seconds": 6.77,
+        "max_seconds": 9
+      },
+      {
+        "job_type": "reconcile",
+        "trigger": "bg_task",
+        "state": "succeeded",
+        "n": 6,
+        "avg_seconds": 0.67,
+        "max_seconds": 1
+      },
+      {
+        "job_type": "reconcile",
+        "trigger": "user",
+        "state": "succeeded",
+        "n": 1,
+        "avg_seconds": 0.0,
+        "max_seconds": 0
+      }
+    ],
+    "elapsed_seconds": 0.002
+  },
+  "errors": {
+    "rows": [
+      {
+        "error_code": null,
+        "error_message": "HealthKit 查询失败：Protected health data is inaccessible",
+        "n": 23
+      },
+      {
+        "error_code": "interrupted_before_completion",
+        "error_message": "上次同步在完成前中断，已在本次启动时标记为失败。",
+        "n": 15
+      }
+    ],
+    "elapsed_seconds": 0.0
+  },
+  "anchors": {
+    "rows": [
+      {
+        "n": 28,
+        "oldest": "2026-09-20 01:23:44",
+        "newest": "2026-09-20 01:23:45"
+      }
+    ],
+    "elapsed_seconds": 0.0
+  },
+  "bridge": {
+    "rows": [
+      {
+        "enabled": 1,
+        "needs_snapshot": 0,
+        "sequence": 418,
+        "cursor": 2331,
+        "paused_reason": null
+      }
+    ],
+    "elapsed_seconds": 0.0
+  },
+  "bridge_queue": {
+    "rows": [
+      {
+        "changes": 0,
+        "outbox": 418
+      }
+    ],
+    "elapsed_seconds": 0.0
+  },
+  "raw": {
+    "rows": [
+      {
+        "n": 3597222,
+        "oldest": "2016-12-19 00:00:00",
+        "newest": "2026-09-20 07:00:00"
+      }
+    ],
+    "elapsed_seconds": 0.107
+  }
+}

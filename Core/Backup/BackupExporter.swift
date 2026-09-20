@@ -6,6 +6,7 @@ enum BackupExportError: Error, Equatable, LocalizedError {
     case folderUnavailable(String)
     case tableUnavailable(String)
     case writeFailed(String)
+    case publishFailed(String)
 
     var errorDescription: String? {
         switch self {
@@ -15,6 +16,8 @@ enum BackupExportError: Error, Equatable, LocalizedError {
             return "备份表不可用：\(table)"
         case .writeFailed(let detail):
             return "备份写入失败：\(detail)"
+        case .publishFailed(let detail):
+            return "备份发布失败：\(detail)"
         }
     }
 }
@@ -86,23 +89,46 @@ struct BackupExporter {
         self.database = database
     }
 
-    /// 把全部表导出到包目录（创建目录、逐表写 JSONL、最后写 manifest 与 README）。
-    /// manifest 是包的「提交点」：它最后写入，导入侧以它为入口并校验各文件。
-    func export(to packageURL: URL) async throws -> BackupManifest {
+    /// 把全部表先导出到目标同目录的 staging 包，校验文件全部生成后再一次发布。
+    ///
+    /// 仅在原包内最后写 manifest 不能保护旧备份：后台挂起可能已经覆盖部分 JSONL，
+    /// 却来不及更新 manifest，旧 manifest 随即与新文件不匹配。staging + 同卷替换使旧包
+    /// 在新包完整生成前保持逐字节不变；`beforeCommit` 仅用于故障注入测试。
+    func export(
+        to packageURL: URL,
+        beforeCommit: (URL) throws -> Void = { _ in }
+    ) async throws -> BackupManifest {
         let fm = FileManager.default
+        let parentURL = packageURL.deletingLastPathComponent()
         do {
-            try fm.createDirectory(at: packageURL, withIntermediateDirectories: true)
+            try fm.createDirectory(at: parentURL, withIntermediateDirectories: true)
         } catch {
-            throw BackupExportError.folderUnavailable(packageURL.path)
+            throw BackupExportError.folderUnavailable(parentURL.path)
+        }
+
+        let stagingURL = parentURL.appendingPathComponent(
+            ".\(packageURL.lastPathComponent).staging-\(UUID().uuidString)",
+            isDirectory: true
+        )
+        do {
+            try fm.createDirectory(at: stagingURL, withIntermediateDirectories: false)
+        } catch {
+            throw BackupExportError.folderUnavailable(stagingURL.path)
+        }
+        var published = false
+        defer {
+            if !published {
+                try? fm.removeItem(at: stagingURL)
+            }
         }
 
         var entries: [BackupFileEntry] = []
         entries.reserveCapacity(Self.tables.count + 1)
         for spec in Self.tables {
-            entries.append(try await exportTable(spec, to: packageURL))
+            entries.append(try await exportTable(spec, to: stagingURL))
         }
         // App 配置快照（对账阈值 / 卡片布局 / AI 非敏感配置；不含 API Key）。
-        entries.append(try exportSettings(to: packageURL))
+        entries.append(try exportSettings(to: stagingURL))
 
         let manifest = BackupManifest(
             formatVersion: BackupManifest.currentFormatVersion,
@@ -114,13 +140,30 @@ struct BackupExporter {
         encoder.outputFormatting = [.sortedKeys, .prettyPrinted]
         let manifestData = try encoder.encode(manifest)
         try manifestData.write(
-            to: packageURL.appendingPathComponent("manifest.json"),
+            to: stagingURL.appendingPathComponent("manifest.json"),
             options: .atomic
         )
         try Data(Self.readmeText.utf8).write(
-            to: packageURL.appendingPathComponent("README.md"),
+            to: stagingURL.appendingPathComponent("README.md"),
             options: .atomic
         )
+
+        try beforeCommit(stagingURL)
+        do {
+            if fm.fileExists(atPath: packageURL.path) {
+                _ = try fm.replaceItemAt(
+                    packageURL,
+                    withItemAt: stagingURL,
+                    backupItemName: nil,
+                    options: []
+                )
+            } else {
+                try fm.moveItem(at: stagingURL, to: packageURL)
+            }
+            published = true
+        } catch {
+            throw BackupExportError.publishFailed(error.localizedDescription)
+        }
         return manifest
     }
 
