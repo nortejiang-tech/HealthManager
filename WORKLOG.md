@@ -1140,3 +1140,12 @@ xcodebuild -scheme HealthManager -configuration Release -destination 'id=0000815
 - 将全库证据扫描移到 WAL reader，使用 cursor 和复用 formatter，仅在短事务发布去重日期。真机副本完整扫描约 5.98 秒且不阻塞交互 writer。
 - 并发聚焦回归 `9/9`，有签名完整回归 `437/437`（单元 `428/428`、UI `9/9`），签名真机构建与覆盖安装通过；锁屏数据库 `quick_check=ok` 且原数据保留。设备锁定，真实点按重放留为 `PENDING`。
 - 该修复为数据库并发与数据一致性边界，由 Planner 直接完成，EVO 未调用且累计比率不变。
+
+
+## 2026-09-21 — Apple Health 解锁后仍显示等待设备解锁
+
+- 真机取证确认 03:06 的后台 HealthKit code 6 是设备锁定期的真实错误；问题在于解锁后的前台请求只推进 generation，没有清除 28 类 `waitForUnlock`，而 runner 会排除这些 parked work，导致同步中心长期显示旧状态。
+- `SyncWorkStore.request` 现在按原因恢复保护数据 deferral：foreground/background/manual/retry 可重新 probe；observer 保持 parked；authorization/repair/failure 不受影响。若仍锁定，既有错误路径会再次挂起。
+- 聚焦 `24/24`、完整 `440/440`（单元 `431/431`、UI `9/9`）通过；签名真机构建、覆盖安装和启动通过。
+- 修复前数据库 `pending=28`、`waitForUnlock=28`；修复后 `quick_check=ok`、`pending=0`、`waitForUnlock=0`，28/28 类型 requested/completed generation 相等，app 自动作业 880 成功。数据保留并增长至 3,598,770 raw、339 条餐次、666 条 item。
+- 该阶段属于 HealthKit 生命周期与 durable ledger 一致性边界，由 Planner 直接完成；EVO 未调用，累计监督器通过率 `0/5`、首次独立验收通过率 `0/5`、有用产出采纳率 `4/5` 均不变。

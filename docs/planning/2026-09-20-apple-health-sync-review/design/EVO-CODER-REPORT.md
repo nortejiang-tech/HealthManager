@@ -195,3 +195,12 @@ S13 终态仍为 `PENDING`：内部 snapshot p95、最终签名二进制 20 次�
 - 报表影响：本阶段为 Planner-only，不计入 Coder 比率分母；累计监督器通过率仍为 `0/5`、首次独立验收通过率 `0/5`、有用产出采纳率 `4/5`。
 
 本轮 EVO-Coder 评价保持不变：它在 S13 前两次调用中给出过一个可用 API 方向，但没有生成可直接编译和独立验收的完整修复；餐次卡死属于其风险边界外的数据库并发问题，由 Planner 接管更合适。
+
+## S13 — 受保护数据解锁恢复修复未调用 EVO
+
+- 原因：现场问题跨 HealthKit 受保护数据错误、durable deferral、前后台执行机会和 UI 状态真值，属于 `PLANNER_OWNED` 生命周期/数据一致性边界。修复还需要直接对 2 GB 真机数据库的前后副本做 ledger 取证，因此未把该阶段路由给窄写入 Coder。
+- 执行：Planner 让 foreground/background/manual/retry 新机会只恢复 `waitForUnlock`，保留 observer parked 及 authorization/repair/failure deferral；在真实 HealthKit probe 仍失败时继续由既有路径重新挂起。
+- 独立验收：聚焦 `24/24`；完整套件 `440/440`（单元 `431/431`、UI `9/9`）；真机签名构建、覆盖安装和启动通过。修复前 28/28 类型 pending 且等待解锁，修复后 `pending=0`、`waitForUnlock=0`、全部 generation 收敛，05:55:50 app 自动作业成功，数据库 `quick_check=ok`。
+- 报表影响：本阶段为 Planner-only，不计入 Coder 比率分母；累计监督器通过率仍为 `0/5`、首次独立验收通过率 `0/5`、有用产出采纳率 `4/5`。
+
+本轮 EVO-Coder 评价仍不变：没有新增样本可以改变此前比率。当前修复命中 EVO 风险边界，由 Planner 直接诊断、实现和真机验收是合适路由；EVO 在 S13 早期提供过一个可用 API 方向，但仍没有产出可直接编译并独立验收的完整修复。

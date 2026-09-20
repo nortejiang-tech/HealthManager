@@ -15,6 +15,20 @@ enum SyncReason: Int, CaseIterable, Sendable, Equatable {
 
     /// Single-bit flag used for per-type accumulation.
     var bitMask: Int { 1 << rawValue }
+
+    /// A fresh execution opportunity that may follow device unlock. Observer deliveries are
+    /// excluded: HealthKit can deliver them while protected data is still unavailable, and
+    /// clearing the deferral there would create a locked-device retry loop. Foreground, BG,
+    /// manual and explicit retry opportunities are allowed to probe HealthKit again; a failed
+    /// probe will durably restore `waitForUnlock`.
+    var resumesProtectedDataDeferral: Bool {
+        switch self {
+        case .foreground, .background, .manual, .retry:
+            return true
+        case .observer:
+            return false
+        }
+    }
 }
 
 /// A single merged request for sync work.

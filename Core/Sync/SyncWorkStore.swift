@@ -136,6 +136,24 @@ struct SyncWorkStore: @unchecked Sendable {
                         """,
                     arguments: [type, reason.bitMask]
                 )
+
+                // `waitForUnlock` is a parked state, not a permanent failure. A later
+                // foreground/BG/manual/retry opportunity must make the row claimable again;
+                // otherwise every new request only advances requested_generation while
+                // pendingWork keeps excluding the row forever. Preserve authorization,
+                // repair and hard-failure deferrals because those need their own recovery.
+                if reason.resumesProtectedDataDeferral {
+                    try db.execute(
+                        sql: """
+                            UPDATE sync_type_work
+                            SET deferred_reason = NULL,
+                                retry_at = NULL,
+                                last_error_code = NULL
+                            WHERE hk_type = ? AND deferred_reason = ?
+                            """,
+                        arguments: [type, SyncDeferredReason.waitForUnlock.rawValue]
+                    )
+                }
             }
         }
     }

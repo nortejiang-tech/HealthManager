@@ -450,6 +450,15 @@ Planner 独立验收：
 - 最终候选在一次前台启动后 `pending=0`、全部 `requested_generation == completed_generation`；连续 3 次初验和最终签名二进制 20 次冷启动后仍为 `pending=0`。最终 jobs 857–876 全部 `succeeded`，每一类型 `requested_generation == completed_generation`；没有依赖手动同步。证据：`/tmp/healthmanager-s13-acceptance/fix3-foreground-state.json`、`/tmp/healthmanager-s13-acceptance/fix3-three-round-state.json`、`/tmp/healthmanager-s13-acceptance/final-candidate-20/final-db-summary.json`。
 - 在未点击手动同步的情况下，候选自动导入 39 条真实 Apple Health 样本，覆盖 8 类；这证明自动 catch-up 可以工作。样本源时间早于本轮打开 App，无法据此计算“Apple Health 可读到 App 卡片可见”的 p95，也不替代 A/B/C 各 3 轮。证据：`/tmp/healthmanager-s13-acceptance/fix3-natural-ingestion-summary.json`。
 
+### 受保护数据解锁恢复现场修复
+
+- 2026-09-21 03:06:38 +0800 的真实 `bg_task` 在设备锁定期收到 HealthKit `Code=6` / `Protected health data is inaccessible`。该作业失败后，28/28 类型都被持久化为 `deferred_reason=waitForUnlock`；这条最初的等待解锁提示有真实系统错误依据，不是把其他 HealthKit 错误误分类成锁屏。
+- 设备解锁并正常使用后，旧实现的前台请求只推进 `requested_generation`，没有清除 `waitForUnlock`。现场修复前副本为 `pending=28`、`waitForUnlock=28`，requested generation 范围 `1496...1498`，completed generation 范围 `1485...1486`；`pendingWork()` 会排除所有非 transient deferral，因此 runner 没有可 claim 的任务，界面持续显示已经过期的“等待设备解锁”。
+- 修复在 `SyncWorkStore.request` 的同一事务中，仅对新的 foreground/background/manual/retry 执行机会清除 `waitForUnlock`、`retry_at` 和该次保护数据错误；observer 仍保持 parked，避免设备仍锁定时形成 observer 重试环。授权检查、修复要求和硬失败等其他 deferral 不会被误清除；若设备仍锁定，第一次真实 HealthKit probe 会再次持久化 `waitForUnlock`。
+- 新增 3 组策略回归；同步存储、runner 和 delivery 聚焦测试 `24/24` 通过。最终有签名完整回归 `440/440`（单元 `431/431`、UI `9/9`），结果包为 `/tmp/healthmanager-protected-data-resume-full.xcresult`；签名真机构建结果包为 `/tmp/healthmanager-protected-data-device-build-20260921-0554.xcresult`。
+- 修复版覆盖安装到原数据容器并在已解锁设备启动后，05:55:50 的 app 自动作业 880 成功。取回数据库为 `quick_check=ok`，28/28 类型均无 deferral，`pending=0`、`waitForUnlock=0`，requested/completed generation 全部一致在 `1501...1503`；后续 observer 和既有用户同步流程作业也成功。数据继续增长到 3,598,770 条 raw、339 条餐次和 666 条 item，没有清库或手动修改 ledger。证据：`/tmp/healthmanager-protected-data-live-db/health.sqlite` 与 `/tmp/healthmanager-protected-data-fixed-health-20260921-0600.sqlite`。
+- 这次真实“锁屏失败 → 已解锁前台自动收敛”计作场景 B 的 `1/3`。远程截图时用户已切到其他 App，因此不把截图冒充同步中心界面证据；durable ledger 和自动 app 作业已经证明 stale deferral 被清除，剩余两轮仍需按 runbook 采样。
+
 ### 升级与数据保全
 
 - 安装前后数据库 `quick_check=ok`，v14 迁移成功；基线全部 3,598,537 个 raw UUID 均保留。最终 20 轮后共有 59 个真实新增 UUID，既有 UUID 的删除标志变化为 0。
@@ -466,7 +475,7 @@ Planner 独立验收：
 ### 仍需用户参与的真实设备门
 
 - 场景 A：真实外部来源写入后前台自动追新 3 轮，并记录 Apple Health 可读到本地 raw/卡片可见的 p95；当前只有一次自然批量 catch-up，轮数与延迟证据不足。
-- 场景 B：锁屏期间发生真实更新，解锁后自动收敛 3 轮；当前 `0/3`。
+- 场景 B：锁屏期间发生真实更新，解锁后自动收敛 3 轮；当前 `1/3`，本轮真实 code 6 锁屏失败在修复版前台启动后自动收敛，尚需再做 2 轮。
 - 场景 C：有 pending 时让 BG task expiration/中断，再回前台自动续跑 3 轮；当前 `0/3`。
 - 在隔离目录完成备份 bookmark save/restart/load/clear/reselect，并对可回滚副本执行成功恢复与取消/失败恢复门。
 

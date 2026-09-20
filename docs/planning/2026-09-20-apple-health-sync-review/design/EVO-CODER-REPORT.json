@@ -464,19 +464,62 @@
         "locked_database_quick_check": "ok",
         "device_interaction_replay": "PENDING_DEVICE_LOCKED"
       }
+    },
+    {
+      "stage": "S13_PROTECTED_DATA_RESUME_FIX",
+      "reason": "PLANNER_OWNED HealthKit protected-data lifecycle, durable deferral and real-device consistency boundary",
+      "evo_invoked": false,
+      "implementation": {
+        "changed_paths": [
+          "Core/Sync/SyncDemand.swift",
+          "Core/Sync/SyncWorkStore.swift",
+          "Tests/SyncWorkStoreTests.swift"
+        ],
+        "summary": "Resume only waitForUnlock on fresh foreground, background, manual and retry execution opportunities; keep observer demand parked and preserve all non-unlock deferrals."
+      },
+      "planner_final_acceptance": {
+        "status": "PASS",
+        "focused_tests": {
+          "passed": 24,
+          "failed": 0,
+          "skipped": 0,
+          "xcresult": "/tmp/healthmanager-protected-data-resume-targeted.xcresult"
+        },
+        "complete_tests": {
+          "passed": 440,
+          "failed": 0,
+          "skipped": 0,
+          "unit_passed": 431,
+          "ui_passed": 9,
+          "xcresult": "/tmp/healthmanager-protected-data-resume-full.xcresult"
+        },
+        "signed_device_build": "PASS",
+        "device_install": "PASS_PRESERVED_DATA_CONTAINER",
+        "device_database_quick_check": "ok",
+        "before": {
+          "pending_types": 28,
+          "wait_for_unlock_types": 28
+        },
+        "after": {
+          "pending_types": 0,
+          "wait_for_unlock_types": 0,
+          "app_job_id": 880,
+          "app_job_state": "succeeded"
+        }
+      }
     }
   ],
   "s13_final_acceptance": {
     "status": "PENDING",
     "software_regression": {
       "complete_tests": {
-        "passed": 437,
+        "passed": 440,
         "failed": 0,
         "skipped": 0,
-        "unit_passed": 428,
+        "unit_passed": 431,
         "ui_passed": 9
       },
-      "complete_xcresult": "/tmp/healthmanager-meal-save-hang/full-unit-after-projection-fix.xcresult",
+      "complete_xcresult": "/tmp/healthmanager-protected-data-resume-full.xcresult",
       "meal_save_projection_focused_tests": {
         "passed": 9,
         "failed": 0,
@@ -511,12 +554,31 @@
       "final_pending_type_count": 0,
       "final_20_sync_jobs_all_succeeded": true,
       "final_20_analysis": "/tmp/healthmanager-s13-acceptance/final-candidate-20/analysis.json",
-      "final_20_database_summary": "/tmp/healthmanager-s13-acceptance/final-candidate-20/final-db-summary.json"
+      "final_20_database_summary": "/tmp/healthmanager-s13-acceptance/final-candidate-20/final-db-summary.json",
+      "protected_data_resume_fix": {
+        "status": "PASS",
+        "original_locked_bg_failure_at": "2026-09-21T03:06:38+08:00",
+        "before_database": "/tmp/healthmanager-protected-data-live-db/health.sqlite",
+        "before_pending_types": 28,
+        "before_wait_for_unlock_types": 28,
+        "fixed_app_job_id": 880,
+        "fixed_app_job_started_at": "2026-09-21T05:55:50+08:00",
+        "fixed_app_job_state": "succeeded",
+        "after_database": "/tmp/healthmanager-protected-data-fixed-health-20260921-0600.sqlite",
+        "after_quick_check": "ok",
+        "after_pending_types": 0,
+        "after_wait_for_unlock_types": 0,
+        "after_raw_total": 3598770,
+        "after_meal_records": 339,
+        "after_meal_items": 666,
+        "lock_unlock_acceptance_rounds_complete": 1,
+        "lock_unlock_acceptance_rounds_required": 3
+      }
     },
     "pending": [
       "precise first-card visual p95",
       "foreground source-to-card 3 rounds",
-      "lock/unlock recovery 3 rounds",
+      "2 additional lock/unlock recovery rounds",
       "background expiration recovery 3 rounds",
       "isolated backup and signed Keychain round-trip"
     ],
@@ -546,6 +608,15 @@
       "device_install": "PASS_PRESERVED_DATA_CONTAINER",
       "postinstall_database_quick_check": "ok",
       "device_interaction_replay": "PENDING_DEVICE_LOCKED"
+    },
+    "protected_data_resume_fix": {
+      "status": "PASS",
+      "implementation": "Fresh execution opportunities clear only waitForUnlock inside the request transaction; observer and non-unlock deferrals stay parked.",
+      "focused_tests_passed": 24,
+      "complete_tests_passed": 440,
+      "signed_device_build": "PASS",
+      "device_install": "PASS_PRESERVED_DATA_CONTAINER",
+      "device_database_converged": true
     }
   }
 }

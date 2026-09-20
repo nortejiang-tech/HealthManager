@@ -181,6 +181,70 @@ final class SyncWorkStoreTests: XCTestCase {
         XCTAssertTrue(try reopened.pendingWork().isEmpty)
     }
 
+    func test_freshExecutionOpportunityResumesProtectedDataDeferral() throws {
+        for reason in [SyncReason.foreground, .background, .manual, .retry] {
+            let pool = try makePool()
+            let store = SyncWorkStore(pool: pool)
+            try store.request(types: [type], reason: .background)
+            let claim = try XCTUnwrap(store.claim(type: type, token: UUID()))
+            try store.deferClaim(
+                claim,
+                reason: .waitForUnlock,
+                errorCode: "protected_data_unavailable"
+            )
+
+            try store.request(types: [type], reason: reason)
+
+            let work = try XCTUnwrap(store.work(for: type))
+            XCTAssertEqual(work.requestedGeneration, 2, "reason: \(reason)")
+            XCTAssertEqual(work.completedGeneration, 0, "reason: \(reason)")
+            XCTAssertNil(work.deferredReason, "reason: \(reason)")
+            XCTAssertNil(work.lastErrorCode, "reason: \(reason)")
+            XCTAssertEqual(try store.pendingWork().map(\.hkType), [type], "reason: \(reason)")
+        }
+    }
+
+    func test_observerDemandKeepsProtectedDataDeferralParked() throws {
+        let pool = try makePool()
+        let store = SyncWorkStore(pool: pool)
+        try store.request(types: [type], reason: .background)
+        let claim = try XCTUnwrap(store.claim(type: type, token: UUID()))
+        try store.deferClaim(
+            claim,
+            reason: .waitForUnlock,
+            errorCode: "protected_data_unavailable"
+        )
+
+        try store.request(types: [type], reason: .observer)
+
+        let work = try XCTUnwrap(store.work(for: type))
+        XCTAssertEqual(work.requestedGeneration, 2)
+        XCTAssertEqual(work.deferredReason, .waitForUnlock)
+        XCTAssertEqual(work.lastErrorCode, "protected_data_unavailable")
+        XCTAssertTrue(try store.pendingWork().isEmpty)
+    }
+
+    func test_executionOpportunityDoesNotClearNonUnlockDeferrals() throws {
+        for deferred in [
+            SyncDeferredReason.authorizationCheck,
+            .repairRequired,
+            .failure
+        ] {
+            let pool = try makePool()
+            let store = SyncWorkStore(pool: pool)
+            try store.request(types: [type], reason: .background)
+            let claim = try XCTUnwrap(store.claim(type: type, token: UUID()))
+            try store.deferClaim(claim, reason: deferred, errorCode: deferred.rawValue)
+
+            try store.request(types: [type], reason: .foreground)
+
+            let work = try XCTUnwrap(store.work(for: type))
+            XCTAssertEqual(work.deferredReason, deferred)
+            XCTAssertEqual(work.lastErrorCode, deferred.rawValue)
+            XCTAssertTrue(try store.pendingWork().isEmpty)
+        }
+    }
+
     func test_runtimeControlDoesNotOverwriteRestoredDailyAggregatesWithoutRawEvidence() throws {
         let pool = try makePool()
         let store = SyncWorkStore(pool: pool)
