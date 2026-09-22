@@ -15,7 +15,7 @@ struct DeficitCard: View {
                     unit: "kcal",
                     theme: .deficit
                 )
-                Text(d >= 0 ? "今日缺口（消耗 - 摄入）" : "今日盈余")
+                Text(d >= 0 ? "今日缺口（消耗 − 摄入）" : "今日盈余")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             } else {
@@ -25,19 +25,6 @@ struct DeficitCard: View {
                     .foregroundStyle(.tertiary)
             }
 
-            HStack(spacing: 10) {
-                if let burned = data.todayBurned {
-                    Label(String(format: "消耗 %.0f", burned), systemImage: "arrow.up")
-                        .foregroundStyle(CardTheme.deficit.primary)
-                }
-                if let intake = data.todayIntake {
-                    Label(String(format: "摄入 %.0f", intake), systemImage: "arrow.down")
-                        .foregroundStyle(.secondary)
-                }
-            }
-            .font(.caption2)
-            .labelStyle(.titleAndIcon)
-
             if !data.last7Days.isEmpty {
                 Chart(data.last7Days) { d in
                     BarMark(
@@ -46,7 +33,7 @@ struct DeficitCard: View {
                     )
                     .foregroundStyle(d.value >= 0
                                      ? AnyShapeStyle(CardTheme.deficit.gradient)
-                                     : AnyShapeStyle(Color.orange.opacity(0.7)))
+                                     : AnyShapeStyle(HMColors.warning.opacity(0.75)))
                     .cornerRadius(2)
                 }
                 .frame(height: 52)
@@ -62,9 +49,8 @@ struct DeficitCard: View {
                     .frame(height: 52)
             }
 
-            Text("仅在基础代谢、活动能量和完整饮食摄入齐备时计算")
-                .font(.caption2)
-                .foregroundStyle(.tertiary)
+            // 降密度（v0.8.2 design-qa）：原「消耗/摄入」双 Label 与计算条件脚注已移除——
+            // 缺口构成与口径说明在详情页「当日明细」有完整呈现，卡片只保留大数 + 定义 + 走势。
         }
     }
 

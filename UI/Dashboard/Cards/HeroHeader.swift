@@ -52,6 +52,8 @@ struct HeroHeader: View {
             .background(.regularMaterial, in: Capsule())
         }
         .buttonStyle(.plain)
+        .accessibilityLabel("数据质量：\(qualityLabel)，点按查看数据质量明细")
+        .accessibilityHint("前往数据质量页")
     }
 
     /// 铃铛角标显示「未确认告警涉及的指标类数」——历史长串红点总数不在此堆叠（§6.2）；
@@ -60,17 +62,19 @@ struct HeroHeader: View {
     private var alertsBell: some View {
         ZStack(alignment: .topTrailing) {
             Image(systemName: snapshot.unackAlertCount > 0 ? "bell.fill" : "bell")
-                .foregroundStyle(snapshot.criticalAlertCount > 0 ? .red
-                                 : (snapshot.unackAlertCount > 0 ? .orange : .secondary))
+                .foregroundStyle(snapshot.criticalAlertCount > 0 ? HMColors.actionRequired
+                                 : (snapshot.unackAlertCount > 0 ? HMColors.warning : .secondary))
                 .frame(width: 28, height: 28)
                 .background(.regularMaterial, in: Circle())
             if snapshot.unackMetricCount > 0 {
                 Text("\(min(snapshot.unackMetricCount, 99))类")
-                    .font(.system(size: 9, weight: .bold))
+                    .font(.caption2.bold())
+                    .monospacedDigit()
+                    .minimumScaleFactor(0.7)
                     .foregroundStyle(.white)
                     .padding(.horizontal, 3)
                     .frame(minWidth: 16, minHeight: 14)
-                    .background(snapshot.criticalAlertCount > 0 ? Color.red : Color.orange,
+                    .background(snapshot.criticalAlertCount > 0 ? HMColors.actionRequired : HMColors.warning,
                                 in: Capsule())
                     .offset(x: 8, y: -4)
             }
@@ -95,17 +99,15 @@ struct HeroHeader: View {
     }
 
     private var dateLabel: String {
-        let f = DateFormatter()
-        f.locale = Locale(identifier: "zh_CN")
-        f.dateFormat = "M月d日 EEEE"
-        return f.string(from: Date())
+        AppDateFormats.monthDayWeekday.string(from: Date())
     }
 
+    /// ADR-002：完整度三档走 HMColors 语义色（此前 .green/.orange/.red 直出）。
     private var qualityColor: Color {
-        guard let c = snapshot.quality?.completenessScore else { return .gray }
-        if c >= 0.8 { return .green }
-        if c >= 0.5 { return .orange }
-        return .red
+        guard let c = snapshot.quality?.completenessScore else { return HMColors.neutral }
+        if c >= 0.8 { return HMColors.confirmed }
+        if c >= 0.5 { return HMColors.warning }
+        return HMColors.actionRequired
     }
 
     private var qualityLabel: String {

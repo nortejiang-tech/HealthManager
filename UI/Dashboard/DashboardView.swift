@@ -283,7 +283,7 @@ private struct DashboardLoadingHero: View {
             }
         }
         .padding(16)
-        .hmSurface(cornerRadius: 16)
+        .hmSurface(cornerRadius: HMRadius.card)
         .accessibilityLabel("趋势主摘要加载中")
     }
 }
@@ -305,11 +305,12 @@ private struct DashboardCardGrid: View {
         VStack(alignment: .leading, spacing: 10) {
             Text("指标")
                 .font(.title3.weight(.semibold))
+                .accessibilityAddTraits(.isHeader)
 
             if isLoading {
                 VStack(spacing: 12) {
                     ForEach(0..<2, id: \.self) { _ in
-                        HMLoadingSkeleton(height: 120, cornerRadius: 16)
+                        HMLoadingSkeleton(height: 120, cornerRadius: HMRadius.card)
                     }
                 }
             } else {
@@ -322,6 +323,7 @@ private struct DashboardCardGrid: View {
                                 .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
+                        .accessibilityHint("查看\(kind.displayName)趋势详情")
                     }
                 }
             }
@@ -340,12 +342,13 @@ private struct DashboardHiddenMetricsSection: View {
             VStack(alignment: .leading, spacing: 10) {
                 Text("更多指标")
                     .font(.title3.weight(.semibold))
-                HMLoadingSkeleton(height: 120, cornerRadius: 16)
+                HMLoadingSkeleton(height: 120, cornerRadius: HMRadius.card)
             }
         } else {
             VStack(alignment: .leading, spacing: 8) {
                 Text("更多指标")
                     .font(.title3.weight(.semibold))
+                    .accessibilityAddTraits(.isHeader)
 
                 VStack(spacing: 0) {
                     ForEach(Array(kinds.enumerated()), id: \.element) { idx, kind in
@@ -355,11 +358,7 @@ private struct DashboardHiddenMetricsSection: View {
                         }
                     }
                 }
-                .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .stroke(HMColors.separator, lineWidth: 1)
-                )
+                .hmSurface(cornerRadius: HMRadius.card)
             }
         }
     }
@@ -371,7 +370,7 @@ private struct DashboardHiddenMetricsSection: View {
         } label: {
             HStack(spacing: 12) {
                 Image(systemName: kind.iconName)
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(.subheadline.weight(.semibold))
                     .foregroundStyle(kind.theme.primary)
                     .frame(width: 24, height: 24)
                     .background(kind.theme.primary.opacity(0.12), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
@@ -417,9 +416,9 @@ private struct DashboardQuickLinksSection: View {
             }
             .buttonStyle(.plain)
         }
-        .background(HMColors.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .background(HMColors.surface, in: RoundedRectangle(cornerRadius: HMRadius.card, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
+            RoundedRectangle(cornerRadius: HMRadius.card, style: .continuous)
                 .stroke(HMColors.separator, lineWidth: 1)
         )
     }

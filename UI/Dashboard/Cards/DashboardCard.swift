@@ -25,10 +25,10 @@ struct DashboardCard<Accessory: View, Content: View>: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 6) {
                 Image(systemName: icon)
-                    .font(.system(size: 13, weight: .bold))
+                    .font(.footnote.weight(.bold))
                     .foregroundStyle(theme.primary)
                 Text(title)
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.footnote.weight(.semibold))
                     .foregroundStyle(theme.primary)
                 Spacer(minLength: 4)
                 accessory()
@@ -38,9 +38,9 @@ struct DashboardCard<Accessory: View, Content: View>: View {
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .background(HMColors.surface, in: RoundedRectangle(cornerRadius: HMRadius.card, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
+            RoundedRectangle(cornerRadius: HMRadius.card, style: .continuous)
                 .stroke(theme.primary.opacity(0.08), lineWidth: 1)
         )
     }
@@ -61,12 +61,16 @@ struct CardMetric: View {
     var body: some View {
         HStack(alignment: .lastTextBaseline, spacing: 2) {
             Text(value)
-                .font(.system(size: 26, weight: .bold, design: .rounded))
+                // 语义字号跟随 Dynamic Type（此前固定 26pt，辅助字号下会撑破双列网格）；
+                // minimumScaleFactor 兜底保证长数值（如五位数步数）不换行。
+                .font(.system(.title, design: .rounded).weight(.bold))
                 .foregroundStyle(theme?.primary ?? .primary)
                 .monospacedDigit()
+                .lineLimit(1)
+                .minimumScaleFactor(0.6)
             if let u = unit {
                 Text(u)
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
                     .padding(.leading, 1)
             }

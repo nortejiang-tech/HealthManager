@@ -40,7 +40,7 @@ struct DietCard: View {
                                 .frame(width: 40, alignment: .trailing)
                                 .monospacedDigit()
                         }
-                        .font(.system(size: 11))
+                        .font(.caption2)
                         .foregroundStyle(.secondary)
                     }
                 }
@@ -65,10 +65,10 @@ struct DietCard: View {
 
     private func macroPill(label: String, value: Double?) -> some View {
         HStack(spacing: 3) {
-            Text(label).font(.system(size: 10).bold())
+            Text(label).font(.caption2.bold())
                 .foregroundStyle(CardTheme.diet.primary)
             Text(value.map { String(format: "%.0fg", $0) } ?? "—")
-                .font(.system(size: 10))
+                .font(.caption2)
                 .foregroundStyle(.secondary)
                 .monospacedDigit()
         }

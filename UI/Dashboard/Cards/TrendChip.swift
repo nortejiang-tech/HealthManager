@@ -19,9 +19,9 @@ struct TrendChip: View {
         if let trend = compute() {
             HStack(spacing: 2) {
                 Image(systemName: trend.direction.systemImage)
-                    .font(.system(size: 9, weight: .bold))
+                    .font(.caption2.weight(.bold))
                 Text(String(format: "%.1f%%", abs(trend.percent * 100)))
-                    .font(.system(size: 10, weight: .semibold))
+                    .font(.caption2.weight(.semibold))
                     .monospacedDigit()
             }
             .foregroundStyle(color(for: trend.direction))
@@ -56,11 +56,12 @@ struct TrendChip: View {
         return Trend(percent: delta, direction: direction)
     }
 
+    /// ADR-002：语义色统一走 HMColors（此前 .red/.green/.orange 直出系统色，深色下无法校正）。
     private func color(for d: Direction) -> Color {
         switch d {
         case .flat: return .secondary
-        case .up: return lowerIsBetter ? .red : theme.primary
-        case .down: return lowerIsBetter ? .green : .orange
+        case .up: return lowerIsBetter ? HMColors.actionRequired : theme.primary
+        case .down: return lowerIsBetter ? HMColors.confirmed : HMColors.warning
         }
     }
 }
