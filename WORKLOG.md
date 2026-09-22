@@ -1149,3 +1149,22 @@ xcodebuild -scheme HealthManager -configuration Release -destination 'id=0000815
 - 聚焦 `24/24`、完整 `440/440`（单元 `431/431`、UI `9/9`）通过；签名真机构建、覆盖安装和启动通过。
 - 修复前数据库 `pending=28`、`waitForUnlock=28`；修复后 `quick_check=ok`、`pending=0`、`waitForUnlock=0`，28/28 类型 requested/completed generation 相等，app 自动作业 880 成功。数据保留并增长至 3,598,770 raw、339 条餐次、666 条 item。
 - 该阶段属于 HealthKit 生命周期与 durable ledger 一致性边界，由 Planner 直接完成；EVO 未调用，累计监督器通过率 `0/5`、首次独立验收通过率 `0/5`、有用产出采纳率 `4/5` 均不变。
+
+## 2026-09-22 — UI/UX 三批整治 + 趋势图表横轴重构
+
+- 图表（MetricDetailView）：横轴改为按可见窗口自适应日/周/月刻度，修复年视图 52 个周标签叠印的根因（Swift Charts 对 stride 模式不做自动抽稀）；年视图新增双指捏合缩放（窗口中心锚定、最小 7 天、右上角重置按钮），单指平移与点选不变；线图 PointMark 仅在窗口 <62 天时绘制（消除年视图 365 点糊成粗带）。
+- 设计系统：新增 HMRadius 三档（cell 12 / card 16 / panel 18）收敛全部圆角字面量（6/8/10 装饰性小元素除外）；HMColors 新增 warning 琥珀档，primaryAction 与 actionRequired 分离（原浅色同色，保存键像删除键）；CardTheme 六族色板补深色变体。
+- P0：用药计划滑动删除失效（swipeActions 挂在 ScrollView 内不生效）改接 SwipeToRemoveRow，删除带 6 秒撤销横幅（按原 id 重插并重挂本地提醒）；新计划默认从「每周一」改为「每天」；饮食历史列表弃 scrollDisabled List + 手算行高（会截断两行备注/大字体），改自适应 LazyVStack + SwipeToRemoveRow，餐次行新增长按菜单删除（VoiceOver 与自动化稳定路径）。
+- 视觉一致性：卡片字号语义化（DashboardCard/TrendChip/DietCard/HeroHeader；CardMetric 用语义大数 + minimumScaleFactor）；趋势页材质统一 hmSurface（去除 thinMaterial 混用）；绕过 ADR-002 的系统色归位（HeroHeader/TrendChip/DeficitCard/缺口明细行/AlertsView→EvidenceTone.forAlertSeverity）；「指标/更多指标」补 isHeader，趋势卡片补无障碍 Hint，质量胶囊补 label。
+- 交互与文案：SyncCenter 回补天数加 7/30/90/1 年快捷档；设置「Danger zone」→「危险操作」；MealRow 与合计行 P/F/C→蛋白/脂肪/碳水；「近30天」→「近 30 天」；lowerIsBetter 移入 MetricDetailConfig（删除中文标题字符串匹配）；LogRow/饮食日期格式化改走 AppDateFormats（消除行级 DateFormatter 新建）；mealNutritionText 修浮点尾数；SyncCenter/DataQuality 裸 Text 空态补样式。
+- 文件拆分：DietView 1761→906 行 + MealEditView.swift 842 行；MedicationView→771 行 + MedicationPlanEditView.swift 351 行；xcodegen 重生成工程。
+- 验证：最终全量 440/440（单元 431/431、UI 9/9）。UI 适配三处：删除按钮改 swipe-remove-button 标识、餐次删除走长按菜单（取证发现合成触摸按 offset 前的无障碍命中区投递，滑动揭示对 XCUITest 不可靠，对真人有效）、SyncCenter「立即同步」滚动可达（快捷档位把它推到折叠线下）。调试期间 SwipeToRemoveRow 顺手修复：揭示前条件渲染（避免无障碍树暴露整列隐藏按钮）、按钮置于 ZStack 顶层、simultaneousGesture 与外层滚动共存、VoiceOver 具名删除动作。
+- 部署：签名真机 Debug 包覆盖安装至 NortePro的iPhone 成功（0.8.1(16)，bundle 不变数据保留）；远程启动因设备锁定未执行，待解锁点按复验（PENDING）。
+- 未做（待用户决策）：告警/设置/运动记录双入口去重、Tab 图标语义、Dashboard AnyView 擦除消除、Nutrition 七分支 sheet 链重构、UI 目录内状态逻辑迁移 Core。
+
+## 2026-09-22 — 年视图捏合缩放失效修复（用户真机反馈）
+
+- 根因：MagnifyGesture 用 `.gesture` 挂载（默认独占识别），Swift Charts 内部 UIScrollView 的平移识别器抢先认领两指触摸，onChanged 从未触发。
+- 修复：改 `.simultaneousGesture` 与图表内部手势并行识别；重置按钮移出 `accessibilityElement(children:.ignore)` 边界（此前 VoiceOver/XCUITest 均不可见，真实无障碍缺陷）；图表补 `metric-detail-chart` 标识。
+- 验证：模拟器种入 body_metrics_daily 一年数据（370 天），新增 MetricDetailZoomUITests——捏合(scale 3)后「重置缩放」按钮出现（该按钮仅 xZoom>1.01 渲染，出现即证手势管线生效）、点按恢复后消失，PASS；截图确认整年视图为 12 个月度标签、捏合后切周标签（3/1 3/8 …）+ 日点浮现 + Y 轴随窗口重算。单元 431/431 通过。
+- 部署：签名真机包已就绪（DerivedData Debug-iphoneos）；安装时设备已断开（unavailable，无线连接未开开发者模式），待插回数据线后 `devicectl device install` 覆盖安装（PENDING）。
