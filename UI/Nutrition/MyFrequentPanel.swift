@@ -138,8 +138,8 @@ struct MyFrequentPanel: View {
                 }
             }
         }
-        .background(HMColors.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(HMColors.separator, lineWidth: 1))
+        .background(HMColors.surface, in: RoundedRectangle(cornerRadius: HMRadius.panel, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: HMRadius.panel, style: .continuous).stroke(HMColors.separator, lineWidth: 1))
     }
 
     private func matchedFoodRow(_ matched: PersonalFoodStore.MatchedFood) -> some View {
@@ -166,7 +166,7 @@ struct MyFrequentPanel: View {
                         .foregroundStyle(HMColors.actionRequired)
                 }
             }
-            Text("近30天记录 \(matched.recentMealCount) 餐 · 官方参考")
+            Text("近 30 天记录 \(matched.recentMealCount) 餐 · 官方参考")
                 .font(.caption)
                 .foregroundStyle(.secondary)
             HStack(spacing: 8) {
@@ -234,8 +234,8 @@ struct MyFrequentPanel: View {
                 }
             }
         }
-        .background(HMColors.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(HMColors.separator, lineWidth: 1))
+        .background(HMColors.surface, in: RoundedRectangle(cornerRadius: HMRadius.panel, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: HMRadius.panel, style: .continuous).stroke(HMColors.separator, lineWidth: 1))
     }
 
     private func recipeRow(_ item: PersonalFoodStore.RecipeWithVersion) -> some View {
@@ -303,7 +303,7 @@ struct MyFrequentPanel: View {
                 }
             }
             HStack(spacing: 8) {
-                Text("近30天记录 \(item.recentMealCount) 餐 · 我的配方估算")
+                Text("近 30 天记录 \(item.recentMealCount) 餐 · 我的配方估算")
                 if item.version.outputGrams == nil {
                     Text("待补成品重量")
                 }
@@ -359,8 +359,8 @@ struct MyFrequentPanel: View {
                 }
             }
         }
-        .background(HMColors.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(HMColors.separator, lineWidth: 1))
+        .background(HMColors.surface, in: RoundedRectangle(cornerRadius: HMRadius.panel, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: HMRadius.panel, style: .continuous).stroke(HMColors.separator, lineWidth: 1))
     }
 
     private func candidateRow(_ candidate: FrequentFoodsQuery.Summary) -> some View {
@@ -369,7 +369,7 @@ struct MyFrequentPanel: View {
                 Text(candidate.displayName)
                     .font(.body.weight(.medium))
                 Spacer(minLength: 8)
-                Text("近30天记录 \(candidate.mealCount) 餐")
+                Text("近 30 天记录 \(candidate.mealCount) 餐")
                     .font(.caption.monospacedDigit())
                     .foregroundStyle(.secondary)
             }

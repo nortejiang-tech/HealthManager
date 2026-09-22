@@ -84,7 +84,9 @@ struct DataQualityDetailView: View {
                         )
                     }
                 } else {
-                    Text("尚无同步记录").foregroundStyle(.secondary)
+                    Text("尚无同步记录")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
                 }
             }
 

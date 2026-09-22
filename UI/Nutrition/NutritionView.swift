@@ -444,7 +444,7 @@ struct NutritionView: View {
             guard let catalogStore else { return }
             let searchService = FoodSearchService(bundled: catalogStore, personalCatalog: environment.personalCatalogStore)
             let pool = await searchService.ingredientPool(forDishName: summary.displayName)
-            let history = "近30天记录 \(summary.mealCount) 餐；常见份量 \(summary.commonGrams.map { "\(Int($0))g" } ?? "未记录")（历史份量为 AI 估计值，非称重事实）"
+            let history = "近 30 天记录 \(summary.mealCount) 餐；常见份量 \(summary.commonGrams.map { "\(Int($0))g" } ?? "未记录")（历史份量为 AI 估计值，非称重事实）"
             do {
                 guard let suggestionService = RecipeSuggestionService.makeDefault() else { return }
                 let suggestion = try await suggestionService.suggest(
@@ -627,9 +627,9 @@ struct NutritionReferencePanel: View {
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 9)
-            .background(HMColors.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .background(HMColors.surface, in: RoundedRectangle(cornerRadius: HMRadius.cell, style: .continuous))
             .overlay(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                RoundedRectangle(cornerRadius: HMRadius.cell, style: .continuous)
                     .stroke(HMColors.separator, lineWidth: 1)
             )
 
@@ -732,7 +732,7 @@ struct NutritionReferencePanel: View {
             } else {
                 VStack(spacing: 0) {
                     ForEach(Array(entries.enumerated()), id: \.element.entry.id) { index, food in
-                        SwipeToRemoveRow {
+                        SwipeToRemoveRow(removeAccessibilityLabel: "移除食材「\(food.entry.nameZh)」") {
                             Button {
                                 onEntryTap(food.entry)
                             } label: {
@@ -748,9 +748,9 @@ struct NutritionReferencePanel: View {
                         }
                     }
                 }
-                .background(HMColors.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                .background(HMColors.surface, in: RoundedRectangle(cornerRadius: HMRadius.panel, style: .continuous))
                 .overlay(
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    RoundedRectangle(cornerRadius: HMRadius.panel, style: .continuous)
                         .stroke(HMColors.separator, lineWidth: 1)
                 )
             }

@@ -92,8 +92,8 @@ struct AddFoodSheet: View {
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 9)
-            .background(HMColors.surface, in: RoundedRectangle(cornerRadius: 12))
-            .overlay(RoundedRectangle(cornerRadius: 12).stroke(HMColors.separator, lineWidth: 1))
+            .background(HMColors.surface, in: RoundedRectangle(cornerRadius: HMRadius.cell))
+            .overlay(RoundedRectangle(cornerRadius: HMRadius.cell).stroke(HMColors.separator, lineWidth: 1))
 
             Text("本地结果即时显示；按「搜索」继续查询 USDA 资料库。")
                 .font(.caption2)
@@ -192,8 +192,8 @@ struct AddFoodSheet: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .background(HMColors.surface, in: RoundedRectangle(cornerRadius: 14))
-        .overlay(RoundedRectangle(cornerRadius: 14).stroke(HMColors.separator, lineWidth: 1))
+        .background(HMColors.surface, in: RoundedRectangle(cornerRadius: HMRadius.card))
+        .overlay(RoundedRectangle(cornerRadius: HMRadius.card).stroke(HMColors.separator, lineWidth: 1))
         .accessibilityIdentifier("add-food-candidate-\(candidate.id)")
     }
 
@@ -283,7 +283,7 @@ struct AddFoodSheet: View {
                     .font(.subheadline)
                 }
                 .padding(16)
-                .hmSurface(cornerRadius: 18)
+                .hmSurface()
 
                 VStack(alignment: .leading, spacing: 8) {
                     Text("显示名（可改）")
@@ -295,7 +295,7 @@ struct AddFoodSheet: View {
                         .foregroundStyle(.tertiary)
                 }
                 .padding(16)
-                .hmSurface(cornerRadius: 18)
+                .hmSurface()
 
                 if let addError {
                     Text(addError)

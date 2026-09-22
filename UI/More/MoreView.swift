@@ -165,9 +165,9 @@ private struct MoreActionSection: View {
                     }
                 }
             }
-            .background(HMColors.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .background(HMColors.surface, in: RoundedRectangle(cornerRadius: HMRadius.card, style: .continuous))
             .overlay(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                RoundedRectangle(cornerRadius: HMRadius.card, style: .continuous)
                     .stroke(HMColors.separator, lineWidth: 1)
             )
         }

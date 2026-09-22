@@ -229,7 +229,7 @@ struct RecipeEditorView: View {
                     Section {
                         Text(saveError)
                             .font(.footnote)
-                            .foregroundStyle(.red)
+                            .foregroundStyle(HMColors.actionRequired)
                             .accessibilityIdentifier("recipe-editor-error")
                     }
                 }
@@ -713,8 +713,8 @@ struct CatalogPickerSheet: View {
                 }
                 .padding(.horizontal, 12)
                 .padding(.vertical, 9)
-                .background(HMColors.surface, in: RoundedRectangle(cornerRadius: 12))
-                .overlay(RoundedRectangle(cornerRadius: 12).stroke(HMColors.separator, lineWidth: 1))
+                .background(HMColors.surface, in: RoundedRectangle(cornerRadius: HMRadius.cell))
+                .overlay(RoundedRectangle(cornerRadius: HMRadius.cell).stroke(HMColors.separator, lineWidth: 1))
 
                 let results = combinedResults(query)
                 if results.isEmpty {
@@ -738,8 +738,8 @@ struct CatalogPickerSheet: View {
                             }
                         }
                     }
-                    .background(HMColors.surface, in: RoundedRectangle(cornerRadius: 18))
-                    .overlay(RoundedRectangle(cornerRadius: 18).stroke(HMColors.separator, lineWidth: 1))
+                    .background(HMColors.surface, in: RoundedRectangle(cornerRadius: HMRadius.panel))
+                    .overlay(RoundedRectangle(cornerRadius: HMRadius.panel).stroke(HMColors.separator, lineWidth: 1))
                 }
             }
             .padding(.horizontal, 20)

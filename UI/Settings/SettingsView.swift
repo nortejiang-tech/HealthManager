@@ -265,7 +265,7 @@ struct SettingsView: View {
                 }
             }
 
-            Section("Danger zone") {
+            Section("危险操作") {
                 Button(role: .destructive) {
                     showingResetConfirm = true
                 } label: {

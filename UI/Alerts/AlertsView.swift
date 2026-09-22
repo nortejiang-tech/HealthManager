@@ -278,10 +278,7 @@ private struct AlertRow: View {
     }
 
     private var tone: HMSemanticTone {
-        switch alert.severity {
-        case .critical, .warning: return .actionRequired
-        case .info: return .comparison
-        }
+        EvidenceTone.forAlertSeverity(alert.severity)
     }
 
     private var severityLabel: String {

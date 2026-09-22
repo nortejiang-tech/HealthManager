@@ -197,9 +197,9 @@ struct SummaryView: View {
                 .fixedSize(horizontal: false, vertical: true)
         }
         .padding(12)
-        .background(HMColors.estimate.opacity(0.10), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .background(HMColors.estimate.opacity(0.10), in: RoundedRectangle(cornerRadius: HMRadius.cell, style: .continuous))
         .overlay {
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
+            RoundedRectangle(cornerRadius: HMRadius.cell, style: .continuous)
                 .stroke(HMColors.estimate.opacity(0.28), lineWidth: 1)
         }
     }

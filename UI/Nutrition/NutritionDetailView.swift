@@ -142,7 +142,7 @@ struct NutritionDetailView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(16)
-        .hmSurface(cornerRadius: 18)
+        .hmSurface()
     }
 
     private var servingCard: some View {
@@ -177,7 +177,7 @@ struct NutritionDetailView: View {
                 .foregroundStyle(.tertiary)
         }
         .padding(16)
-        .hmSurface(cornerRadius: 18)
+        .hmSurface()
     }
 
     private var unitLabel: String {
@@ -247,7 +247,7 @@ struct NutritionDetailView: View {
             )
         }
         .padding(16)
-        .hmSurface(cornerRadius: 18)
+        .hmSurface()
     }
 
     private var nutrientHeaderRow: some View {
@@ -336,7 +336,7 @@ struct NutritionDetailView: View {
         .font(.subheadline)
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(16)
-        .hmSurface(cornerRadius: 18)
+        .hmSurface()
     }
 
     private var addToMealButton: some View {

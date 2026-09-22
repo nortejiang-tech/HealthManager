@@ -137,7 +137,7 @@ private struct AuthorizationUnavailableContent: View {
                     )
                 }
                 .padding(.horizontal, 16)
-                .hmSurface(cornerRadius: 18)
+                .hmSurface()
 
                 Button {
                     Task { await onRefresh() }
@@ -206,7 +206,7 @@ private struct HealthUnavailableConnection: View {
             }
         }
         .padding(20)
-        .hmSurface(cornerRadius: 22)
+        .hmSurface(cornerRadius: HMRadius.panel)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Apple 健康与 HealthManager 的连接尚未建立")
     }

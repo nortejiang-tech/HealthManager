@@ -21,7 +21,11 @@ struct HealthBridgeSettingsView: View {
             Section("同步状态") {
                 Text(bridge.status).accessibilityIdentifier("bridge.syncStatus")
                 if bridge.isBusy { ProgressView() }
-                if let issue=bridge.lastError ?? error { Text(issue).foregroundStyle(.red).textSelection(.enabled) }
+                if let issue = bridge.lastError ?? error {
+                    Text(issue)
+                        .foregroundStyle(HMColors.actionRequired)
+                        .textSelection(.enabled)
+                }
                 Button("立即同步 / 检查 Mac 回执") { Task { await bridge.exportIfConfigured() } }
                     .disabled(!bridge.enabled || bridge.isBusy)
                 Text("文件写出不等于 Mac 已收到。iCloud、锁屏和后台调度可能延迟；需要最新数据时打开本 App 同步。")

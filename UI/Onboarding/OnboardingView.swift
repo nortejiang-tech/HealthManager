@@ -73,7 +73,7 @@ private struct OnboardingContent: View {
                         )
                     }
                     .padding(.horizontal, 16)
-                    .hmSurface(cornerRadius: 18)
+                    .hmSurface()
                 }
 
                 HStack(alignment: .top, spacing: 12) {
@@ -164,7 +164,7 @@ private struct OnboardingContent: View {
             }
         }
         .padding(16)
-        .hmSurface(cornerRadius: 18)
+        .hmSurface()
         .sheet(isPresented: $showRestorePicker) {
             FolderPicker { url in
                 Task { await backup.restore(from: url) }
@@ -226,7 +226,7 @@ private struct OnboardingDataPath: View {
             .fixedSize(horizontal: false, vertical: true)
         }
         .padding(18)
-        .hmSurface(cornerRadius: 18)
+        .hmSurface()
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("数据路径：手表或健康 App 写入 Apple 健康，再由 HealthManager 读取并保存在本机数据库")
     }

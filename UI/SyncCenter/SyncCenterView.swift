@@ -71,6 +71,13 @@ struct SyncCenterView: View {
                 Stepper(value: $backfillDays, in: 7...365, step: 1) {
                     Text("回溯天数：\(backfillDays)")
                 }
+                // 快捷档位：7…365 的 Stepper 逐级步进要按三百多次，档位一键直达。
+                HStack(spacing: 8) {
+                    quickBackfillButton(7, label: "7 天")
+                    quickBackfillButton(30, label: "30 天")
+                    quickBackfillButton(90, label: "90 天")
+                    quickBackfillButton(365, label: "1 年")
+                }
                 Button {
                     Task { await sync.runBackfill(days: backfillDays, trigger: .user); await refreshReports() }
                 } label: {
@@ -146,7 +153,9 @@ struct SyncCenterView: View {
                 if !reportsLoaded, reportsLoadError == nil {
                     ProgressView("正在读取回补报告…")
                 } else if reportsLoaded, recentReports.isEmpty {
-                    Text("尚无报告。先执行一次回补。").foregroundStyle(.secondary)
+                    Text("尚无报告。先执行一次回补。")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
                 } else if reportsLoaded {
                     ForEach(recentReports) { report in
                         VStack(alignment: .leading, spacing: 4) {
@@ -214,6 +223,15 @@ struct SyncCenterView: View {
         } message: { prompt in
             Text(prompt.message)
         }
+    }
+
+    private func quickBackfillButton(_ days: Int, label: String) -> some View {
+        Button(label) { backfillDays = days }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .tint(backfillDays == days ? HMColors.comparison : HMColors.neutral)
+            .accessibilityAddTraits(backfillDays == days ? [.isSelected] : [])
+            .accessibilityLabel("回补范围设为 \(label)")
     }
 
     private var presentation: SyncPresentation {
