@@ -65,7 +65,13 @@ enum HMColors {
     static let comparison = dynamic(light: 0x0A63E8, dark: 0x69A8FF)
     static let confirmed = dynamic(light: 0x007F7B, dark: 0x4BCAC1)
     static let actionRequired = dynamic(light: 0xC93F16, dark: 0xFF8E6B)
-    static let primaryAction = dynamic(light: 0xC93F16, dark: 0xA83212)
+    /// 中间档警示（琥珀）：完整度 50–80%、趋势轻微恶化等「需要注意但未到红」的状态。
+    /// 此前视图层用系统 .orange 直出，绕过了双模色板（ADR-002 违例）。
+    static let warning = dynamic(light: 0xB76900, dark: 0xFFB340)
+    /// 主行动按钮（保存/确认）。与 actionRequired（危险/待处理）分离——此前浅色模式
+    /// 两者同色（橙红），保存键看起来像删除键。取值对齐 comparison 蓝，与全 App
+    /// 主按钮（HMEmptyState / HMInlineRecovery / Alerts 均用 comparison）一致。
+    static let primaryAction = dynamic(light: 0x0A63E8, dark: 0x69A8FF)
     static let estimate = dynamic(light: 0x6444DC, dark: 0xAA98FF)
     static let neutral = dynamic(light: 0x666B73, dark: 0xB7BAC0)
 
@@ -85,6 +91,17 @@ enum HMColors {
             alpha: 1
         )
     }
+}
+
+/// 全 App 圆角三档。此前圆角字面量散落在 8/10/12/14/16/18/22 全谱系，
+/// 统一收敛为小单元格 / 标准卡片 / 大面板三档（详见 design-qa 评估）。
+enum HMRadius {
+    /// 小单元格：统计格、输入框、搜索框、提示条。
+    static let cell: CGFloat = 12
+    /// 标准卡片：指标卡、列表容器卡、明细卡。
+    static let card: CGFloat = 16
+    /// 大面板：决策卡、空态卡、页级容器。
+    static let panel: CGFloat = 18
 }
 
 enum HMDateText {
@@ -231,7 +248,7 @@ struct HMDecisionLens: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(18)
-        .hmSurface(cornerRadius: 18)
+        .hmSurface()
         .accessibilityElement(children: .contain)
     }
 
@@ -338,7 +355,7 @@ struct HMProvenanceRail: View {
             }
         }
         .padding(16)
-        .hmSurface(cornerRadius: 18)
+        .hmSurface()
     }
 
     private func horizontalStep(_ step: Step, isLast: Bool) -> some View {
@@ -463,7 +480,7 @@ struct HMEmptyState: View {
             }
         }
         .padding(18)
-        .hmSurface(cornerRadius: 18)
+        .hmSurface()
     }
 }
 
@@ -608,9 +625,9 @@ struct HMEditorCallout: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(12)
-        .background(tone.secondaryColor, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .background(tone.secondaryColor, in: RoundedRectangle(cornerRadius: HMRadius.cell, style: .continuous))
         .overlay {
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
+            RoundedRectangle(cornerRadius: HMRadius.cell, style: .continuous)
                 .stroke(tone.color.opacity(0.28), lineWidth: 1)
         }
         .hmAccessibilityIdentifier(accessibilityIdentifier)
@@ -753,7 +770,7 @@ struct HMLoadingSkeleton: View {
 }
 
 extension View {
-    func hmSurface(cornerRadius: CGFloat = 18) -> some View {
+    func hmSurface(cornerRadius: CGFloat = HMRadius.panel) -> some View {
         background(HMColors.surface, in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
             .overlay {
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)

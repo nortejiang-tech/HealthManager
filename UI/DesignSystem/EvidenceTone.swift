@@ -49,6 +49,19 @@ enum EvidenceTone {
         }
     }
 
+    // MARK: - 告警
+
+    /// 告警级别 → 语义色。critical/warning=需要处理；info=对照性提示。
+    /// （此前 AlertsView 内联 switch，违反「唯一决策点」约定。）
+    static func forAlertSeverity(_ severity: MissingDataAlert.Severity) -> HMSemanticTone {
+        switch severity {
+        case .critical, .warning:
+            return .actionRequired
+        case .info:
+            return .comparison
+        }
+    }
+
     // MARK: - 餐食分项来源
 
     /// 分项来源 → 语义色。manual=中性；AI=估算；
