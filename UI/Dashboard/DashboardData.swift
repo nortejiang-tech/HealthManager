@@ -40,11 +40,13 @@ enum MetricPeriod: String, CaseIterable, Identifiable {
 
     /// Bucket size used when rolling daily points into wider buckets. All periods keep
     /// **day-level granularity** — including year, which plots every day's data point and
-    /// just labels the x-axis weekly (see `MetricDetailView` axis config).
+    /// lets `MetricDetailView` thin the x-axis labels by visible-window cadence (day /
+    /// week / month) and pinch-zoom.
     var bucketDays: Int { 1 }
 
     /// Calendar unit the chart marks span. Day-level for all periods now that the year view
-    /// plots daily points (weekly is only the x-axis label cadence, not the data cadence).
+    /// plots daily points (the x-axis label cadence adapts to the visible window; it is
+    /// not the data cadence).
     var chartUnit: Calendar.Component { .day }
 }
 

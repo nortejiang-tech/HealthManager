@@ -21,6 +21,11 @@ struct MetricDetailView: View {
     /// Transient selection from `chartXSelection` — nil while no gesture is active. We
     /// copy non-nil values into `inspectedDate` so the selection sticks after release.
     @State private var rawSelection: Date?
+    /// X-axis pinch-zoom factor (year view only). 1 = full period pane; higher = narrower
+    /// visible window. `zoomBase` snapshots the factor at gesture start so successive
+    /// pinch events compose multiplicatively.
+    @State private var xZoom: CGFloat = 1
+    @State private var zoomBase: CGFloat = 1
 
     var body: some View {
         ScrollView {
@@ -55,6 +60,8 @@ struct MetricDetailView: View {
             inspectedDate = nil
             rawSelection = nil
             deficitBreakdown = nil
+            xZoom = 1
+            zoomBase = 1
             await load()
         }
         .task(id: inspectedDate) {
@@ -140,11 +147,10 @@ struct MetricDetailView: View {
         }
     }
 
+    /// 该指标是否「越低越好」（决定趋势 Chip 的颜色方向）。此前靠匹配中文标题字符串，
+    /// 改文案即坏；现随 `MetricDetailConfig` 静态配置声明。
     private var lowerIsBetter: Bool {
-        switch config.title {
-        case "静息心率", "体重", "体脂率": return true
-        default: return false
-        }
+        config.lowerIsBetter
     }
 
     private var inspectedLabel: String? {
@@ -169,16 +175,51 @@ struct MetricDetailView: View {
         return points.min(by: { abs($0.date.timeIntervalSince(date)) < abs($1.date.timeIntervalSince(date)) })
     }
 
-    /// Width of the visible window in seconds. Normally the period's pane (周/月/年), but
-    /// when the available data spans less than that pane we shrink to the data span so the
-    /// bars stretch to fill the chart instead of cramming into a corner.
-    private var effectiveVisibleSeconds: TimeInterval {
+    /// Width of the visible window in seconds *before* pinch-zoom. Normally the period's
+    /// pane (周/月/年), but when the available data spans less than that pane we shrink to
+    /// the data span so the bars stretch to fill the chart instead of cramming into a corner.
+    private var baseVisibleSeconds: TimeInterval {
         let plotted = points.compactMap { $0.value != nil ? $0.date : nil }
         guard let first = plotted.first, let last = plotted.last, last > first else {
             return period.visibleDomainSeconds
         }
         let dataSpan = last.timeIntervalSince(first) + 86_400  // +1 day so the last bar isn't clipped
         return min(period.visibleDomainSeconds, max(dataSpan, 86_400))
+    }
+
+    /// Smallest window the year-view pinch can zoom into: one week. Below that the user
+    /// should just switch to 周/月, which render the same data at native density.
+    private var minZoomableSeconds: TimeInterval { 7 * 86_400 }
+
+    /// Width of the visible window in seconds, after applying pinch-zoom. Zoom only
+    /// narrows the window (never widens past the pane/data span), so week/month and
+    /// short data spans are untouched.
+    private var effectiveVisibleSeconds: TimeInterval {
+        guard period == .year else { return baseVisibleSeconds }
+        let floor = min(baseVisibleSeconds, minZoomableSeconds)
+        return max(baseVisibleSeconds / xZoom, floor)
+    }
+
+    /// Label cadence for the x-axis, derived from how many days are actually on screen.
+    /// This is what keeps the ruler readable: a full-year pane labels months, a panned
+    /// month labels weeks, and a week (or a year window pinched down to one) labels days —
+    /// i.e. labels always land on real data points or on clean calendar boundaries.
+    private enum XAxisCadence {
+        case day, week, month
+    }
+
+    private var xAxisCadence: XAxisCadence {
+        switch effectiveVisibleSeconds {
+        case ..<(10 * 86_400): return .day
+        case ..<(62 * 86_400): return .week
+        default: return .month
+        }
+    }
+
+    /// Per-day PointMarks only earn their pixels when individual days are far enough
+    /// apart to see; at year scale 365 dots smear into one thick band (see screenshot).
+    private var showPointSymbols: Bool {
+        effectiveVisibleSeconds < 62 * 86_400
     }
 
     /// The date interval currently scrolled into view.
@@ -204,9 +245,31 @@ struct MetricDetailView: View {
                 .frame(height: 220)
                 .padding(.vertical, 6)
                 .accessibilityElement(children: .ignore)
+                .accessibilityIdentifier("metric-detail-chart")
                 .accessibilityLabel("\(config.title)趋势图")
                 .accessibilityValue(chartAccessibilitySummary)
-                .accessibilityHint("可水平滚动并选择日期查看明细")
+                .accessibilityHint(period == .year ? "可水平滚动、双指捏合缩放，并选择日期查看明细" : "可水平滚动并选择日期查看明细")
+                // 重置按钮放在 a11y 边界之外：children:.ignore 会把边界内的子视图
+                // 全部折叠进图表元素，VoiceOver（和 XCUITest）都看不到按钮。
+                .overlay(alignment: .topTrailing) {
+                    if period == .year, xZoom > 1.01 {
+                        Button {
+                            withAnimation(.easeOut(duration: 0.2)) {
+                                xZoom = 1
+                                zoomBase = 1
+                            }
+                        } label: {
+                            Label("重置比例", systemImage: "arrow.up.left.and.arrow.down.right")
+                                .font(.caption2.weight(.medium))
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.mini)
+                        .padding(6)
+                        .accessibilityIdentifier("chart-reset-zoom")
+                        .accessibilityLabel("重置缩放")
+                        .accessibilityHint("恢复完整年度视图")
+                    }
+                }
         } else if let err = loadError {
             HMEditorCallout(
                 title: "指标加载失败",
@@ -246,12 +309,14 @@ struct MetricDetailView: View {
                     )
                     .foregroundStyle(config.theme.gradient)
                     .interpolationMethod(.linear)
-                    PointMark(
-                        x: .value("日期", item.0, unit: period.chartUnit),
-                        y: .value(config.title, item.1)
-                    )
-                    .foregroundStyle(config.theme.primary)
-                    .symbolSize(36)
+                    if showPointSymbols {
+                        PointMark(
+                            x: .value("日期", item.0, unit: period.chartUnit),
+                            y: .value(config.title, item.1)
+                        )
+                        .foregroundStyle(config.theme.primary)
+                        .symbolSize(36)
+                    }
                 case .area:
                     LineMark(
                         x: .value("日期", item.0, unit: period.chartUnit),
@@ -284,18 +349,26 @@ struct MetricDetailView: View {
         }
         .chartYScale(domain: yDomain)
         .chartXAxis {
-            if period == .year {
-                // Year: daily data points, but tick + date label once per week. Charts
-                // auto-thins labels that would overlap, so the ruler stays readable.
+            // Cadence follows the visible window (see xAxisCadence): Swift Charts does NOT
+            // thin stride-based labels, so density must be capped by construction —
+            // ≤ ~8 day labels, ≤ ~9 week labels, ≤ 13 month labels on any pane.
+            switch xAxisCadence {
+            case .day:
+                AxisMarks(values: .stride(by: .day)) { _ in
+                    AxisGridLine().foregroundStyle(.quaternary)
+                    AxisValueLabel(format: dayAxisFormat, centered: false)
+                        .font(.system(size: 10))
+                }
+            case .week:
                 AxisMarks(values: .stride(by: .weekOfYear)) { _ in
-                    AxisGridLine()
+                    AxisGridLine().foregroundStyle(.quaternary)
                     AxisValueLabel(format: .dateTime.month(.defaultDigits).day(), centered: false)
                         .font(.system(size: 10))
                 }
-            } else {
-                AxisMarks(values: .automatic(desiredCount: 5)) { _ in
-                    AxisGridLine()
-                    AxisValueLabel(format: xAxisFormat, centered: false)
+            case .month:
+                AxisMarks(values: .stride(by: .month)) { _ in
+                    AxisGridLine().foregroundStyle(.quaternary)
+                    AxisValueLabel(format: .dateTime.month(.defaultDigits), centered: false)
                         .font(.system(size: 10))
                 }
             }
@@ -317,6 +390,27 @@ struct MetricDetailView: View {
         .chartXVisibleDomain(length: effectiveVisibleSeconds)
         .chartScrollPosition(x: $scrollPositionX)
         .chartXSelection(value: $rawSelection)
+        // Year view only: two-finger pinch narrows/widens the visible window (single-finger
+        // pan above is untouched). The window re-anchors on its own center so the gesture
+        // feels like zooming into what you're looking at, not into the leading edge.
+        // simultaneousGesture 是关键：.gesture 默认独占识别，Charts 内部 UIScrollView 的
+        // 平移识别器会抢先认领两指触摸，MagnifyGesture 的 onChanged 根本不会触发。
+        .simultaneousGesture(
+            MagnifyGesture()
+                .onChanged { value in
+                    guard period == .year else { return }
+                    let maxZoom = max(baseVisibleSeconds / minZoomableSeconds, 1)
+                    let newZoom = min(max(zoomBase * value.magnification, 1), maxZoom)
+                    let oldLength = baseVisibleSeconds / xZoom
+                    let newLength = baseVisibleSeconds / newZoom
+                    let center = scrollPositionX.addingTimeInterval(oldLength / 2)
+                    xZoom = newZoom
+                    scrollPositionX = center.addingTimeInterval(-newLength / 2)
+                }
+                .onEnded { _ in
+                    zoomBase = xZoom
+                }
+        )
     }
 
     @ViewBuilder
@@ -384,21 +478,21 @@ struct MetricDetailView: View {
                         label: "基础代谢",
                         value: b.basal,
                         sign: "+",
-                        tint: .indigo
+                        tint: HMColors.estimate
                     )
                     breakdownRow(
                         icon: "figure.walk",
                         label: "活动消耗",
                         value: b.active,
                         sign: "+",
-                        tint: .orange
+                        tint: HMColors.warning
                     )
                     breakdownRow(
                         icon: "fork.knife",
                         label: "饮食摄入",
                         value: b.intake,
                         sign: "−",
-                        tint: .green
+                        tint: HMColors.confirmed
                     )
                     Divider()
                     HStack {
@@ -407,7 +501,7 @@ struct MetricDetailView: View {
                         Spacer()
                         Text(b.deficit.map { String(format: "%+.0f kcal", $0) } ?? "—")
                             .font(.callout.weight(.semibold).monospacedDigit())
-                            .foregroundStyle((b.deficit ?? 0) >= 0 ? config.theme.primary : .red)
+                            .foregroundStyle((b.deficit ?? 0) >= 0 ? config.theme.primary : HMColors.actionRequired)
                     }
                     if let reason = b.missingReason {
                         Text(reason)
@@ -421,9 +515,9 @@ struct MetricDetailView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(14)
-        .background(HMColors.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .background(HMColors.surface, in: RoundedRectangle(cornerRadius: HMRadius.card, style: .continuous))
         .overlay {
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
+            RoundedRectangle(cornerRadius: HMRadius.card, style: .continuous)
                 .stroke(HMColors.separator, lineWidth: 1)
         }
     }
@@ -480,9 +574,9 @@ struct MetricDetailView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(14)
-        .background(HMColors.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .background(HMColors.surface, in: RoundedRectangle(cornerRadius: HMRadius.card, style: .continuous))
         .overlay {
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
+            RoundedRectangle(cornerRadius: HMRadius.card, style: .continuous)
                 .stroke(HMColors.separator, lineWidth: 1)
         }
     }
@@ -568,9 +662,9 @@ struct MetricDetailView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(10)
-        .background(HMColors.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .background(HMColors.surface, in: RoundedRectangle(cornerRadius: HMRadius.cell, style: .continuous))
         .overlay {
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
+            RoundedRectangle(cornerRadius: HMRadius.cell, style: .continuous)
                 .stroke(HMColors.separator, lineWidth: 1)
         }
     }
@@ -607,12 +701,10 @@ struct MetricDetailView: View {
         return "\(f.string(from: first)) – \(f.string(from: last))"
     }
 
-    private var xAxisFormat: Date.FormatStyle {
-        switch period {
-        case .week: return .dateTime.weekday(.narrow)
-        case .month: return .dateTime.day().month(.narrow)
-        case .year: return .dateTime.month(.narrow)
-        }
+    /// Day-cadence labels: the 周 pane reads better as weekday initials (一/二/…),
+    /// while a year window pinched down to a few days needs the actual day-of-month.
+    private var dayAxisFormat: Date.FormatStyle {
+        period == .week ? .dateTime.weekday(.narrow) : .dateTime.day()
     }
 
     /// 纵轴随「当前可视窗口」自适应：滚动或切换周/月/年后，纵轴跟随窗口内
@@ -693,6 +785,8 @@ struct MetricDetailConfig {
     /// HealthKit identifier whose raw samples should be listed when a day is inspected.
     /// nil for derived/aggregate-only metrics (steps, deficit, …).
     var rawSamplesType: String? = nil
+    /// true = 数值下降是好事（体重/体脂率/静息心率），驱动 TrendChip 的颜色方向。
+    var lowerIsBetter: Bool = false
 
     static let weight = MetricDetailConfig(
         title: "体重",
@@ -703,7 +797,8 @@ struct MetricDetailConfig {
         summary: .latest,
         footnote: "数据来自 Apple 健康 · 每日多次称重取平均；点击某天可查看当天全部记录。",
         format: { String(format: "%.1f", $0) },
-        rawSamplesType: "HKQuantityTypeIdentifierBodyMass"
+        rawSamplesType: "HKQuantityTypeIdentifierBodyMass",
+        lowerIsBetter: true
     )
 
     static let bodyFat = MetricDetailConfig(
@@ -715,7 +810,8 @@ struct MetricDetailConfig {
         summary: .latest,
         footnote: "数据来自 Apple 健康 · 每日多次测量取平均；体脂率换算为百分比展示。",
         format: { String(format: "%.1f", $0 * 100) },
-        rawSamplesType: "HKQuantityTypeIdentifierBodyFatPercentage"
+        rawSamplesType: "HKQuantityTypeIdentifierBodyFatPercentage",
+        lowerIsBetter: true
     )
 
     static let bmi = MetricDetailConfig(
@@ -760,7 +856,8 @@ struct MetricDetailConfig {
         chartStyle: .line,
         summary: .latest,
         footnote: "Apple 健康静息心率（多源时取均值）。",
-        format: { String(format: "%.0f", $0) }
+        format: { String(format: "%.0f", $0) },
+        lowerIsBetter: true
     )
 
     static let sleep = MetricDetailConfig(
