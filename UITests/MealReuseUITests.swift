@@ -291,8 +291,9 @@ final class MealReuseUITests: XCTestCase {
     }
 
     private func delete(row: XCUIElement, marker: String, in app: XCUIApplication) {
-        row.swipeLeft()
-        let deleteButton = app.buttons["删除"]
+        // 长按行 → 上下文菜单「删除」（滑动揭示对合成触摸不可靠，长按是稳定路径）。
+        row.press(forDuration: 1.1)
+        let deleteButton = app.buttons["删除"].firstMatch
         XCTAssertTrue(deleteButton.waitForExistence(timeout: 3), "Cleanup failed: \(marker) 无删除按钮")
         guard deleteButton.exists else { return }
         deleteButton.tap()

@@ -124,14 +124,22 @@ final class MealPersistenceUITests: XCTestCase {
         add(attachment)
     }
 
-    private func cleanupMeal(with marker: String, in app: XCUIApplication) {
+    /// 长按行 → 上下文菜单「删除」。滑动揭示按钮对真人有效，但合成触摸
+    /// 按 offset 前的无障碍命中区投递、元素级 tap 又受 hittable 检查限制，
+    /// 长按菜单是自动化与 VoiceOver 共用的稳定删除路径。
+    private func removeRow(byMarker marker: String, in app: XCUIApplication) {
         let row = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", marker)).firstMatch
-        XCTAssertTrue(row.waitForExistence(timeout: 5))
-        row.swipeLeft()
+        XCTAssertTrue(row.waitForExistence(timeout: 5), "未找到含 \(marker) 的餐次行")
+        row.press(forDuration: 1.1)
 
-        let deleteButton = app.buttons["删除"]
-        XCTAssertTrue(deleteButton.waitForExistence(timeout: 3))
+        let deleteButton = app.buttons["删除"].firstMatch
+        XCTAssertTrue(deleteButton.waitForExistence(timeout: 3), "\(marker): 长按菜单无删除项")
         deleteButton.tap()
+    }
+
+    private func cleanupMeal(with marker: String, in app: XCUIApplication) {
+        removeRow(byMarker: marker, in: app)
+        let row = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", marker)).firstMatch
         XCTAssertFalse(row.waitForExistence(timeout: 5))
     }
 
@@ -146,9 +154,9 @@ final class MealPersistenceUITests: XCTestCase {
     private func deleteMealIfPresent(for marker: String, in app: XCUIApplication) {
         let row = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", marker)).firstMatch
         guard row.waitForExistence(timeout: 1) else { return }
-        row.swipeLeft()
+        row.press(forDuration: 1.1)
 
-        let deleteButton = app.buttons["删除"]
+        let deleteButton = app.buttons["删除"].firstMatch
         XCTAssertTrue(deleteButton.waitForExistence(timeout: 2))
         guard deleteButton.exists else { return }
         deleteButton.tap()

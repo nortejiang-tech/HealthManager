@@ -35,7 +35,6 @@ final class SyncLifecycleUITests: XCTestCase {
         XCTAssertTrue(syncCenter.waitForExistence(timeout: 8))
         syncCenter.tap()
         XCTAssertTrue(app.navigationBars["同步中心"].waitForExistence(timeout: 8))
-        XCTAssertTrue(app.buttons["立即同步"].waitForExistence(timeout: 5))
 
         let knownStatusLabels = [
             "空闲",
@@ -52,6 +51,15 @@ final class SyncLifecycleUITests: XCTestCase {
             knownStatusLabels.contains { app.staticTexts[$0].exists },
             "Sync Center must expose a concrete state instead of an unbounded generic spinner."
         )
+
+        // 「立即同步」位于历史回补区块之下：List 离屏行不进无障碍树，需滚动到可见。
+        let syncNowButton = app.buttons["立即同步"].firstMatch
+        var scrolls = 0
+        while !syncNowButton.exists && scrolls < 4 {
+            app.swipeUp()
+            scrolls += 1
+        }
+        XCTAssertTrue(syncNowButton.waitForExistence(timeout: 5))
 
         let attachment = XCTAttachment(screenshot: app.screenshot())
         attachment.name = "sync-lifecycle-cold-launch-and-diagnostics"
