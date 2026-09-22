@@ -88,7 +88,7 @@ struct MealReuseView: View {
         VStack(spacing: 0) {
             if let actionError {
                 Text(actionError)
-                    .foregroundStyle(.red)
+                    .foregroundStyle(HMColors.actionRequired)
                     .font(.footnote)
                     .padding(.horizontal)
                     .padding(.vertical, 8)
@@ -277,7 +277,7 @@ struct MealReuseView: View {
             if let actionError {
                 Text(actionError)
                     .font(.footnote)
-                    .foregroundStyle(.red)
+                    .foregroundStyle(HMColors.actionRequired)
             }
 
             Button("确认复用选中菜品") {
