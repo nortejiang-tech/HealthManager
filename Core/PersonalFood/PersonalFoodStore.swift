@@ -60,15 +60,21 @@ final class PersonalFoodStore: @unchecked Sendable {
 
     // MARK: - 我的常吃页面
 
+    /// 候选进入「我的常吃」与选择菜单的最小餐数门槛。
+    /// 只录过一两次的多为一次性记录，不再列出（2026-09-27 需求）。
+    static let visibleCandidateMinMealCount = 3
+
     /// 加载「我的常吃」：已匹配单品、配方、待确认候选。
-    /// 候选 = 窗口内的分项规范名 −（已被任何映射覆盖 ∪ 已忽略）。
+    /// 候选 = 窗口内的分项组键（含同物异名归并）−（已被任何映射覆盖 ∪ 已忽略），
+    /// 且窗口内记录 ≥ `visibleCandidateMinMealCount` 餐。
     func loadFrequentPage(windowDays: Int?) async throws -> FrequentPage {
         try await databaseManager.asyncRead { db in
             let facts = try FrequentFoodsQuery.loadMealFacts(db: db, windowDays: windowDays)
             let summaries = FrequentFoodsQuery.summarize(mealFacts: facts)
             let foods = try PersonalFoodRecord.order(Column("pinned").desc).fetchAll(db)
             let ignoredKeys = Set(
-                try IgnoredCandidateRecord.fetchAll(db).map(\.candidateKey)
+                try IgnoredCandidateRecord.fetchAll(db)
+                    .map { FoodNameAliases.groupKey(forCanonicalName: $0.candidateKey) }
             )
             let recipes = try PersonalRecipeRecord
                 .order(Column("updated_at").desc)
@@ -76,16 +82,16 @@ final class PersonalFoodStore: @unchecked Sendable {
 
             // 映射覆盖键 → 最近30天餐数/最近时间/常用克数（并集按餐去重）。
             func stats(forKeys keys: [String]) -> (count: Int, last: Int64?, grams: Double?) {
-                let keySet = Set(keys)
+                let keySet = Set(keys.map { FoodNameAliases.groupKey(forCanonicalName: $0) })
                 var mealIds = Set<Int64>()
                 var last: Int64?
                 var gramsCounts: [Double: Int] = [:]
                 for fact in facts {
-                    let hit = fact.items.contains { keySet.contains(MealItemIdentity.canonicalName($0.name)) }
+                    let hit = fact.items.contains { keySet.contains(FoodNameAliases.groupKey(forName: $0.name)) }
                     guard hit else { continue }
                     mealIds.insert(fact.mealId)
                     last = max(last ?? 0, fact.eatenAt)
-                    for item in fact.items where keySet.contains(MealItemIdentity.canonicalName(item.name)) {
+                    for item in fact.items where keySet.contains(FoodNameAliases.groupKey(forName: item.name)) {
                         if let grams = item.grams, grams > 0, grams.isFinite {
                             gramsCounts[grams, default: 0] += 1
                         }
@@ -101,7 +107,7 @@ final class PersonalFoodStore: @unchecked Sendable {
             var coveredKeys = Set<String>()
             for food in foods {
                 let keys = food.matchKeys
-                coveredKeys.formUnion(keys)
+                coveredKeys.formUnion(keys.map { FoodNameAliases.groupKey(forCanonicalName: $0) })
                 let foodStats = stats(forKeys: keys)
                 matchedFoods.append(
                     MatchedFood(
@@ -145,7 +151,9 @@ final class PersonalFoodStore: @unchecked Sendable {
             }
 
             let pending = summaries.filter { summary in
-                !coveredKeys.contains(summary.key) && !ignoredKeys.contains(summary.key)
+                summary.mealCount >= Self.visibleCandidateMinMealCount
+                    && !coveredKeys.contains(summary.key)
+                    && !ignoredKeys.contains(summary.key)
             }
 
             return FrequentPage(

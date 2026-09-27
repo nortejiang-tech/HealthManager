@@ -49,7 +49,7 @@ final class PersonalFoodStoreTests: XCTestCase {
 
     func test_frequentSummary_deduplicatesPerMeal_andHonorsWindow() async throws {
         let db = DatabaseManager.makeInMemoryForTesting()
-        // 30 天窗口内：两餐都含煮鸡蛋 → 2 餐（一餐两条同名只计一次）。
+        // 30 天窗口内：第一餐同时含煮鸡蛋/白煮蛋（归并后同组只计一餐）。
         _ = try await insertMeal(db, eatenAt: eatenAt(daysAgo: 1), items: [
             (name: "煮鸡蛋", grams: 150, kind: .aiEstimate),
             (name: "白煮蛋", grams: 150, kind: .aiEstimate),
@@ -57,22 +57,25 @@ final class PersonalFoodStoreTests: XCTestCase {
         _ = try await insertMeal(db, eatenAt: eatenAt(daysAgo: 3), items: [
             (name: "煮鸡蛋", grams: 150, kind: .aiEstimate),
         ])
+        _ = try await insertMeal(db, eatenAt: eatenAt(daysAgo: 5), items: [
+            (name: "白煮蛋", grams: 150, kind: .aiEstimate),
+        ])
         // 窗口外：40 天前。
         _ = try await insertMeal(db, eatenAt: eatenAt(daysAgo: 40), items: [
             (name: "煮鸡蛋", grams: 150, kind: .aiEstimate),
         ])
 
         let store = makeStore(databaseManager: db)
+        let eggKey = FoodNameAliases.groupKey(forName: "煮鸡蛋")
+        // 候选门槛 ≥3 餐：近 30 天煮鸡蛋组恰好 3 餐（第一餐两种写法只计一餐）。
         let recent = try await store.loadFrequentPage(windowDays: 30)
-        let eggRecent = recent.pendingCandidates.first { $0.key == MealItemIdentity.canonicalName("煮鸡蛋") }
-        // 煮鸡蛋/白煮蛋同为 canonicalName 归并（去空白+小写不同——中文不归并！）
-        // 注意：canonicalName 不做语义归并，两键分开；此处验证窗口与去重即可。
+        let eggRecent = recent.pendingCandidates.first { $0.key == eggKey }
         XCTAssertNotNil(eggRecent)
-        XCTAssertEqual(eggRecent?.mealCount, 2)
+        XCTAssertEqual(eggRecent?.mealCount, 3)
 
         let all = try await store.loadFrequentPage(windowDays: nil)
-        let eggAll = all.pendingCandidates.first { $0.key == MealItemIdentity.canonicalName("煮鸡蛋") }
-        XCTAssertEqual(eggAll?.mealCount, 3, "全部历史还应包含 40 天前那一餐")
+        let eggAll = all.pendingCandidates.first { $0.key == eggKey }
+        XCTAssertEqual(eggAll?.mealCount, 4, "全部历史还应包含 40 天前那一餐")
     }
 
     func test_summarize_countsDistinctMealOnce_perKey() {
@@ -250,6 +253,88 @@ final class PersonalFoodStoreTests: XCTestCase {
             PersonalFoodStore.provenanceRef(recipeId: created.recipe.id!, version: 1)
         )
         XCTAssertNil(resolved, "配方删除后不再解析；已保存餐次的 meal_items 快照独立存在，不受影响")
+    }
+
+    // MARK: 同物异名归并 + 候选门槛（2026-09-27 需求）
+
+    func test_summarize_mergesAliasVariants_andPicksMostFrequentSpelling() {
+        let facts: [FrequentFoodsQuery.MealFacts] = [
+            .init(mealId: 1, eatenAt: 100, items: [.init(name: "煮鸡蛋", grams: 60)]),
+            .init(mealId: 2, eatenAt: 200, items: [.init(name: "白煮蛋", grams: 55)]),
+            .init(mealId: 3, eatenAt: 300, items: [.init(name: "煮鸡蛋", grams: 60)]),
+            .init(mealId: 4, eatenAt: 400, items: [.init(name: "鸡蛋（水煮）", grams: 60)]),
+            .init(mealId: 5, eatenAt: 500, items: [.init(name: "煎鸡蛋", grams: 40)]),
+        ]
+        let summaries = FrequentFoodsQuery.summarize(mealFacts: facts)
+        let boiled = summaries.first { $0.key == FoodNameAliases.groupKey(forName: "煮鸡蛋") }
+        XCTAssertEqual(boiled?.mealCount, 4, "白煮蛋 / 鸡蛋（水煮）应与煮鸡蛋合并计数")
+        XCTAssertEqual(boiled?.displayName, "煮鸡蛋", "展示名取出现次数最多的写法")
+        XCTAssertEqual(boiled?.lastEatenAt, 400)
+        let fried = summaries.first { $0.displayName == "煎鸡蛋" }
+        XCTAssertEqual(fried?.mealCount, 1, "煎鸡蛋是另一种做法，不与煮鸡蛋合并")
+
+        // 各写法同频时，展示名取组代表写法（卤蛋，而不是「卤蛋（两个）」）。
+        let eggOnly: [FrequentFoodsQuery.MealFacts] = [
+            .init(mealId: 1, eatenAt: 100, items: [.init(name: "卤蛋（两个）", grams: 60)]),
+            .init(mealId: 2, eatenAt: 200, items: [.init(name: "卤蛋", grams: 30)]),
+        ]
+        let braised = FrequentFoodsQuery.summarize(mealFacts: eggOnly)
+            .first { $0.key == FoodNameAliases.groupKey(forName: "卤蛋") }
+        XCTAssertEqual(braised?.displayName, "卤蛋")
+    }
+
+    func test_pendingCandidates_hideBelowMinMealCount() async throws {
+        let db = DatabaseManager.makeInMemoryForTesting()
+        _ = try await insertMeal(db, eatenAt: eatenAt(daysAgo: 1), items: [("无糖豆浆", 240, .aiEstimate)])
+        _ = try await insertMeal(db, eatenAt: eatenAt(daysAgo: 2), items: [("豆浆", 240, .aiEstimate)])
+        _ = try await insertMeal(db, eatenAt: eatenAt(daysAgo: 3), items: [("牛奶", 250, .aiEstimate)])
+        _ = try await insertMeal(db, eatenAt: eatenAt(daysAgo: 4), items: [("牛奶", 250, .aiEstimate)])
+
+        let store = makeStore(databaseManager: db)
+        let page = try await store.loadFrequentPage(windowDays: 30)
+        // 豆浆组归并后 2 餐、牛奶 2 餐，都低于门槛 → 不出现在候选。
+        XCTAssertTrue(page.pendingCandidates.isEmpty)
+
+        _ = try await insertMeal(db, eatenAt: eatenAt(daysAgo: 5), items: [("豆浆", 240, .aiEstimate)])
+        let pageAfter = try await store.loadFrequentPage(windowDays: 30)
+        let soymilk = try XCTUnwrap(
+            pageAfter.pendingCandidates.first { $0.key == FoodNameAliases.groupKey(forName: "无糖豆浆") }
+        )
+        XCTAssertEqual(soymilk.mealCount, 3, "跨写法合并达到门槛后应出现")
+        XCTAssertEqual(soymilk.displayName, "豆浆", "展示名是组内次数最多的写法")
+        XCTAssertFalse(pageAfter.pendingCandidates.contains { $0.displayName == "牛奶" }, "2 餐仍低于门槛")
+    }
+
+    func test_confirmCoversWholeAliasGroup() async throws {
+        let db = DatabaseManager.makeInMemoryForTesting()
+        for daysAgo in 1...3 {
+            _ = try await insertMeal(db, eatenAt: eatenAt(daysAgo: daysAgo), items: [("白煮蛋", 55, .aiEstimate)])
+        }
+        _ = try await insertMeal(db, eatenAt: eatenAt(daysAgo: 4), items: [("煮鸡蛋", 60, .aiEstimate)])
+
+        let store = makeStore(databaseManager: db)
+        var page = try await store.loadFrequentPage(windowDays: 30)
+        let candidate = try XCTUnwrap(page.pendingCandidates.first { $0.key == FoodNameAliases.groupKey(forName: "煮鸡蛋") })
+        XCTAssertEqual(candidate.mealCount, 4, "归并后按组计 4 餐")
+
+        // 只确认组内一个写法 → 整组从候选消失，统计跨写法计 4 餐。
+        let entry = FoodCatalogEntry.fixture(id: "mext-12005", nameZh: "水煮全蛋")
+        _ = try await store.confirmCandidate(key: candidate.key, displayName: "白煮蛋", entry: entry, catalogVersion: "t")
+        page = try await store.loadFrequentPage(windowDays: 30)
+        XCTAssertTrue(page.pendingCandidates.isEmpty)
+        XCTAssertEqual(page.matchedFoods.first?.recentMealCount, 4)
+    }
+
+    func test_ignoreCandidate_coversAliasVariants() async throws {
+        let db = DatabaseManager.makeInMemoryForTesting()
+        _ = try await insertMeal(db, eatenAt: eatenAt(daysAgo: 1), items: [("米饭", 150, .aiEstimate)])
+        _ = try await insertMeal(db, eatenAt: eatenAt(daysAgo: 2), items: [("白米饭", 150, .aiEstimate)])
+        _ = try await insertMeal(db, eatenAt: eatenAt(daysAgo: 3), items: [("米饭", 150, .aiEstimate)])
+
+        let store = makeStore(databaseManager: db)
+        try await store.ignoreCandidate(key: MealItemIdentity.canonicalName("米饭"))
+        let page = try await store.loadFrequentPage(windowDays: 30)
+        XCTAssertTrue(page.pendingCandidates.isEmpty, "忽略组内一个写法后整组不再出现")
     }
 }
 

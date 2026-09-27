@@ -168,7 +168,7 @@ struct MyFrequentPanel: View {
             }
             if !page.pendingCandidates.isEmpty {
                 sectionHeader("待确认候选")
-                Text("以下来自你的真实记录；可以匹配官方食材、生成配方，或保存为固定菜品。")
+                Text("以下来自你的真实记录，窗口内记录 \(PersonalFoodStore.visibleCandidateMinMealCount) 餐以上才列出；可以匹配官方食材、生成配方，或保存为固定菜品。")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 candidateRows(page.pendingCandidates)

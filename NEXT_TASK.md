@@ -1,5 +1,7 @@
 # Latest: Apple Health 锁屏后 stale deferral 已修复并装入真机
 
+2026-09-27：「我的常吃」聚合精简并入真机——新增 FoodNameAliases 同物异名归并表（基于真实备份包 409 种写法整理），常吃候选与选择菜单按组键聚合并要求窗口内 ≥3 餐；真实数据模拟候选 290→53 项，单元 436/436。同批补提交 STAGE-012 固定菜品代码（此前已装机未提交），build 号升至 17 以区分二进制。
+
 2026-09-21：真实后台任务在锁屏期收到 HealthKit code 6 后把 28 类任务挂起；旧实现解锁后只增加 requested generation，没有恢复 `waitForUnlock`，因此同步中心持续显示已经过期的等待解锁状态。现已让新的 foreground/background/manual/retry 执行机会恢复该类 deferral，observer 仍保持 parked，其他授权/修复/失败状态不会被误清除。最终完整回归 `440/440`，签名真机覆盖安装后 app 自动作业成功，数据库 `quick_check=ok`、`pending=0`、`waitForUnlock=0`、全部 generation 收敛；修复前后证据见 `STAGE-RESULTS.md`。
 
 2026-09-23：按用户明确要求，将本轮 STAGE-012 固定菜品功能 Debug 包覆盖安装到 NortePro 的 iPhone。`devicectl` 安装成功，安装后读回 bundle `com.norte.HealthManager`、版本 `0.8.1 (16)`；未卸载 App、未启动 App。由于 Info.plist 版本号沿用，版本读回不能单独区分新旧二进制；本轮安装命令与签名构建结果证明候选包已安装。v15 迁移要等首次启动才会执行。

@@ -1168,3 +1168,14 @@ xcodebuild -scheme HealthManager -configuration Release -destination 'id=0000815
 - 修复：改 `.simultaneousGesture` 与图表内部手势并行识别；重置按钮移出 `accessibilityElement(children:.ignore)` 边界（此前 VoiceOver/XCUITest 均不可见，真实无障碍缺陷）；图表补 `metric-detail-chart` 标识。
 - 验证：模拟器种入 body_metrics_daily 一年数据（370 天），新增 MetricDetailZoomUITests——捏合(scale 3)后「重置缩放」按钮出现（该按钮仅 xZoom>1.01 渲染，出现即证手势管线生效）、点按恢复后消失，PASS；截图确认整年视图为 12 个月度标签、捏合后切周标签（3/1 3/8 …）+ 日点浮现 + Y 轴随窗口重算。单元 431/431 通过。
 - 部署：签名真机包已就绪（DerivedData Debug-iphoneos）；安装时设备已断开（unavailable，无线连接未开开发者模式），待插回数据线后 `devicectl device install` 覆盖安装（PENDING）。
+
+## 2026-09-27 — 「我的常吃」聚合精简（用户真机反馈：选择菜单太长）
+
+- 用户诉求：添加饮食的「从我的常吃选择」列表太长——同一食物不同写法分成多项（煮鸡蛋/白煮蛋/鸡蛋/鸡蛋（水煮）……），且大量只录过一两次的一次性记录也占位。基于真机备份包（iCloud HealthManagerBackup，247 餐 / 409 个不同写法）逐项整理。
+- 新增 `Core/PersonalFood/FoodNameAliases.swift`：同物异名归并表（约 110 条 → 40 余组），只收同一食物/商品的不同写法（分量、做法、品牌规格、全半角括号差异）；不合并不同菜品与不同品牌商品线（三只松鼠奥尔良 / 优形 / 黑胡椒鸡胸肉干各自成组）。归并只影响统计与匹配，历史分项原始名称不改写、备份包不变。
+- `FrequentFoodsQuery.summarize`：聚合键改为 canonicalName + 别名组键（同餐同组只计一餐）；展示名改为「出现次数最多的写法，同频优先组代表写法，再取更近」（修掉同频时被『卤鸡腿（开袋即食）』这类啰嗦写法抢占的问题）。
+- `PersonalFoodStore.loadFrequentPage`：新增 `visibleCandidateMinMealCount = 3` 门槛（窗口内 <3 餐不进候选，即「只录过一次两次的从常吃里删除」，选择菜单与营养表常吃段同时生效）；映射覆盖键、忽略键、已匹配统计全部按组键解析——确认/忽略组内任一写法即覆盖整组。
+- `MealStore`：`latestItem(s)`（选择菜单取最近记录、固定菜品推荐）与 `commonGramSuggestions`（常用克数建议）同样按组键匹配，跨写法共享历史。
+- UI：候选区说明文案标注「窗口内记录 3 餐以上才列出」。
+- 验证：真实备份数据模拟——全部历史窗口候选 290 项 → 53 项（+已匹配 4 项），高频在前（煮玉米 41 / 白米饭 27 / 三只松鼠奥尔良鸡胸肉 15…）；单元测试 436/436 通过（PersonalFoodStoreTests 新增 4 例：别名合并与展示名、门槛、确认/忽略覆盖整组；MealReuseTests 新增 latestItems 组键匹配；原窗口/去重测试适配门槛后语义不变）；xcodegen 重生成工程。
+- 待办：真机更新 App 后生效（无需迁移，纯查询层变更）；UI 冒烟（营养表-我的常吃段可达性截图）不涉及断言，未单独跑。

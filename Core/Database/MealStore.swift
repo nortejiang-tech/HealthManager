@@ -171,7 +171,7 @@ final class MealStore: @unchecked Sendable {
             let lookup = try Self.loadLatestMealItemLookup(db: db, windowDays: windowDays)
             for fact in lookup.facts {
                 if let item = lookup.itemsByMeal[fact.mealId]?.first(where: {
-                    canonicalKeys.contains(MealItemIdentity.canonicalName($0.name))
+                    canonicalKeys.contains(FoodNameAliases.groupKey(forName: $0.name))
                 }) {
                     return item
                 }
@@ -190,7 +190,7 @@ final class MealStore: @unchecked Sendable {
             var latestByKey: [String: MealItemRecord] = [:]
             for fact in lookup.facts {
                 for item in lookup.itemsByMeal[fact.mealId] ?? [] {
-                    let key = MealItemIdentity.canonicalName(item.name)
+                    let key = FoodNameAliases.groupKey(forName: item.name)
                     if canonicalKeys.contains(key), latestByKey[key] == nil {
                         latestByKey[key] = item
                     }
@@ -201,7 +201,8 @@ final class MealStore: @unchecked Sendable {
     }
 
     private static func canonicalKeys(_ keys: [String]) -> Set<String> {
-        Set(keys.map(MealItemIdentity.canonicalName).filter { !$0.isEmpty })
+        Set(keys.map { FoodNameAliases.groupKey(forCanonicalName: MealItemIdentity.canonicalName($0)) })
+            .filter { !$0.isEmpty }
     }
 
     private static func loadLatestMealItemLookup(
@@ -303,7 +304,7 @@ final class MealStore: @unchecked Sendable {
         preparationState: MealItemRecord.PreparationState?,
         limit: Int
     ) async throws -> [CommonGramSuggestion] {
-        let normalized = MealItemIdentity.canonicalName(rawName)
+        let normalized = FoodNameAliases.groupKey(forName: rawName)
         guard !normalized.isEmpty else { return [] }
         guard limit > 0 else { return [] }
 
@@ -327,7 +328,7 @@ final class MealStore: @unchecked Sendable {
             for item in candidates {
                 guard let grams = item.grams, grams > 0, grams.isFinite else { continue }
                 guard let lastUsedAt = lastUsedByMealId[item.mealId] else { continue }
-                guard MealItemIdentity.canonicalName(item.name) == normalized else { continue }
+                guard FoodNameAliases.groupKey(forName: item.name) == normalized else { continue }
 
                 if let entry = aggregates[grams] {
                     aggregates[grams] = (useCount: entry.useCount + 1, lastUsedAt: max(entry.lastUsedAt, lastUsedAt))

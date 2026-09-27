@@ -4,15 +4,15 @@ import GRDB
 /// 常吃食物统计（§5.1）：
 /// - 按 `meal_records.eaten_at` 的本地自然日窗口统计（默认近 30 个自然日，nil = 全部历史）；
 /// - 每食物每餐只计一次（按 meal_id 去重）；
-/// - 名称归并复用 MealItemIdentity.canonicalName（身份处理），语义等价归并只由
-///   个人映射确认产生，这里不做模糊合并；
+/// - 名称归并 = `MealItemIdentity.canonicalName` + `FoodNameAliases` 同物异名表
+///   （用户整理的有限集合，2026-09-27）；表外的语义等价归并仍只由个人映射确认产生；
 /// - 计数是「记录中出现的餐数」，不是准确的实际食用次数。
 enum FrequentFoodsQuery {
 
     struct Summary: Equatable, Sendable {
-        /// 规范名（候选键）。
+        /// 组键（canonicalName 经 FoodNameAliases 归并）。
         let key: String
-        /// 展示名（最近一次使用的原始写法）。
+        /// 展示名（窗口内出现次数最多的写法；同频优先组代表写法，再取更近）。
         let displayName: String
         let mealCount: Int
         let lastEatenAt: Int64
@@ -74,13 +74,14 @@ enum FrequentFoodsQuery {
         }
     }
 
-    /// 按规范名聚合出频次摘要。排序：餐数降序 → 最近食用降序 → key 稳定打破平局。
+    /// 按组键（canonicalName + 同物异名表）聚合出频次摘要。
+    /// 排序：餐数降序 → 最近食用降序 → key 稳定打破平局。
     static func summarize(mealFacts: [MealFacts]) -> [Summary] {
         struct Aggregate {
             var mealIds: Set<Int64> = []
             var lastEatenAt: Int64 = 0
-            var displayName: String = ""
-            var displayNameAt: Int64 = 0
+            /// 原始写法 → (出现次数, 最近使用)。
+            var names: [String: (count: Int, lastEatenAt: Int64)] = [:]
             var grams: [Double: (count: Int, lastUsedAt: Int64)] = [:]
         }
 
@@ -88,9 +89,10 @@ enum FrequentFoodsQuery {
         for fact in mealFacts {
             var seenKeys = Set<String>()
             for item in fact.items {
-                let key = MealItemIdentity.canonicalName(item.name)
+                let key = FoodNameAliases.groupKey(forName: item.name)
                 guard !key.isEmpty else { continue }
-                // 同一餐内重复出现的同名食物只计一次（§5.1）。
+                // 同一餐内重复出现的同名食物只计一次（§5.1）；
+                // 归并后同组的不同写法也只计一次。
                 guard seenKeys.insert(key).inserted else { continue }
 
                 var aggregate = aggregates[key] ?? Aggregate()
@@ -98,10 +100,10 @@ enum FrequentFoodsQuery {
                 if fact.eatenAt > aggregate.lastEatenAt {
                     aggregate.lastEatenAt = fact.eatenAt
                 }
-                if fact.eatenAt >= aggregate.displayNameAt {
-                    aggregate.displayName = item.name
-                    aggregate.displayNameAt = fact.eatenAt
-                }
+                var name = aggregate.names[item.name] ?? (count: 0, lastEatenAt: 0)
+                name.count += 1
+                name.lastEatenAt = max(name.lastEatenAt, fact.eatenAt)
+                aggregate.names[item.name] = name
                 if let grams = item.grams, grams > 0, grams.isFinite {
                     var entry = aggregate.grams[grams] ?? (count: 0, lastUsedAt: 0)
                     entry.count += 1
@@ -113,6 +115,22 @@ enum FrequentFoodsQuery {
         }
 
         return aggregates.map { key, aggregate in
+            // 展示名：出现次数最多 → 组代表写法优先 → 更近使用 → 字典序。
+            // （代表写法优先保证「卤鸡腿」不会被同频的「卤鸡腿（开袋即食）」挤掉。）
+            let displayName = aggregate.names.max { lhs, rhs in
+                if lhs.value.count != rhs.value.count {
+                    return lhs.value.count < rhs.value.count
+                }
+                let lhsIsRepresentative = MealItemIdentity.canonicalName(lhs.key) == key
+                let rhsIsRepresentative = MealItemIdentity.canonicalName(rhs.key) == key
+                if lhsIsRepresentative != rhsIsRepresentative {
+                    return rhsIsRepresentative
+                }
+                if lhs.value.lastEatenAt != rhs.value.lastEatenAt {
+                    return lhs.value.lastEatenAt < rhs.value.lastEatenAt
+                }
+                return lhs.key < rhs.key
+            }?.key ?? key
             let commonGrams = aggregate.grams
                 .max { lhs, rhs in
                     if lhs.value.count != rhs.value.count {
@@ -126,7 +144,7 @@ enum FrequentFoodsQuery {
                 .key
             return Summary(
                 key: key,
-                displayName: aggregate.displayName,
+                displayName: displayName,
                 mealCount: aggregate.mealIds.count,
                 lastEatenAt: aggregate.lastEatenAt,
                 commonGrams: commonGrams

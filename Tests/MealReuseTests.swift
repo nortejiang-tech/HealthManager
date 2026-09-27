@@ -56,6 +56,33 @@ final class MealReuseTests: XCTestCase {
         XCTAssertEqual(emptySnapshotsB, [])
     }
 
+    func test_latestItems_matchAliasVariantsByGroupKey() async throws {
+        let store = makeStore()
+        _ = try await store.save(
+            meal: makeMeal(eatenAt: 100, createdAt: 1),
+            items: [.init(name: "煮鸡蛋", caloriesKcal: 70, proteinG: 6, fatG: 5, carbsG: 1, provenanceKind: .manual)]
+        )
+        _ = try await store.save(
+            meal: makeMeal(eatenAt: 200, createdAt: 2),
+            items: [.init(name: "白煮蛋", caloriesKcal: 71, proteinG: 7, fatG: 5, carbsG: 1, provenanceKind: .manual)]
+        )
+
+        // 选择菜单按组键取「最近一次」记录：组键「煮鸡蛋」应命中写法为白煮蛋的最新分项。
+        let latest = try await store.latestItems(
+            matchingKeys: [MealItemIdentity.canonicalName("煮鸡蛋")],
+            windowDays: nil
+        )
+        let groupKey = FoodNameAliases.groupKey(forName: "煮鸡蛋")
+        XCTAssertEqual(latest[groupKey]?.name, "白煮蛋")
+
+        // 单条版 latestItem 用组内另一个写法查询，同样命中。
+        let single = try await store.latestItem(
+            matchingKeys: [MealItemIdentity.canonicalName("鸡蛋（水煮）")],
+            windowDays: nil
+        )
+        XCTAssertEqual(single?.name, "白煮蛋")
+    }
+
     func test_recentSnapshotsCapsAtFiftyAndExcludesAfterLimit() async throws {
         let store = makeStore()
         var saved: [MealStore.Snapshot] = []
