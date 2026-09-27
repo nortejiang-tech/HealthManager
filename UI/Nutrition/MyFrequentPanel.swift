@@ -26,14 +26,19 @@ struct MyFrequentPanel: View {
     let onMatchCandidate: (FrequentFoodsQuery.Summary) -> Void
     let onEditRecipe: (PersonalFoodStore.RecipeWithVersion) -> Void
     let onCreateRecipe: (FrequentFoodsQuery.Summary) -> Void
+    let onCreateTemplate: (String, [MealItemDraft]) -> Void
+    let onEditTemplate: (PersonalMealTemplateStore.Template) -> Void
     /// 「生成参考配方」：由父级编排推测（可能耗时/需模型），失败时父级回退手动。
     var onGenerateRecipe: ((FrequentFoodsQuery.Summary) -> Void)? = nil
 
     @State private var page: PersonalFoodStore.FrequentPage?
+    @State private var templates: [PersonalMealTemplateStore.Template] = []
     @State private var isLoading = false
     @State private var loadError: String?
+    @State private var templatesLoadError: String?
     @State private var window: WindowOption = .recent
     @State private var actionErrorMessage: String?
+    @State private var templateToDelete: PersonalMealTemplateStore.Template?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -44,6 +49,16 @@ struct MyFrequentPanel: View {
             }
             .pickerStyle(.segmented)
             .accessibilityIdentifier("nutrition-frequent-window")
+
+            Button {
+                onCreateTemplate("", [])
+            } label: {
+                Label("添加固定菜品", systemImage: "plus.circle.fill")
+                    .frame(maxWidth: .infinity, minHeight: 42)
+            }
+            .buttonStyle(.bordered)
+            .tint(HMColors.primaryAction)
+            .accessibilityIdentifier("nutrition-template-create")
 
             if let loadError {
                 HMInlineRecovery(
@@ -76,6 +91,23 @@ struct MyFrequentPanel: View {
         } message: {
             Text(actionErrorMessage ?? "")
         }
+        .confirmationDialog(
+            "删除固定菜品？",
+            isPresented: Binding(
+                get: { templateToDelete != nil },
+                set: { if !$0 { templateToDelete = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button("删除", role: .destructive) {
+                guard let template = templateToDelete else { return }
+                templateToDelete = nil
+                Task { await deleteTemplate(template) }
+            }
+            Button("取消", role: .cancel) { templateToDelete = nil }
+        } message: {
+            Text(templateToDelete?.displayName ?? "")
+        }
     }
 
     private func load() async {
@@ -84,6 +116,16 @@ struct MyFrequentPanel: View {
         do {
             let loaded = try await environment.personalFoodStore.loadFrequentPage(windowDays: window.windowDays)
             await MainActor.run { page = loaded }
+            do {
+                let loadedTemplates = try await environment.personalMealTemplateStore.loadAll()
+                await MainActor.run {
+                    templates = loadedTemplates
+                    templatesLoadError = nil
+                }
+            } catch {
+                await MainActor.run { templatesLoadError = error.localizedDescription }
+                AppLogger.shared.error("Load personal meal templates failed: \(error.localizedDescription)")
+            }
         } catch {
             await MainActor.run { loadError = error.localizedDescription }
             AppLogger.shared.error("Frequent foods load failed: \(error.localizedDescription)")
@@ -92,17 +134,30 @@ struct MyFrequentPanel: View {
 
     @ViewBuilder
     private func sections(_ page: PersonalFoodStore.FrequentPage) -> some View {
-        let hasNothing = page.matchedFoods.isEmpty && page.recipes.isEmpty && page.pendingCandidates.isEmpty
+        let hasNothing = page.matchedFoods.isEmpty && page.recipes.isEmpty && page.pendingCandidates.isEmpty && templates.isEmpty
+        if let templatesLoadError {
+            HMInlineRecovery(
+                title: "固定菜品读取失败",
+                message: "饮食记录与常吃统计不受影响；可以重试读取。",
+                technicalDetails: templatesLoadError,
+                actionTitle: "重试",
+                onAction: { Task { await load() } }
+            )
+        }
         if hasNothing {
             HMEmptyState(
                 title: window == .recent ? "近 30 天还没有常吃记录" : "还没有可整理的记录",
-                message: "保存餐次后，这里会自动整理你常吃的食物与组合，供一键复用。",
+                message: "保存餐次后，这里会自动整理常吃食物；也可以先添加固定菜品。",
                 icon: "fork.knife.circle",
                 tone: .neutral,
                 primaryActionTitle: nil,
                 secondaryActionTitle: nil
             )
         } else {
+            if !templates.isEmpty {
+                sectionHeader("我的固定菜品")
+                templateRows(templates)
+            }
             if !page.matchedFoods.isEmpty {
                 sectionHeader("已匹配的常吃")
                 foodRows(page.matchedFoods)
@@ -113,7 +168,7 @@ struct MyFrequentPanel: View {
             }
             if !page.pendingCandidates.isEmpty {
                 sectionHeader("待确认候选")
-                Text("以下来自你的真实记录；确认一次后即可长期复用，被忽略的不再出现。")
+                Text("以下来自你的真实记录；可以匹配官方食材、生成配方，或保存为固定菜品。")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 candidateRows(page.pendingCandidates)
@@ -145,6 +200,7 @@ struct MyFrequentPanel: View {
     private func matchedFoodRow(_ matched: PersonalFoodStore.MatchedFood) -> some View {
         let food = matched.food
         let entry = food.catalogEntryId.flatMap { catalogStore.entry(id: $0) }
+        let isAlreadyFixed = hasTemplate(named: food.displayName)
         return VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 if food.pinned {
@@ -166,7 +222,7 @@ struct MyFrequentPanel: View {
                         .foregroundStyle(HMColors.actionRequired)
                 }
             }
-            Text("近 30 天记录 \(matched.recentMealCount) 餐 · 官方参考")
+            Text("\(window.title)记录 \(matched.recentMealCount) 餐 · 官方参考")
                 .font(.caption)
                 .foregroundStyle(.secondary)
             HStack(spacing: 8) {
@@ -181,6 +237,8 @@ struct MyFrequentPanel: View {
                     .tint(HMColors.primaryAction)
                     .accessibilityIdentifier("nutrition-frequent-add-\(food.id ?? -1)")
                 }
+            }
+            HStack(spacing: 8) {
                 Button {
                     togglePin(matched)
                 } label: {
@@ -188,6 +246,20 @@ struct MyFrequentPanel: View {
                         .font(.footnote.weight(.medium))
                 }
                 .buttonStyle(.bordered)
+                if isAlreadyFixed {
+                    Label("已固定", systemImage: "checkmark.circle.fill")
+                        .font(.footnote)
+                        .foregroundStyle(HMColors.confirmed)
+                } else if matched.recentMealCount >= 2 {
+                    Button {
+                        createFixedDish(from: matched, entry: entry)
+                    } label: {
+                        Label("固定为菜品", systemImage: "bookmark")
+                            .font(.footnote.weight(.medium))
+                    }
+                    .buttonStyle(.bordered)
+                    .accessibilityIdentifier("nutrition-frequent-template-\(food.id ?? -1)")
+                }
             }
         }
         .padding(.horizontal, 14)
@@ -220,6 +292,113 @@ struct MyFrequentPanel: View {
             } catch {
                 await MainActor.run { actionErrorMessage = error.localizedDescription }
             }
+        }
+    }
+
+    private func createFixedDish(from matched: PersonalFoodStore.MatchedFood, entry: FoodCatalogEntry?) {
+        let food = matched.food
+        guard matched.recentMealCount >= 2, !hasTemplate(named: food.displayName) else { return }
+        if let entry {
+            let draft = MealItemDraft.fromMatchedFood(
+                food,
+                entry: entry,
+                catalogVersion: food.catalogVersion ?? catalogStore.catalog.source.edition,
+                grams: food.defaultGrams ?? matched.recentCommonGrams
+            )
+            onCreateTemplate(food.displayName, [draft])
+        } else {
+            createFixedDishFromHistory(name: food.displayName, keys: food.matchKeys)
+        }
+    }
+
+    private func createFixedDishFromHistory(name: String, keys: [String]) {
+        Task {
+            do {
+                guard let latest = try await environment.mealStore.latestItem(
+                    matchingKeys: keys,
+                    windowDays: page?.windowDays
+                ) else {
+                    await MainActor.run { actionErrorMessage = "找不到对应的历史分项，请刷新常吃统计后重试。" }
+                    return
+                }
+                await MainActor.run {
+                    onCreateTemplate(name, [MealItemDraft(record: latest)])
+                }
+            } catch {
+                await MainActor.run { actionErrorMessage = error.localizedDescription }
+            }
+        }
+    }
+
+    private func hasTemplate(named name: String) -> Bool {
+        let key = MealItemDraft.normalizedName(name)
+        guard !key.isEmpty else { return false }
+        return templates.contains { MealItemDraft.normalizedName($0.displayName) == key }
+    }
+
+    private func templateRows(_ items: [PersonalMealTemplateStore.Template]) -> some View {
+        VStack(spacing: 0) {
+            ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        Text(item.displayName).font(.body.weight(.medium))
+                        Spacer(minLength: 8)
+                        Text("\(item.items.count) 个分项")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    Text(item.items.map(\.name).joined(separator: " · "))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                    HStack(spacing: 8) {
+                        Button {
+                            onAddToMeal(item.items.map(MealItemDraft.init(templateItem:)))
+                        } label: {
+                            Label("加入饮食", systemImage: "plus.circle.fill")
+                                .font(.footnote.weight(.medium))
+                        }
+                        .buttonStyle(.bordered)
+                        .tint(HMColors.primaryAction)
+                        .accessibilityIdentifier("nutrition-template-add-\(item.id)")
+
+                        Button {
+                            onEditTemplate(item)
+                        } label: {
+                            Label("编辑", systemImage: "slider.horizontal.3")
+                                .font(.footnote.weight(.medium))
+                        }
+                        .buttonStyle(.bordered)
+                        .accessibilityIdentifier("nutrition-template-edit-\(item.id)")
+
+                        Button(role: .destructive) {
+                            templateToDelete = item
+                        } label: {
+                            Label("删除", systemImage: "trash")
+                                .font(.footnote.weight(.medium))
+                        }
+                        .buttonStyle(.bordered)
+                        .accessibilityIdentifier("nutrition-template-delete-\(item.id)")
+                    }
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                if index < items.count - 1 {
+                    Divider().overlay(HMColors.separator).padding(.leading, 14)
+                }
+            }
+        }
+        .background(HMColors.surface, in: RoundedRectangle(cornerRadius: HMRadius.panel, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: HMRadius.panel, style: .continuous).stroke(HMColors.separator, lineWidth: 1))
+    }
+
+    private func deleteTemplate(_ template: PersonalMealTemplateStore.Template) async {
+        do {
+            try await environment.personalMealTemplateStore.delete(id: template.id)
+            await load()
+        } catch {
+            await MainActor.run { actionErrorMessage = error.localizedDescription }
         }
     }
 
@@ -369,7 +548,7 @@ struct MyFrequentPanel: View {
                 Text(candidate.displayName)
                     .font(.body.weight(.medium))
                 Spacer(minLength: 8)
-                Text("近 30 天记录 \(candidate.mealCount) 餐")
+                Text("\(window.title)记录 \(candidate.mealCount) 餐")
                     .font(.caption.monospacedDigit())
                     .foregroundStyle(.secondary)
             }
@@ -405,7 +584,23 @@ struct MyFrequentPanel: View {
                     }
                     .buttonStyle(.bordered)
                 }
-
+            }
+            HStack(spacing: 8) {
+                if hasTemplate(named: candidate.displayName) {
+                    Label("已固定", systemImage: "checkmark.circle.fill")
+                        .font(.footnote)
+                        .foregroundStyle(HMColors.confirmed)
+                } else if candidate.mealCount >= 2 {
+                    Button {
+                        createFixedDishFromHistory(name: candidate.displayName, keys: [candidate.key])
+                    } label: {
+                        Label("固定为菜品", systemImage: "bookmark")
+                            .font(.footnote.weight(.medium))
+                    }
+                    .buttonStyle(.bordered)
+                    .accessibilityIdentifier("nutrition-candidate-template-\(candidate.key)")
+                }
+                Spacer(minLength: 0)
                 Button(role: .destructive) {
                     Task { await ignore(candidate) }
                 } label: {

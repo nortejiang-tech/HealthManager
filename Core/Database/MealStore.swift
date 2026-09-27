@@ -162,6 +162,62 @@ final class MealStore: @unchecked Sendable {
         }
     }
 
+    /// Returns the latest saved item matching any canonical food name in the selected
+    /// history window. Used only to prefill a user-editable fixed-dish recommendation.
+    func latestItem(matchingKeys keys: [String], windowDays: Int?) async throws -> MealItemRecord? {
+        let canonicalKeys = Self.canonicalKeys(keys)
+        guard !canonicalKeys.isEmpty else { return nil }
+        return try await databaseManager.asyncRead { db in
+            let lookup = try Self.loadLatestMealItemLookup(db: db, windowDays: windowDays)
+            for fact in lookup.facts {
+                if let item = lookup.itemsByMeal[fact.mealId]?.first(where: {
+                    canonicalKeys.contains(MealItemIdentity.canonicalName($0.name))
+                }) {
+                    return item
+                }
+            }
+            return nil
+        }
+    }
+
+    /// Batch form used by the picker so a page of frequent candidates is read in one pass.
+    func latestItems(matchingKeys keys: [String], windowDays: Int?) async throws -> [String: MealItemRecord] {
+        let canonicalKeys = Self.canonicalKeys(keys)
+        guard !canonicalKeys.isEmpty else { return [:] }
+
+        return try await databaseManager.asyncRead { db in
+            let lookup = try Self.loadLatestMealItemLookup(db: db, windowDays: windowDays)
+            var latestByKey: [String: MealItemRecord] = [:]
+            for fact in lookup.facts {
+                for item in lookup.itemsByMeal[fact.mealId] ?? [] {
+                    let key = MealItemIdentity.canonicalName(item.name)
+                    if canonicalKeys.contains(key), latestByKey[key] == nil {
+                        latestByKey[key] = item
+                    }
+                }
+            }
+            return latestByKey
+        }
+    }
+
+    private static func canonicalKeys(_ keys: [String]) -> Set<String> {
+        Set(keys.map(MealItemIdentity.canonicalName).filter { !$0.isEmpty })
+    }
+
+    private static func loadLatestMealItemLookup(
+        db: Database,
+        windowDays: Int?
+    ) throws -> (facts: [FrequentFoodsQuery.MealFacts], itemsByMeal: [Int64: [MealItemRecord]]) {
+        let facts = try FrequentFoodsQuery.loadMealFacts(db: db, windowDays: windowDays)
+        let mealIds = facts.map(\.mealId)
+        guard !mealIds.isEmpty else { return (facts, [:]) }
+        let items = try MealItemRecord
+            .filter(mealIds.contains(Column("meal_id")))
+            .order(Column("meal_id"), Column("sort_order"))
+            .fetchAll(db)
+        return (facts, Dictionary(grouping: items, by: \.mealId))
+    }
+
     // MARK: - 历史查询（分页 / 搜索 / 日期筛选，验收 A14）
 
     /// 饮食历史分页查询。只读、后台执行；不漏不重由 (eaten_at, id) 稳定排序 + offset 保证。

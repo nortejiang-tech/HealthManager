@@ -245,6 +245,25 @@ struct MealItemDraft: Identifiable, Equatable {
         )
     }
 
+    init(templateItem: PersonalMealTemplateItem) {
+        self.init(
+            name: templateItem.name,
+            gramsText: Self.displayText(from: templateItem.grams),
+            baselineGrams: templateItem.grams,
+            baselineCalories: templateItem.caloriesKcal,
+            baselineProtein: templateItem.proteinG,
+            baselineFat: templateItem.fatG,
+            baselineCarbs: templateItem.carbsG,
+            preparationState: templateItem.preparationState,
+            provenanceKind: templateItem.provenanceKind,
+            provenanceRef: templateItem.provenanceRef,
+            provenanceVersion: templateItem.provenanceVersion,
+            confidence: templateItem.confidence,
+            isUserEdited: templateItem.isUserEdited,
+            createdAt: nil
+        )
+    }
+
     static func normalizedConfidence(_ raw: String?) -> MealItemRecord.Confidence? {
         guard let raw else { return nil }
         switch raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {

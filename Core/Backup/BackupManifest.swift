@@ -14,7 +14,8 @@ struct BackupManifest: Codable, Equatable, Sendable {
     /// v2（ADR-004 §2.5）：个人配方/映射三文件。
     /// v3（ADR-005）：新增官方身份/资料版本/个人参考表三文件（含移除状态与
     /// 配方原料完整快照）。旧 App 遇更高版本按 ADR-003 既有策略明确拒绝。
-    static let currentFormatVersion = 3
+    /// v4（ADR-007）：新增个人固定菜品快照。
+    static let currentFormatVersion = 4
     static let supportedFormatVersions = 1...currentFormatVersion
 
     let formatVersion: Int

@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "task": "HealthManager STAGE-012 personal fixed meal templates and frequent-food picker",
+  "date": "2026-09-23",
+  "fixed_point": "9deac34e605163275d24fb3ffde52c8ad1a36bab",
+  "branch": "main",
+  "worktree_isolation": "shared_existing_worktree",
+  "invocations": [],
+  "not_called_reason": "Planner-owned implementation because this phase adds a database migration and changes the backup format contract.",
+  "metrics": {
+    "supervisor_pass_rate": "unavailable",
+    "supervisor_pass_numerator": 0,
+    "supervisor_pass_denominator": 0,
+    "first_independent_acceptance_pass_rate": "unavailable",
+    "first_independent_acceptance_numerator": 0,
+    "first_independent_acceptance_denominator": 0,
+    "useful_output_adoption_rate": "unavailable",
+    "useful_output_adoption_numerator": 0,
+    "useful_output_adoption_denominator": 0
+  },
+  "planner_verification": {
+    "ios_debug_simulator_build": "PASS",
+    "signed_device_debug_build": "PASS",
+    "device_install": "PASS",
+    "installed_bundle_id": "com.norte.HealthManager",
+    "installed_marketing_version": "0.8.1",
+    "installed_build_number": "16",
+    "app_launched": false,
+    "git_diff_check": "PASS",
+    "tests": "NOT_RUN",
+    "device_acceptance": "PENDING",
+    "backup_round_trip": "PENDING",
+    "spec_review": "PASS",
+    "standards_review": "PASS_WITH_LOW_SEVERITY_NAMING_SMELL",
+    "review_fixes": [
+      "Picker selections append snapshots verbatim to preserve repeated-name components.",
+      "MealStore shares canonicalization and latest-item lookup loading."
+    ]
+  }
+}

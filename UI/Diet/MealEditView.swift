@@ -7,8 +7,12 @@ struct MealEditView: View {
     @Environment(\.dismiss) private var dismiss
 
     private let editing: MealRecord?
+    private let templateId: Int64?
+    private let isTemplateEditor: Bool
 
     @State private var draft: MealEditorDraft
+    @State private var templateName = ""
+    @State private var showingFrequentFoodPicker = false
     @State private var pickedPhotos: [PhotosPickerItem] = []
     @State private var showingCamera: Bool = false
     @State private var showingPhotoPicker: Bool = false
@@ -30,22 +34,48 @@ struct MealEditView: View {
 
     init(editing: MealRecord? = nil) {
         self.editing = editing
+        self.templateId = nil
+        self.isTemplateEditor = false
         _draft = State(initialValue: MealEditorDraft(meal: editing))
     }
 
     init(copying copyDraft: MealStore.CopyDraft) {
         self.editing = nil
+        self.templateId = nil
+        self.isTemplateEditor = false
         _draft = State(initialValue: MealEditorDraft(copyDraft: copyDraft))
     }
 
     /// 预填草稿入口（营养表「加入饮食」/常吃模板/配方）：只带分项，不预设营养汇总。
     init(prefilledItems: [MealItemDraft]) {
         self.editing = nil
+        self.templateId = nil
+        self.isTemplateEditor = false
         _draft = State(initialValue: MealEditorDraft(draftItems: prefilledItems))
     }
 
+    init(creatingTemplateNamed name: String, prefilledItems: [MealItemDraft] = []) {
+        self.editing = nil
+        self.templateId = nil
+        self.isTemplateEditor = true
+        _draft = State(initialValue: MealEditorDraft(draftItems: prefilledItems))
+        _templateName = State(initialValue: name)
+    }
+
+    init(template: PersonalMealTemplateStore.Template) {
+        self.editing = nil
+        self.templateId = template.id
+        self.isTemplateEditor = true
+        _draft = State(initialValue: MealEditorDraft(templateItems: template.items))
+        _templateName = State(initialValue: template.displayName)
+    }
+
     private var saveDisabled: Bool {
-        isBusy || !draft.canSave
+        isBusy || !draft.canSave || (isTemplateEditor && (
+            templateName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
+            draft.nutritionItems.isEmpty ||
+            draft.nutritionItems.contains { $0.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        ))
     }
 
     private var isBusy: Bool {
@@ -100,20 +130,32 @@ struct MealEditView: View {
                     }
                 }
 
-                Section("餐次与时间") {
-                    Picker("餐次", selection: $draft.mealType) {
-                        ForEach(MealRecord.MealType.allCases, id: \.self) { t in
-                            Text(t.label).tag(t)
-                        }
+                if isTemplateEditor {
+                    Section("固定菜品") {
+                        TextField("菜品名称", text: $templateName)
+                            .accessibilityIdentifier("meal-template-name")
+                        Text("保存分项和当前营养来源。照片只用于识别，不会保存在固定菜品中。")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
                     }
-                    DatePicker("时间", selection: $draft.eatenAt)
+                } else {
+                    Section("餐次与时间") {
+                        Picker("餐次", selection: $draft.mealType) {
+                            ForEach(MealRecord.MealType.allCases, id: \.self) { t in
+                                Text(t.label).tag(t)
+                            }
+                        }
+                        DatePicker("时间", selection: $draft.eatenAt)
+                    }
                 }
                 Section {
                     photoCarousel
                 } header: {
                     Text("照片（可加多张）")
                 } footer: {
-                    Text("每张菜分别拍摄更准。文字描述和每张照片会一起提交 AI 估算。")
+                    Text(isTemplateEditor
+                         ? "每张菜分别拍摄更准。文字和照片会一起提交 AI 估算；原始照片不会保存到模板。"
+                         : "每张菜分别拍摄更准。文字描述和每张照片会一起提交 AI 估算。")
                 }
 
                 Section {
@@ -172,10 +214,12 @@ struct MealEditView: View {
                     }
                 }
 
-                Section("备注") {
-                    TextField("备注", text: $draft.notes, axis: .vertical)
-                        .lineLimit(3...6)
-                        .accessibilityIdentifier("meal-edit-notes")
+                if !isTemplateEditor {
+                    Section("备注") {
+                        TextField("备注", text: $draft.notes, axis: .vertical)
+                            .lineLimit(3...6)
+                            .accessibilityIdentifier("meal-edit-notes")
+                    }
                 }
 
             }
@@ -202,7 +246,7 @@ struct MealEditView: View {
                 }
             }
             .disabled(!draft.canSave || isSaving)
-            .navigationTitle(editing == nil ? "添加餐次" : "编辑餐次")
+            .navigationTitle(isTemplateEditor ? "固定菜品" : (editing == nil ? "添加餐次" : "编辑餐次"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -224,7 +268,7 @@ struct MealEditView: View {
                                 .controlSize(.small)
                                 .accessibilityLabel("正在保存")
                         } else {
-                            Text("保存")
+                            Text(isTemplateEditor ? "保存固定菜" : "保存")
                         }
                     }
                     .disabled(saveDisabled)
@@ -247,6 +291,15 @@ struct MealEditView: View {
                 matching: .images,
                 photoLibrary: .shared()
             )
+            .sheet(isPresented: $showingFrequentFoodPicker) {
+                FrequentFoodPickerSheet { items in
+                    // Preserve repeated-name components: a fixed template is an ordered
+                    // snapshot, and identical names can be intentional separate portions.
+                    draft.nutritionItems.append(contentsOf: items)
+                    draft.reconcileTotalsFromItems()
+                }
+                .environmentObject(environment)
+            }
             .task {
                 await loadExistingMealIfNeeded()
             }
@@ -550,6 +603,11 @@ struct MealEditView: View {
                 appendDedupedItems(addedItems)
                 analyzedKeys.forEach { analyzedInputKeys.insert($0) }
                 draft.reconcileTotalsFromItems()
+                if isTemplateEditor,
+                   templateName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                   let suggestedName = addedItems.first?.name {
+                    templateName = suggestedName
+                }
                 if draft.notes.isEmpty, !textTrimmed.isEmpty, analyzedKeys.contains(textInputKey()) {
                     draft.notes = textTrimmed
                 }
@@ -629,6 +687,14 @@ struct MealEditView: View {
                 draft.nutritionItems.remove(atOffsets: offsets)
                 draft.reconcileTotalsFromItems()
             }
+
+            Button {
+                showingFrequentFoodPicker = true
+            } label: {
+                Label("从我的常吃选择", systemImage: "books.vertical")
+            }
+            .accessibilityIdentifier("meal-edit-pick-frequent")
+            .disabled(isBusy)
 
             Button {
                 draft.nutritionItems.append(.manualEmpty())
@@ -745,6 +811,23 @@ struct MealEditView: View {
         }
 
         do {
+            if isTemplateEditor {
+                _ = try await environment.personalMealTemplateStore.save(
+                    id: templateId,
+                    name: templateName,
+                    items: try draft.makeTemplateItems()
+                )
+                await MainActor.run {
+                    for path in draft.sessionCreatedPhotoPaths {
+                        MealPhotoStore.shared.removeIfManaged(path: path)
+                    }
+                    isSaving = false
+                    saveError = nil
+                    dismiss()
+                }
+                return
+            }
+
             let record = try draft.makeMealRecord()
             let saved = try await environment.mealPersistenceCoordinator.save(
                 meal: record,
@@ -760,7 +843,7 @@ struct MealEditView: View {
             }
         } catch {
             await MainActor.run {
-                saveError = MealEditorDraft.userFacingSaveError(error)
+                saveError = isTemplateEditor ? error.localizedDescription : MealEditorDraft.userFacingSaveError(error)
                 isSaving = false
             }
         }

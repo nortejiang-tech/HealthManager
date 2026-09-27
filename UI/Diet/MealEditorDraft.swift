@@ -142,6 +142,10 @@ struct MealEditorDraft {
         self.loadState = .ready
     }
 
+    init(templateItems: [PersonalMealTemplateItem]) {
+        self.init(draftItems: templateItems.map(MealItemDraft.init(templateItem:)))
+    }
+
     var canSave: Bool {
         loadState == .ready
     }
@@ -241,6 +245,10 @@ struct MealEditorDraft {
             createdAt: createdAt,
             hkSyncId: hkSyncId
         )
+    }
+
+    func makeTemplateItems() throws -> [MealStore.ItemInput] {
+        try nutritionItems.map { try $0.toItemInput() }
     }
 
     func parentDisplayLabel(for value: Double?) -> String {

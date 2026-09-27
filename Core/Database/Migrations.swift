@@ -688,6 +688,22 @@ enum Migrations {
                 """)
         }
 
+        // v15 — 用户确认的固定菜品快照；独立于历史餐次、配方与 HealthKit 同步。
+        migrator.registerMigration("v15_personal_meal_templates") { db in
+            try db.create(table: "personal_meal_templates") { t in
+                t.autoIncrementedPrimaryKey("id")
+                t.column("display_name", .text).notNull().check(sql: "TRIM(display_name) != ''")
+                t.column("items_json", .text).notNull()
+                t.column("created_at", .integer).notNull()
+                t.column("updated_at", .integer).notNull()
+            }
+            try db.create(
+                index: "idx_personal_meal_templates_updated",
+                on: "personal_meal_templates",
+                columns: ["updated_at", "id"]
+            )
+        }
+
         return migrator
     }
 

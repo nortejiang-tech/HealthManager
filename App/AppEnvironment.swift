@@ -120,6 +120,7 @@ final class AppEnvironment: ObservableObject {
     let database: DatabaseManager
     let mealStore: MealStore
     let personalFoodStore: PersonalFoodStore
+    let personalMealTemplateStore: PersonalMealTemplateStore
     let personalCatalogStore: PersonalCatalogStore
     let healthKitManager: HealthKitManager
     let syncEngine: SyncEngine
@@ -145,6 +146,7 @@ final class AppEnvironment: ObservableObject {
         startupMetrics.record(.databaseReady)
         let mealStore = MealStore(databaseManager: database)
         let personalFoodStore = PersonalFoodStore(databaseManager: database)
+        let personalMealTemplateStore = PersonalMealTemplateStore(databaseManager: database)
         let personalCatalogStore = PersonalCatalogStore(databaseManager: database)
         let healthKit = HealthKitManager(database: database)
         let syncEngine = SyncEngine(
@@ -167,6 +169,7 @@ final class AppEnvironment: ObservableObject {
         self.database = database
         self.mealStore = mealStore
         self.personalFoodStore = personalFoodStore
+        self.personalMealTemplateStore = personalMealTemplateStore
         self.personalCatalogStore = personalCatalogStore
         self.healthKitManager = healthKit
         self.syncEngine = syncEngine

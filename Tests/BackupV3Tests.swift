@@ -2,16 +2,16 @@ import XCTest
 import GRDB
 @testable import HealthManager
 
-/// 备份 v3 合同（验收 B1/D2/V1 的持久层）：
+/// 备份 v4 合同（验收 B1/D2/V1 的持久层）：
 /// 官方身份/资料版本/参考表成员（含移除状态）随 v3 备份导出恢复，幂等、可离线；
-/// v2/更早格式兼容导入；更高版本明确拒绝。
+/// 固定菜品表随 v4 导出；v1-v3/更早格式兼容导入；更高版本明确拒绝。
 final class BackupV3Tests: XCTestCase {
 
     private func makeBundled() -> FoodCatalogStore {
         (try! FoodCatalogStore(bundle: .main))
     }
 
-    func test_v3_roundTrip_preservesMembershipRemovedState_andSnapshots() async throws {
+    func test_v4_roundTrip_preservesMembershipRemovedState_andSnapshots() async throws {
         let bundled = makeBundled()
 
         // 源库：种子 → 移除一条 → 导入一条 USDA 条目 → 建配方（带快照）。
@@ -46,15 +46,16 @@ final class BackupV3Tests: XCTestCase {
         )
         XCTAssertNotNil(recipe.version.ingredients[0].nutritionSnapshot)
 
-        // 导出 v3。
+        // 导出 v4。
         let packageURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("hm-backup-v3-\(UUID().uuidString)", isDirectory: true)
         let manifest = try await BackupExporter(database: source).export(to: packageURL)
-        XCTAssertEqual(manifest.formatVersion, 3)
+        XCTAssertEqual(manifest.formatVersion, 4)
         let fileNames = Set(manifest.files.map(\.file))
         XCTAssertTrue(fileNames.contains("official_foods.jsonl"))
         XCTAssertTrue(fileNames.contains("official_food_versions.jsonl"))
         XCTAssertTrue(fileNames.contains("personal_reference_entries.jsonl"))
+        XCTAssertTrue(fileNames.contains("personal_meal_templates.jsonl"))
 
         // 新库恢复。
         let target = DatabaseManager.makeInMemoryForTesting()
@@ -87,15 +88,20 @@ final class BackupV3Tests: XCTestCase {
         XCTAssertEqual(try XCTUnwrap(restoredUSDA.version.nutrients).kcal.value, chocolate.nutrients.kcal.value)
     }
 
-    func test_v3_export_then_v2StylePackage_importsCleanly() async throws {
+    func test_v4_export_then_v2StylePackage_importsCleanly() async throws {
         let source = DatabaseManager.makeInMemoryForTesting()
         let packageURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("hm-backup-v3b-\(UUID().uuidString)", isDirectory: true)
         let manifest = try await BackupExporter(database: source).export(to: packageURL)
 
-        // 手工构造 v2 包（剔除 v3 新文件，formatVersion=2）→ 新 App 仍兼容导入。
+        // 手工构造 v2 包（剔除 v3/v4 新文件，formatVersion=2）→ 新 App 仍兼容导入。
         let v2Files = manifest.files.filter {
-            !["official_foods.jsonl", "official_food_versions.jsonl", "personal_reference_entries.jsonl"].contains($0.file)
+            ![
+                "official_foods.jsonl",
+                "official_food_versions.jsonl",
+                "personal_reference_entries.jsonl",
+                "personal_meal_templates.jsonl"
+            ].contains($0.file)
         }
         let v2Manifest = BackupManifest(formatVersion: 2, appVersion: "0.6.0", exportedAt: 1, files: v2Files)
         let v2Dir = FileManager.default.temporaryDirectory
@@ -113,17 +119,17 @@ final class BackupV3Tests: XCTestCase {
         XCTAssertNotNil(summary)
     }
 
-    func test_formatVersion4_rejected() async throws {
+    func test_formatVersion5_rejected() async throws {
         let dir = FileManager.default.temporaryDirectory
-            .appendingPathComponent("hm-backup-v4-\(UUID().uuidString)", isDirectory: true)
+            .appendingPathComponent("hm-backup-v5-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        let v4 = BackupManifest(formatVersion: 4, appVersion: "9.9", exportedAt: 1, files: [])
-        try JSONEncoder().encode(v4).write(to: dir.appendingPathComponent("manifest.json"))
+        let v5 = BackupManifest(formatVersion: 5, appVersion: "9.9", exportedAt: 1, files: [])
+        try JSONEncoder().encode(v5).write(to: dir.appendingPathComponent("manifest.json"))
         do {
             _ = try await BackupImporter(database: DatabaseManager.makeInMemoryForTesting()).importPackage(from: dir)
-            XCTFail("formatVersion 4 必须被拒绝")
+            XCTFail("formatVersion 5 必须被拒绝")
         } catch let error as BackupImportError {
-            guard case .unsupportedFormatVersion(4) = error else { return XCTFail("\(error)") }
+            guard case .unsupportedFormatVersion(5) = error else { return XCTFail("\(error)") }
         }
     }
 

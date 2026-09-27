@@ -56,6 +56,8 @@ struct NutritionView: View {
         case candidateMatch(FrequentFoodsQuery.Summary)
         case recipeCreate(matchKey: String?, suggestedName: String, generated: RecipeEditorView.GeneratedPrefill?)
         case recipeEdit(PersonalFoodStore.RecipeWithVersion)
+        case templateCreate(name: String, items: [MealItemDraft])
+        case templateEdit(PersonalMealTemplateStore.Template)
         case addFood
 
         var id: String {
@@ -66,6 +68,8 @@ struct NutritionView: View {
             case .candidateMatch(let summary): return "candidate-match-\(summary.key)"
             case .recipeCreate(let key, let name, _): return "recipe-create-\(key ?? name)"
             case .recipeEdit(let item): return "recipe-edit-\(item.recipe.id ?? -1)-v\(item.version.version)"
+            case .templateCreate(let name, _): return "template-create-\(name)"
+            case .templateEdit(let template): return "template-edit-\(template.id)"
             case .addFood: return "add-food"
             }
         }
@@ -190,6 +194,10 @@ struct NutritionView: View {
                                 }
                             )
                         }
+                    case .templateCreate(let name, let items):
+                        MealEditView(creatingTemplateNamed: name, prefilledItems: items)
+                    case .templateEdit(let template):
+                        MealEditView(template: template)
                     case .addFood:
                         if let catalogStore {
                             AddFoodSheet(
@@ -255,6 +263,12 @@ struct NutritionView: View {
                             },
                             onCreateRecipe: { summary in
                                 activeSheet = .recipeCreate(matchKey: summary.key, suggestedName: summary.displayName, generated: nil)
+                            },
+                            onCreateTemplate: { name, items in
+                                activeSheet = .templateCreate(name: name, items: items)
+                            },
+                            onEditTemplate: { template in
+                                activeSheet = .templateEdit(template)
                             },
                             onGenerateRecipe: { summary in
                                 Task { await generateRecipeDraft(for: summary) }

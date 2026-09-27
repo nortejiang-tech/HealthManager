@@ -59,6 +59,7 @@ struct BackupExporter {
         .init(table: "personal_recipes", fileName: "personal_recipes.jsonl", orderBy: "id", replaceOnConflict: false),
         .init(table: "personal_recipe_versions", fileName: "personal_recipe_versions.jsonl", orderBy: "recipe_id, version", replaceOnConflict: false),
         .init(table: "personal_foods", fileName: "personal_foods.jsonl", orderBy: "id", replaceOnConflict: false),
+        .init(table: "personal_meal_templates", fileName: "personal_meal_templates.jsonl", orderBy: "id", replaceOnConflict: false),
     ]
 
     static let settingsFileName = "settings.json"
@@ -78,6 +79,7 @@ struct BackupExporter {
     - 字段只增不改：新版本只会追加字段，不会改名或删除已有字段。
     - v2 起包含个人配方与常吃映射（personal_recipes / personal_recipe_versions / personal_foods）。
     - v3 起包含参考表与导入资料（official_foods / official_food_versions / personal_reference_entries，含移除状态）。
+    - v4 起包含个人固定菜品快照（personal_meal_templates）。
     - 此备份包不包含照片与 Apple 健康原始样本；原始健康数据由 Apple 健康自身同步。
 
     导入（恢复）由 HealthManager 的引导页或设置页完成，重复导入安全（只补缺、不覆盖）。

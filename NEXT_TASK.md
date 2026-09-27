@@ -2,9 +2,13 @@
 
 2026-09-21：真实后台任务在锁屏期收到 HealthKit code 6 后把 28 类任务挂起；旧实现解锁后只增加 requested generation，没有恢复 `waitForUnlock`，因此同步中心持续显示已经过期的等待解锁状态。现已让新的 foreground/background/manual/retry 执行机会恢复该类 deferral，observer 仍保持 parked，其他授权/修复/失败状态不会被误清除。最终完整回归 `440/440`，签名真机覆盖安装后 app 自动作业成功，数据库 `quick_check=ok`、`pending=0`、`waitForUnlock=0`、全部 generation 收敛；修复前后证据见 `STAGE-RESULTS.md`。
 
+2026-09-23：按用户明确要求，将本轮 STAGE-012 固定菜品功能 Debug 包覆盖安装到 NortePro 的 iPhone。`devicectl` 安装成功，安装后读回 bundle `com.norte.HealthManager`、版本 `0.8.1 (16)`；未卸载 App、未启动 App。由于 Info.plist 版本号沿用，版本读回不能单独区分新旧二进制；本轮安装命令与签名构建结果证明候选包已安装。v15 迁移要等首次启动才会执行。
+
+该安装覆盖了下方 S13 清单所说的已安装 `0.8.1 (16)` 基线，因此“安装候选版前测旧基线”的条件已被用户新指令覆盖。不要把当前已安装包当作原基线；若仍需版本对照，先恢复并确认原基线二进制，或由用户重新确认调整后的验收方法。
+
 下次解锁后只需执行四类操作：
 
-1. 同一真机对基线/候选各做至少 20 次进程冷启动，记录首批有效卡片、snapshotAvailable、首次新数据可见，计算 p50/p95/max。
+1. **旧版基线暂不可测（PENDING）**：当前设备已安装本轮候选包；完成“基线/候选各 20 次”前，先恢复并确认原基线二进制。若无法恢复，则调整为候选单版本观察，不得把候选结果冒充基线对照。
 2. 外部来源写入后的前台追新和后台预算中断后前台恢复各 3 轮；锁屏失败后解锁恢复已完成真实 `1/3`，再做 2 轮。全程不点击手动同步。
 3. 对照升级前后 raw UUID 摘要、anchor、饮食 syncID、历史删除、Bridge acknowledged sequence 和备份恢复结果。
 4. 真机当前已从 338 条餐次增长到 339 条、item 从 664 增至 666；仍需在界面确认最新餐次可打开，再在隔离目录完成 backup bookmark save/load/clear round-trip。
