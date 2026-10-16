@@ -49,7 +49,7 @@ struct MainTabView: View {
     enum MainTab: Hashable {
         case trends
         case diet
-        case medication
+        case training
         case nutrition
         case more
     }
@@ -65,9 +65,9 @@ struct MainTabView: View {
             DietView()
                 .tabItem { Label("饮食", systemImage: "fork.knife") }
                 .tag(MainTab.diet)
-            MedicationView()
-                .tabItem { Label("用药", systemImage: "pills") }
-                .tag(MainTab.medication)
+            TrainingView()
+                .tabItem { Label("锻炼", systemImage: "figure.run") }
+                .tag(MainTab.training)
             NutritionView()
                 .tabItem { Label("营养表", systemImage: "tablecells") }
                 .tag(MainTab.nutrition)

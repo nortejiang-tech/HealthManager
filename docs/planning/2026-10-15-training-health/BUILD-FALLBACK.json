@@ -1,0 +1,7 @@
+{
+  "reason": "Two XcodeBuildMCP attempts stalled in git dependency resolution; compilation had not started.",
+  "qaSpec": "/tmp/healthmanager-training-qa-project/project.yml",
+  "productSpecUnchanged": true,
+  "localGRDBRevision": "2cf6c756e1e5ef6901ebae16576a7e4e4b834622",
+  "pinnedVersion": "6.29.3"
+}

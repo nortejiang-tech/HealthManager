@@ -20,7 +20,8 @@ final class SmokeTests: XCTestCase {
         )
         XCTAssertTrue(app.tabBars.buttons["趋势"].waitForExistence(timeout: 10))
         XCTAssertTrue(app.tabBars.buttons["饮食"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.tabBars.buttons["用药"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.tabBars.buttons["锻炼"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.tabBars.buttons["用药"].exists)
         XCTAssertTrue(app.tabBars.buttons["营养表"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.tabBars.buttons["更多"].waitForExistence(timeout: 5))
         XCTAssertFalse(app.tabBars.buttons["今日"].exists, "今日一级页应已移除")
@@ -40,16 +41,15 @@ final class SmokeTests: XCTestCase {
         attachScreenshot(named: "02b-meal-edit")
         app.navigationBars["添加餐次"].buttons["取消"].tap()
 
-        // Tab 3: 用药
-        app.tabBars.buttons["用药"].tap()
-        XCTAssertTrue(app.navigationBars["用药"].waitForExistence(timeout: 5))
-        attachScreenshot(named: "03-meds")
-
-        // Open med-plan edit
-        app.navigationBars["用药"].buttons.element(boundBy: 0).tap()
-        XCTAssertTrue(app.navigationBars["添加用药计划"].waitForExistence(timeout: 5))
-        attachScreenshot(named: "03b-med-edit")
-        app.navigationBars["添加用药计划"].buttons["取消"].tap()
+        // Tab 3: 锻炼；实验评分在缺测时保持未知。
+        app.tabBars.buttons["锻炼"].tap()
+        XCTAssertTrue(app.navigationBars["锻炼"].waitForExistence(timeout: 5))
+        XCTAssertTrue(anyDescendant(in: app, matching: "training-screen").waitForExistence(timeout: 8))
+        attachScreenshot(named: "03-training")
+        app.buttons["training-method"].tap()
+        XCTAssertTrue(app.navigationBars["计算依据与可信度"].waitForExistence(timeout: 5))
+        attachScreenshot(named: "03b-training-evidence")
+        app.buttons["training-method-done"].tap()
 
         // Tab 4: 营养表（参考食材段展示官方目录）
         app.tabBars.buttons["营养表"].tap()
@@ -131,6 +131,16 @@ final class SmokeTests: XCTestCase {
         anyDescendant(in: app, matching: "more-settings").tap()
         XCTAssertTrue(app.navigationBars["设置"].waitForExistence(timeout: 5))
         tapMoreBackButton(in: app, destinationTitle: "设置")
+        XCTAssertTrue(anyDescendant(in: app, matching: "more-screen").waitForExistence(timeout: 8))
+
+        // More -> 用药：计划编辑仍可达，取消后保留原生返回。
+        revealBySwipingUp("more-medication", in: app).tap()
+        XCTAssertTrue(app.navigationBars["用药"].waitForExistence(timeout: 5))
+        attachScreenshot(named: "07-meds-in-more")
+        app.buttons["medication-add-plan"].tap()
+        XCTAssertTrue(app.navigationBars["添加用药计划"].waitForExistence(timeout: 5))
+        app.navigationBars["添加用药计划"].buttons["取消"].tap()
+        tapMoreBackButton(in: app, destinationTitle: "用药")
         XCTAssertTrue(anyDescendant(in: app, matching: "more-screen").waitForExistence(timeout: 8))
     }
 

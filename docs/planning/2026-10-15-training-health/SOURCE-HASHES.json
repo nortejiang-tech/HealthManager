@@ -1,0 +1,14 @@
+{
+  "App/RootView.swift": "9bf6991850bfc787b9ca15d8210dd3b6cf15910cdafbfc6a19350efc41e638d2",
+  "UI/More/MoreView.swift": "3b8670863cfc21f164c267b13daa0d0a8494b1b888068453e7d3771008178dac",
+  "UI/Medication/MedicationView.swift": "b659640e3dbdd2fd4c693c11679354726524d4c196503949f3784b9e99f4fd06",
+  "Core/Training/TrainingModels.swift": "951be6a641bd1cd1d04c8013d45af2306a88999a17f4b45eb458bef6503d40fa",
+  "Core/Training/TrainingCalculator.swift": "a0f0521c8de2a759b6d55effffffb0c5781d1f629df085894180ac9c2d2ce979",
+  "Core/Training/TrainingSnapshotLoader.swift": "c66a711f86c69555736a55484209bcef4e67e8ba762a114248f3c9ffc44e840a",
+  "UI/Training/TrainingView.swift": "73d05564384175af5baa17fa022601dede4007de18dde724c2b25922a572d7dc",
+  "UI/Training/TrainingPanels.swift": "26eda7363eb30629acedee4ef8c0a9e388aa39a984810721c781ff862d737348",
+  "UI/Training/TrainingDetailViews.swift": "d4a69cf05e512cb824d745a8f194f1b936704e11aa7a2f2141b9712f174987d7",
+  "Tests/TrainingCalculatorTests.swift": "19031e6b73c9285fb725f1641412f2008c3c1cdf6d0c634a6d853f5767c609b5",
+  "UITests/SmokeTests.swift": "e54e2778fc5723ee53d653ef8b001fd95b4e86c1771a656cc07bf85147020d04",
+  "UITests/TrainingRenderingUITests.swift": "98decd22ac25e5d535d175a31ffe04d3209f92fc18c5a8764d6941aeafd9c519"
+}

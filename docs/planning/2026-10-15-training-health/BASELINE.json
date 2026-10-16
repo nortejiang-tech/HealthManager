@@ -1,0 +1,10 @@
+{
+  "head": "7e51600d5553fe0f852eb76c9b2a5f33a1c73be3",
+  "originalUntrackedCount": 3,
+  "navigationFileHashes": {
+    "App/RootView.swift": "a56168d11f4637206b3a447b25c227fc1f4e3e1a41efea6f422bdf2cdbb75dc2",
+    "UI/More/MoreView.swift": "ed274c160987e74d7e4a1c894299c21ea3b517cc040bf6f8af4a87992c66b615",
+    "UI/Medication/MedicationView.swift": "4675b5ed16041a3f98a667a5ba47c5fc92de3a6a67ea9e19735b1b7ce685618f"
+  },
+  "isolatedCoderWorkspace": "/tmp/healthmanager-training-navigation-20261015"
+}

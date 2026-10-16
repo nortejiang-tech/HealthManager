@@ -1,0 +1,286 @@
+{
+  "schemaVersion": 2,
+  "verifiedLocalDate": "2026-10-16",
+  "timezone": "Asia/Shanghai",
+  "status": {
+    "softwareAndSimulator": "PASS",
+    "physicalDeviceAndPhysiologicalValidation": "PENDING"
+  },
+  "finalSuite": {
+    "summary": {
+      "status": "SUCCEEDED",
+      "durationMs": 157716,
+      "counts": {
+        "passed": 465,
+        "failed": 0,
+        "skipped": 0
+      },
+      "target": "simulator"
+    },
+    "artifacts": {
+      "buildLogPath": "~/Library/Developer/XcodeBuildMCP/workspaces/HealthManager-8bdea649e903/logs/test_sim_2026-10-15T17-05-36-428Z_pid32601_f0b93b0b.log",
+      "xcresultPath": "~/Library/Developer/XcodeBuildMCP/workspaces/HealthManager-8bdea649e903/result-bundles/test_sim_2026-10-15T17-05-36-428Z_pid32601_3614f199.xcresult",
+      "testProductsPath": "~/Library/Developer/XcodeBuildMCP/workspaces/HealthManager-8bdea649e903/test-products/test_sim_2026-10-15T17-05-36-428Z_pid32601_3ba6ec7d.xctestproducts"
+    },
+    "diagnostics": {
+      "warnings": [],
+      "errors": [],
+      "testFailures": []
+    },
+    "sourceHashes": "SOURCE-HASHES.json",
+    "trainingTestCount": 27,
+    "unitTestCount": 463,
+    "uiTestCaseCount": 2
+  },
+  "finalDarkRendering": {
+    "summary": {
+      "status": "SUCCEEDED",
+      "durationMs": 24563,
+      "counts": {
+        "passed": 1,
+        "failed": 0,
+        "skipped": 0
+      },
+      "target": "simulator"
+    },
+    "artifacts": {
+      "buildLogPath": "~/Library/Developer/XcodeBuildMCP/workspaces/HealthManager-8bdea649e903/logs/test_sim_2026-10-15T17-08-57-605Z_pid32601_61a0153d.log",
+      "xcresultPath": "~/Library/Developer/XcodeBuildMCP/workspaces/HealthManager-8bdea649e903/result-bundles/test_sim_2026-10-15T17-08-57-605Z_pid32601_c6c4a36e.xcresult",
+      "testProductsPath": "~/Library/Developer/XcodeBuildMCP/workspaces/HealthManager-8bdea649e903/test-products/test_sim_2026-10-15T17-08-57-605Z_pid32601_333e8707.xctestproducts"
+    },
+    "diagnostics": {
+      "warnings": [],
+      "errors": [],
+      "testFailures": []
+    }
+  },
+  "finalTrainingTests": [
+    {
+      "suite": "TrainingCalculatorTests",
+      "test": "test_afternoonNapCannotBecomeMainNight",
+      "status": "passed",
+      "durationMs": 2
+    },
+    {
+      "suite": "TrainingCalculatorTests",
+      "test": "test_clusteredNightSamplesDoNotClaimAdequateCoverage",
+      "status": "passed",
+      "durationMs": 13
+    },
+    {
+      "suite": "TrainingCalculatorTests",
+      "test": "test_completeHeartTraceCalculatesPaceLoadAndSignedRecovery",
+      "status": "passed",
+      "durationMs": 2
+    },
+    {
+      "suite": "TrainingCalculatorTests",
+      "test": "test_concordantAutonomicSignalsAreNotDoublePenalized",
+      "status": "passed",
+      "durationMs": 25
+    },
+    {
+      "suite": "TrainingCalculatorTests",
+      "test": "test_crossDeviceDuplicateWorkoutIsCountedOnce",
+      "status": "passed",
+      "durationMs": 2
+    },
+    {
+      "suite": "TrainingCalculatorTests",
+      "test": "test_duplicateHeartTimestampsDoNotMultiplyLoad",
+      "status": "passed",
+      "durationMs": 2
+    },
+    {
+      "suite": "TrainingCalculatorTests",
+      "test": "test_emptyInputWithholdsReadinessAndLoad",
+      "status": "passed",
+      "durationMs": 1
+    },
+    {
+      "suite": "TrainingCalculatorTests",
+      "test": "test_foreignHeartSourceCannotSupplySessionLoadOrRecovery",
+      "status": "passed",
+      "durationMs": 1
+    },
+    {
+      "suite": "TrainingCalculatorTests",
+      "test": "test_foreignRestingBaselineCannotSupplyReference",
+      "status": "passed",
+      "durationMs": 2
+    },
+    {
+      "suite": "TrainingCalculatorTests",
+      "test": "test_futureAndNonfiniteDataDoNotChangeSnapshot",
+      "status": "passed",
+      "durationMs": 1
+    },
+    {
+      "suite": "TrainingCalculatorTests",
+      "test": "test_intradayWindowsRequireEvidenceAndExcludeExplicitActivity",
+      "status": "passed",
+      "durationMs": 1
+    },
+    {
+      "suite": "TrainingCalculatorTests",
+      "test": "test_invalidSleepCategoryCannotCrashOrBecomeSleep",
+      "status": "passed",
+      "durationMs": 1
+    },
+    {
+      "suite": "TrainingCalculatorTests",
+      "test": "test_lateArrivingSampleIsUnavailableToHistoricalReplay",
+      "status": "passed",
+      "durationMs": 1
+    },
+    {
+      "suite": "TrainingCalculatorTests",
+      "test": "test_loaderRejectsWrongUnitsAndDeletedRecords",
+      "status": "passed",
+      "durationMs": 14
+    },
+    {
+      "suite": "TrainingCalculatorTests",
+      "test": "test_longHeartGapIsNotFilled",
+      "status": "passed",
+      "durationMs": 1
+    },
+    {
+      "suite": "TrainingCalculatorTests",
+      "test": "test_missingDistanceStaysUnknown",
+      "status": "passed",
+      "durationMs": 2
+    },
+    {
+      "suite": "TrainingCalculatorTests",
+      "test": "test_missingRecentSessionLoadWithholdsReadiness",
+      "status": "passed",
+      "durationMs": 13
+    },
+    {
+      "suite": "TrainingCalculatorTests",
+      "test": "test_partialDayPreservesKnownLoadWithoutClaimingCompleteness",
+      "status": "passed",
+      "durationMs": 2
+    },
+    {
+      "suite": "TrainingCalculatorTests",
+      "test": "test_pauseAmbiguityWithholdsLoad",
+      "status": "passed",
+      "durationMs": 2
+    },
+    {
+      "suite": "TrainingCalculatorTests",
+      "test": "test_rawRegionChangesAreObservedWithoutDailyProjectionChanges",
+      "status": "passed",
+      "durationMs": 13
+    },
+    {
+      "suite": "TrainingCalculatorTests",
+      "test": "test_readinessRequiresIndependentPriorNightsAndRespondsToRecoverySignals",
+      "status": "passed",
+      "durationMs": 24
+    },
+    {
+      "suite": "TrainingCalculatorTests",
+      "test": "test_sleepUnionAwakeConflictAndDaytimeNap",
+      "status": "passed",
+      "durationMs": 1
+    },
+    {
+      "suite": "TrainingCalculatorTests",
+      "test": "test_sourceChangeDoesNotReuseOldNightBaseline",
+      "status": "passed",
+      "durationMs": 12
+    },
+    {
+      "suite": "TrainingCalculatorTests",
+      "test": "test_sparseCurrentHRVDoesNotRenormalizeToAHealthyScore",
+      "status": "passed",
+      "durationMs": 12
+    },
+    {
+      "suite": "TrainingCalculatorTests",
+      "test": "test_staleMainSleepWithholdsBothScoreAndRange",
+      "status": "passed",
+      "durationMs": 12
+    },
+    {
+      "suite": "TrainingCalculatorTests",
+      "test": "test_timezoneAssignsWorkoutToLocalDate",
+      "status": "passed",
+      "durationMs": 2
+    },
+    {
+      "suite": "TrainingCalculatorTests",
+      "test": "test_unknownSourceCannotSupplyAPersonalBaseline",
+      "status": "passed",
+      "durationMs": 2
+    }
+  ],
+  "visualReview": {
+    "status": "PASS",
+    "syntheticDataOnly": true,
+    "simulatorID": "29729D20-7BF0-4206-9FCD-84576508885D",
+    "simulatorName": "HealthManager-Training-QA-20261015",
+    "device": "iPhone 17",
+    "os": "iOS 26.5",
+    "modes": [
+      "system light",
+      "system dark",
+      "UICTContentSizeCategoryAccessibilityXXXL"
+    ],
+    "appearanceSetup": "xcrun simctl ui <dedicated QA simulator> appearance light|dark; verified native dark traits in exported screenshot",
+    "reviewedScreenshots": [
+      "qa-synthetic-training-light-2-trend.png",
+      "qa-synthetic-training-light-method.png",
+      "qa-synthetic-training-large-overview.png",
+      "qa-synthetic-training-dark-overview.png"
+    ],
+    "screenshotsRoot": "/Users/nortepro/.codex/visualizations/2026/10/15/01a14012-aa56-7043-bc79-0315f141757e/healthmanager-training-delivery/screenshots",
+    "finalExportDirectories": [
+      "light-large-final",
+      "dark-final"
+    ],
+    "notes": [
+      "Accessibility card title/tag now stack; range is single-line, /100 below.",
+      "Trends and evidence remain reachable in all three modes; all missing values stay explicit."
+    ]
+  },
+  "rejectedPreliminaryEvidence": [
+    {
+      "reason": "Launch -AppleInterfaceStyle argument did not change actual UIKit traits; purported dark screenshot was light. Replaced with native simulator dark setup and re-tested."
+    },
+    {
+      "reason": "Largest accessibility text caused vertical experimental label and wrapped range. Corrected layout and reran full suite plus dark rendering."
+    }
+  ],
+  "buildFallback": "BUILD-FALLBACK.json; unchanged product spec, exact pinned cached GRDB in temporary QA project.",
+  "priorUnsignedAttempt": {
+    "summary": {
+      "status": "FAILED",
+      "durationMs": 97476,
+      "counts": {
+        "passed": 460,
+        "failed": 1,
+        "skipped": 0
+      },
+      "target": "simulator"
+    },
+    "failure": "Existing BackupLocationStore Keychain test returned -34018 when CODE_SIGNING_ALLOWED=NO; normal simulator signing restored.",
+    "signedRecheck": "Targeted test and subsequent full signed suites passed."
+  },
+  "scopeProof": "SCOPE-VERIFICATION.json",
+  "pending": [
+    "Background, cold start, exact raw-sample/observer-job correlation, fixed delivery latency and power remain PENDING; one actual foreground new-data/UI update observation passed in follow-up.",
+    "Wearing completeness, real pause and post-run measurement availability.",
+    "Prospective personal calibration and physiological validity of custom load/readiness coefficients."
+  ],
+  "deviceFollowUp": "DEVICE-VERIFICATION.json; install and actual foreground core checks including one passive new-data/UI update PASS; extended scenarios and physiological validation PENDING",
+  "physicalForegroundFollowUp": {
+    "status": "PASS",
+    "scope": "one actual foreground observation plus main data/graph/evidence checks",
+    "details": "DEVICE-VERIFICATION.json",
+    "originalSimulatorTestResultsUnchanged": true
+  }
+}

@@ -107,6 +107,14 @@ private struct MoreScreenContent: View {
                             tone: .comparison,
                             accessibilityIdentifier: "more-workouts",
                             destination: AnyView(WorkoutsView())
+                        ),
+                        MoreNavigationRow(
+                            title: "用药",
+                            detail: "用药计划、记录与提醒",
+                            systemImage: "pills",
+                            tone: .comparison,
+                            accessibilityIdentifier: "more-medication",
+                            destination: AnyView(MedicationView(embeddedInNavigation: true))
                         )
                     ]
                 )

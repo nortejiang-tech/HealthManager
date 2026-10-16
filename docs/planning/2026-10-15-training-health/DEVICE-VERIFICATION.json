@@ -1,0 +1,87 @@
+{
+  "schemaVersion": 1,
+  "checkedLocalDate": "2026-10-16",
+  "timezone": "Asia/Shanghai",
+  "status": "PENDING",
+  "reason": "Foreground core acceptance PASS; extended device scenarios, exact raw-sample/observer-job correlation, power and physiological calibration remain PENDING",
+  "device": {
+    "model": "iPhone Air",
+    "os": "iOS 27.2",
+    "appVersion": "0.8.1",
+    "appBuild": "17",
+    "postUpdateOSUserReported": "iOS 27.2 beta3",
+    "postUpdateExactOSBuildReadback": "PENDING; developer-tool discovery unavailable after update"
+  },
+  "completed": {
+    "nativeSignedBuild": "PASS",
+    "installReceiptAndAppReadback": "PASS",
+    "newTrainingTabPresentOnPhysicalScreen": "PASS",
+    "preinstallBackupIntegrity": "PASS",
+    "actualDataOfflineCalculationAndRawWorkoutCrossCheck": "PASS",
+    "readOnlyPhysicalUIProbeCompile": "PASS; generic iOS build-for-testing only",
+    "allFourRealDataPanelsVisualCrossCheck": "PASS",
+    "experimentalReadinessCalculationEvidenceOnActualDevice": "PASS",
+    "automaticUpdateWithNewHealthKitDataWhilePageStaysVisible": "PASS",
+    "VO2ActualHistoryDetail": "PASS",
+    "sourceHashesUnchangedFromInstalledMorningVersion": "PASS",
+    "currentToolchainReadOnlyPhysicalProbeCompile": "PASS"
+  },
+  "pending": {
+    "backgroundAndLockScreenDelivery": "PENDING",
+    "exactRawSampleAndObserverJobCorrelation": "PENDING",
+    "backgroundColdStartAndNetworkRecovery": "PENDING",
+    "powerAndLongRunReliability": "PENDING",
+    "physiologicalCalibration": "PENDING",
+    "currentIdentityAndRecoveryOfPersistentSyncTypeWork": "PENDING"
+  },
+  "noProductSourceChanges": true,
+  "privateEvidenceRoot": "/Users/nortepro/.codex/visualizations/2026/10/16/healthmanager-training-device-validation",
+  "privateEvidenceFiles": [
+    "install-receipt.json",
+    "launch-receipt.json",
+    "installed-app-readback.json",
+    "device-build-result.json",
+    "device-build-verification.json",
+    "preinstall-database-audit.json",
+    "preinstall-calculated-reference.json",
+    "private-real-data-findings.json",
+    "device-probe-build-only-recheck-result.json"
+  ],
+  "screenSharing": "iPhone Mirroring stopped after capture; Mac process-name check found no running mirror process. Device Hub had no active pairing sheet or physical screen view.",
+  "testProbe": "Compiled; two physical launches failed at XCTest bootstrap. Business runtime assertions did not execute. Manual actual-device evidence is separate.",
+  "rollback": "Same-bundle upgrade; preinstall database retained privately. No data restore, uninstall, source revert, Git commit or push performed.",
+  "updatedAt": "2026-10-16T23:29:41.936830+08:00",
+  "scopedAcceptance": {
+    "status": "PASS",
+    "scope": "actual-data running performance, training-load values/missingness/chart, night and intraday recovery graphs, experimental readiness evidence, body metrics/history detail, and one passive foreground new-data/UI update",
+    "method": "Apple iPhone Mirroring with actual device, earlier read-only database cross-check, no synthetic HealthKit samples",
+    "automaticUpdateEvidence": "/Users/nortepro/.codex/visualizations/2026/10/16/healthmanager-training-device-validation/resume-215315/passive-mirror-observation-v2.json",
+    "sourceIntegrityEvidence": "/Users/nortepro/.codex/visualizations/2026/10/16/healthmanager-training-device-validation/resume-215315/resume-source-integrity.json",
+    "screenshots": "Actual later mirror screenshots are retained in this conversation tool output; no nonexistent local screenshot or recording is used",
+    "fixedLatencyOrReliabilityClaim": false
+  },
+  "nativeUITestInfrastructure": {
+    "status": "FAIL",
+    "attempts": 2,
+    "stage": "IDE/DTX runner bootstrap before business assertions",
+    "businessAssertionsExecuted": false,
+    "currentSDKBuildForTesting": "PASS",
+    "actualDeviceFallback": "core checks completed via iPhone Mirroring and earlier database replay"
+  },
+  "privateResumeEvidenceRoot": "/Users/nortepro/.codex/visualizations/2026/10/16/healthmanager-training-device-validation/resume-215315",
+  "resumePrivateEvidenceFiles": [
+    "before-database-audit.json",
+    "before-calculated-reference.json",
+    "before-health-reference.json",
+    "day-new-workout-crosscheck.json",
+    "current-toolchain-build-result.json",
+    "real-training-observation-result.json",
+    "real-training-observation-v2-result.json",
+    "mirror-validation-observations.json",
+    "passive-mirror-observation.json",
+    "passive-mirror-observation-v2.json",
+    "resume-source-integrity.json"
+  ],
+  "syncCompletenessNote": "One persistent type remains pending in current sync UI; pre-update backup had a prior distance-type timeout. Current exact type identity has not been read back.",
+  "sessionCompletionEvidence": "/Users/nortepro/.codex/visualizations/2026/10/16/healthmanager-training-device-validation/resume-215315/SESSION-COMPLETION.json"
+}

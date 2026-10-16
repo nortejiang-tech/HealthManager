@@ -1,0 +1,58 @@
+{
+  "schema_version": 1,
+  "task": "Resume actual iPhone training-health validation after OS update",
+  "local_date": "2026-10-16",
+  "timezone": "Asia/Shanghai",
+  "updated_at": "2026-10-16T23:25:10.530358+08:00",
+  "call_count": 0,
+  "calls": [],
+  "zero_call_reason": "No new implementation stage was needed. Existing reviewed probe was reused. Device-channel recovery, private health-data handling and independent runtime acceptance were performed by Planner.",
+  "metrics": {
+    "supervisor_pass_rate": {
+      "numerator": 0,
+      "denominator": 0,
+      "rate": null,
+      "reason": "no local Coder calls"
+    },
+    "first_independent_acceptance_rate": {
+      "numerator": 0,
+      "denominator_concluded_calls": 0,
+      "pending_calls": 0,
+      "rate": null,
+      "reason": "no local Coder calls"
+    },
+    "useful_retained_output_rate": {
+      "numerator": 0,
+      "denominator": 0,
+      "rate": null,
+      "reason": "no local Coder calls"
+    },
+    "coder_duration_seconds": 0,
+    "coder_turns": 0,
+    "coder_tools": 0,
+    "total_tokens": 0
+  },
+  "reused_output": "Morning read-only physical UI probe; earlier call reports retained separately",
+  "production_code_changes": [],
+  "source_integrity": "PASS: 12 source/test hashes match morning baseline; HEAD unchanged; no staged files; original untracked files present",
+  "independent_validation": {
+    "native_probe_compile": "PASS",
+    "native_probe_runtime": "FAIL infrastructure; no business assertions executed",
+    "foreground_core_actual_device": "PASS",
+    "passive_new_data_update": "PASS one actual foreground observation",
+    "extended_physical_and_physiological_acceptance": "PENDING"
+  },
+  "evaluation": "Zero calls provide no Coder quality or acceptance-rate sample. Device recovery and UI control took longer than intended and needed user-assisted scrolling. The final actual-data observation was kept separate from aborted observations, offline replay and infrastructure failures. No general reliability or latency claim is made.",
+  "wrapper_model_routing_changed": false,
+  "private_evidence_root": "/Users/nortepro/.codex/visualizations/2026/10/16/healthmanager-training-device-validation/resume-215315",
+  "report_markdown": "EVO-CODER-RESUME-REPORT.md",
+  "changed_documentation_paths": [
+    "DEVICE-VALIDATION.md",
+    "DEVICE-VERIFICATION.json",
+    "HANDOFF.md",
+    "STAGE.md",
+    "VERIFICATION.json",
+    "EVO-CODER-RESUME-REPORT.md",
+    "EVO-CODER-RESUME-REPORT.json"
+  ]
+}

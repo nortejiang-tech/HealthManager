@@ -19,9 +19,16 @@ struct MedicationView: View {
     @State private var pendingUndoPlan: MedicationPlan?
     @State private var undoExpiryTask: Task<Void, Never>?
 
-    var body: some View {
-        NavigationStack {
-            MedicationScreenContent(
+    /// 为 true 时由外层（更多页的 NavigationStack）提供导航容器，
+    /// 避免在已处于 NavigationStack 中时再嵌套一层栈。
+    let embeddedInNavigation: Bool
+
+    init(embeddedInNavigation: Bool = false) {
+        self.embeddedInNavigation = embeddedInNavigation
+    }
+
+    private var screen: some View {
+        MedicationScreenContent(
                 isLoading: isLoading,
                 hasLoadedSnapshot: hasLoadedSnapshot,
                 loadError: loadError,
@@ -62,8 +69,19 @@ struct MedicationView: View {
                 await refresh()
                 await refreshNotifStatus()
             }
-            .refreshable { await refresh() }
-            .safeAreaInset(edge: .bottom) { undoBanner }
+        .refreshable { await refresh() }
+        .safeAreaInset(edge: .bottom) { undoBanner }
+    }
+
+    var body: some View {
+        Group {
+            if embeddedInNavigation {
+                screen
+            } else {
+                NavigationStack {
+                    screen
+                }
+            }
         }
     }
 

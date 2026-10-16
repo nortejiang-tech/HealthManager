@@ -1,0 +1,120 @@
+{
+  "schema_version": 1,
+  "task": "Install training-health version on physical iPhone and inspect actual data/automatic updates",
+  "local_date": "2026-10-16",
+  "timezone": "Asia/Shanghai",
+  "calls": [
+    {
+      "run_id": "202c936f-3b1c-424f-a0cc-0b837eb19a29",
+      "model": "halogen-qwen3.8-flash-next",
+      "temperature": 0.0,
+      "top_p": 1,
+      "prompt_sha256": "a91662e001a2ca4b10fc26771c4ab2bb8af2c870be0dd12c566f473c647f68f9",
+      "config_sha256": {
+        "extension": "28743c2cf6792ea1bbf5bad62e973fcd632f5e8c8304f1ebcdb0e7fb329f4d29",
+        "models": "8fc0d2b000a76990fa51d0183483b1f88ad94e972eea203327c20e267de6a9d4",
+        "policy": "87096fc22ab6b9b9a90c73464bf1c2559d30d5f01fa0536e088d2352072568ea",
+        "supervisor": "f11605d243b6b7561c1191a6f3e8196e709139bfacf964fa3489783514fb65bf"
+      },
+      "duration_seconds": 61.447,
+      "turns": 4,
+      "tool_calls": 5,
+      "max_context_tokens": 7356,
+      "status": "PASS",
+      "classification": "CODER_DONE_PENDING_REVIEW",
+      "failure_reason": null,
+      "changed_paths": [
+        "TrainingDeviceAcceptanceUITests.swift"
+      ],
+      "out_of_scope_paths": [],
+      "verification_expected": 1,
+      "verification_runs": 1,
+      "verification_passes": 1,
+      "stop_reason": "toolUse",
+      "structured_terminal": true,
+      "phase": "TRAINING-DEVICE-UI-01",
+      "baseline": "Product source12-file hashes match prior simulator-accepted version; new read-only UI probe isolated outside repository",
+      "isolation": "/tmp/healthmanager-training-device-ui-20261016",
+      "allowed_paths": [
+        "TrainingDeviceAcceptanceUITests.swift"
+      ],
+      "planner_first_acceptance": "partially_accepted_with_targeted_repair",
+      "first_independent_pass": false,
+      "useful_output_retained": true,
+      "total_tokens": "unavailable; peak context is not token consumption",
+      "enable_thinking": "not a separate ledger field; wrapper contract false",
+      "max_output_tokens": 4096
+    },
+    {
+      "run_id": "76cfab44-f2b8-4f60-8fc0-f3939a61e1e5",
+      "model": "halogen-qwen3.8-flash-next",
+      "temperature": 0.0,
+      "top_p": 1,
+      "prompt_sha256": "329d92b2c0fa696ffbbc956f9170cb6b485ac2081f92df41e8ae5ae5ab08556d",
+      "config_sha256": {
+        "extension": "28743c2cf6792ea1bbf5bad62e973fcd632f5e8c8304f1ebcdb0e7fb329f4d29",
+        "models": "8fc0d2b000a76990fa51d0183483b1f88ad94e972eea203327c20e267de6a9d4",
+        "policy": "87096fc22ab6b9b9a90c73464bf1c2559d30d5f01fa0536e088d2352072568ea",
+        "supervisor": "f11605d243b6b7561c1191a6f3e8196e709139bfacf964fa3489783514fb65bf"
+      },
+      "duration_seconds": 18.177,
+      "turns": 6,
+      "tool_calls": 6,
+      "max_context_tokens": 7336,
+      "status": "PASS",
+      "classification": "CODER_DONE_PENDING_REVIEW",
+      "failure_reason": null,
+      "changed_paths": [
+        "TrainingDeviceAcceptanceUITests.swift"
+      ],
+      "out_of_scope_paths": [],
+      "verification_expected": 1,
+      "verification_runs": 1,
+      "verification_passes": 1,
+      "stop_reason": "toolUse",
+      "structured_terminal": true,
+      "phase": "TRAINING-DEVICE-UI-01-R1",
+      "baseline": "Product source12-file hashes match prior simulator-accepted version; new read-only UI probe isolated outside repository",
+      "isolation": "/tmp/healthmanager-training-device-ui-20261016",
+      "allowed_paths": [
+        "TrainingDeviceAcceptanceUITests.swift"
+      ],
+      "planner_first_acceptance": "source_and_native_build_accepted; physical_runtime_PENDING",
+      "first_independent_pass": null,
+      "useful_output_retained": true,
+      "total_tokens": "unavailable; peak context is not token consumption",
+      "enable_thinking": "not a separate ledger field; wrapper contract false",
+      "max_output_tokens": 4096,
+      "independent_build": "PASS: generic iOS build-for-testing, no execution or reinstallation on iPhone"
+    }
+  ],
+  "call_count": 2,
+  "metrics": {
+    "supervisor_pass_rate": {
+      "numerator": 2,
+      "denominator": 2,
+      "rate": 1
+    },
+    "first_independent_acceptance_rate": {
+      "numerator": 0,
+      "denominator_concluded_calls": 1,
+      "pending_calls": 1,
+      "rate": 0
+    },
+    "useful_retained_output_rate": {
+      "numerator": 2,
+      "denominator": 2,
+      "rate": 1
+    },
+    "coder_duration_seconds": 79.624,
+    "coder_turns": 10,
+    "coder_tools": 11,
+    "total_tokens": "unavailable"
+  },
+  "review": "First source had invalid XCUIElementQuery members and a weak heading assertion; independent Planner review requested one focused repair. Runtime PASS is not claimed.",
+  "production_code_changes": [],
+  "probe_file": "/tmp/healthmanager-training-device-ui-20261016/TrainingDeviceAcceptanceUITests.swift",
+  "physical_runtime": "PENDING; user left with iPhone before continuous observation started",
+  "evaluation": "Bounded probe implementation required one interface repair. Static contracts alone missed SDK type errors. Useful source retained; no general quality or token-efficiency claim from two calls. No wrapper/model/routing changes.",
+  "native_probe_build": "PASS; private device-probe-build-only-recheck-result.json"
+}
