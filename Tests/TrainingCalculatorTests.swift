@@ -33,10 +33,10 @@ final class TrainingCalculatorTests: XCTestCase {
     private func snapshot(_ samples: [TrainingSample]) -> TrainingSnapshot {
         TrainingCalculator.snapshot(samples: samples, now: now, calendar: calendar)
     }
-    private func validHistory(currentHours: Double = 8, currentHRV: Double = 40, currentHeart: Double = 50) -> [TrainingSample] {
+    private func validHistory(currentHours: Double = 8, currentHRV: Double = 40, currentHeart: Double = 50, days: Int = 24) -> [TrainingSample] {
         var result: [TrainingSample] = []
         let today = calendar.startOfDay(for: now)
-        for day in 0..<24 {
+        for day in 0..<days {
             let wake = calendar.date(byAdding: .day, value: -day, to: today)!
             let previous = calendar.date(byAdding: .day, value: -1, to: wake)!
             let start = calendar.date(bySettingHour: 22, minute: 0, second: 0, of: previous)!
@@ -50,7 +50,7 @@ final class TrainingCalculatorTests: XCTestCase {
             }
             result.append(sample(TrainingTypes.resting, 60, wake.addingTimeInterval(7 * 3600)))
         }
-        for day in [3, 6, 9, 12] {
+        for day in stride(from: 3, to: min(days - 10, 130), by: 3) {
             result += workout(today.addingTimeInterval(-Double(day) * 86_400 + 17 * 3600))
         }
         return result
@@ -259,7 +259,7 @@ final class TrainingCalculatorTests: XCTestCase {
     }
 
     func test_missingRecentSessionLoadWithholdsReadiness() {
-        let unknown = workout(now.addingTimeInterval(-3600), source: "watch-unmatched").filter { $0.type == TrainingTypes.workout }
+        let unknown = workout(now.addingTimeInterval(-18 * 3600), source: "watch-unmatched").filter { $0.type == TrainingTypes.workout }
         let s = snapshot(validHistory() + unknown)
         XCTAssertNil(s.readiness.score)
         XCTAssertTrue(s.readiness.missingReasons.contains { $0.contains("最近48小时") })
@@ -324,4 +324,164 @@ final class TrainingCalculatorTests: XCTestCase {
         }
         wait(for: [changed], timeout: 3)
     }
+    func test_v2PostWakeWorkoutDoesNotChangeSleepAnchoredReadiness() throws {
+        let initial = snapshot(validHistory())
+        let laterWorkout = workout(now.addingTimeInterval(-3600), source: "unmatched").filter { $0.type == TrainingTypes.workout }
+        let later = snapshot(validHistory() + laterWorkout)
+        XCTAssertEqual(initial.readiness.observedAt, later.readiness.observedAt)
+        XCTAssertEqual(initial.readiness.score, later.readiness.score)
+        XCTAssertEqual(initial.readiness.possibleRange, later.readiness.possibleRange)
+        XCTAssertEqual(later.sessions.count, initial.sessions.count + 1)
+    }
+
+    func test_v2EarliestDisplayedPointHasItsFullPriorBaseline() throws {
+        let result = snapshot(validHistory(days: 130))
+        XCTAssertEqual(result.readinessHistory.count, 56)
+        let first = try XCTUnwrap(result.readinessHistory.first)
+        XCTAssertGreaterThanOrEqual(first.assessment.baselineNights, 40)
+        XCTAssertNotNil(first.assessment.score)
+        XCTAssertEqual(first.assessment.referenceCount, 28)
+    }
+
+    func test_v2HistoricalPointMatchesIndependentEarlierSnapshot() throws {
+        let input = validHistory(days: 130)
+        let earlier = calendar.date(byAdding: .day, value: -20, to: now)!
+        let old = TrainingCalculator.snapshot(samples: input, now: earlier, calendar: calendar)
+        let current = snapshot(input)
+        let point = try XCTUnwrap(current.readinessHistory.first { $0.id == TrainingCalculator.dayKey(earlier, calendar) })
+        XCTAssertEqual(point.assessment.score, old.readiness.score)
+        XCTAssertEqual(point.assessment.possibleRange, old.readiness.possibleRange)
+        XCTAssertEqual(point.assessment.baselineNights, old.readiness.baselineNights)
+        XCTAssertEqual(point.assessment.referenceRange, old.readiness.referenceRange)
+        for window in [7, 28, 56] {
+            if let visible = current.readinessHistory.suffix(window).first(where: { $0.id == point.id }) {
+                XCTAssertEqual(visible.assessment.score, point.assessment.score)
+            }
+        }
+    }
+
+    func test_v2PersonalReferenceExcludesCurrentPoint() throws {
+        let normal = snapshot(validHistory(days: 130)).readiness
+        let poor = snapshot(validHistory(currentHours: 6, currentHRV: 15, currentHeart: 65, days: 130)).readiness
+        XCTAssertNotNil(normal.referenceRange)
+        XCTAssertEqual(normal.referenceRange, poor.referenceRange)
+        XCTAssertEqual(normal.previousScore, poor.previousScore)
+        XCTAssertNotEqual(normal.score, poor.score)
+        XCTAssertEqual(normal.referenceCount, 28)
+    }
+
+    func test_v2LateIngestionReconstructsHistoryButWasNotKnownThen() throws {
+        let past = calendar.date(byAdding: .day, value: -2, to: now)!
+        let sleepStart = calendar.startOfDay(for: past).addingTimeInterval(-2 * 3600)
+        let sleepEnd = sleepStart.addingTimeInterval(8 * 3600)
+        let input = validHistory(days: 130).map { sample -> TrainingSample in
+            var sample = sample
+            if sample.type == TrainingTypes.hrv && sample.start >= sleepStart && sample.start < sleepEnd {
+                sample.ingestedAt = now.addingTimeInterval(-60)
+            }
+            return sample
+        }
+        let knownThen = TrainingCalculator.snapshot(samples: input, now: past, calendar: calendar)
+        XCTAssertNil(knownThen.readiness.score)
+        let reconstructed = try XCTUnwrap(snapshot(input).readinessHistory.first { $0.id == TrainingCalculator.dayKey(past, calendar) })
+        XCTAssertNotNil(reconstructed.assessment.score)
+        XCTAssertEqual(reconstructed.assessment.observedAt, sleepEnd)
+    }
+
+    func test_v2SparseRangeHasNoExactDeltaOrPersonalReferenceContribution() {
+        let input = validHistory(days: 130) + workout(now.addingTimeInterval(-18 * 3600), source: "unmatched").filter { $0.type == TrainingTypes.workout }
+        let current = snapshot(input).readiness
+        XCTAssertNotNil(current.possibleRange)
+        XCTAssertNil(current.score)
+        XCTAssertNil(current.previousScore)
+        XCTAssertNil(current.previousDate)
+    }
+
+    func test_v2NewSourceDoesNotReuseReferenceOrDelta() {
+        let begin = calendar.startOfDay(for: now).addingTimeInterval(-2 * 3600)
+        let input = validHistory(days: 130).map { sample -> TrainingSample in
+            var sample = sample
+            if sample.start >= begin { sample.source = "new-device" }
+            return sample
+        }
+        let current = snapshot(input).readiness
+        XCTAssertEqual(current.referenceCount, 0)
+        XCTAssertNil(current.referenceRange)
+        XCTAssertNil(current.previousScore)
+    }
+
+    func test_v2SleepStagesRetainKnownStageWithoutInventingOthers() throws {
+        let result = snapshot(validHistory())
+        let night = try XCTUnwrap(result.latestNight)
+        XCTAssertEqual(night.stageHours[3], 8)
+        XCTAssertNil(night.stageHours[4])
+        XCTAssertTrue(result.series(for: .deepSleep).isEmpty)
+        XCTAssertEqual(result.series(for: .coreSleep).last?.value, 8)
+    }
+
+    func test_v2LaterCompletedDuplicateCannotAlterEarlierAnchor() throws {
+        var input = validHistory(days: 130)
+        let wake = calendar.startOfDay(for: now).addingTimeInterval(6 * 3600)
+        let before = workout(wake.addingTimeInterval(-1900), seconds: 1800)
+        input += before
+        let original = snapshot(input).readiness
+        var later = try XCTUnwrap(before.first)
+        later.id = "higher-priority-duplicate"; later.origin = "garmin"
+        later.source = "different"; later.end = wake.addingTimeInterval(10)
+        later.duration = later.end.timeIntervalSince(later.start)
+        let changed = snapshot(input + [later]).readiness
+        XCTAssertEqual(original.score, changed.score)
+        XCTAssertEqual(original.possibleRange, changed.possibleRange)
+    }
+
+    func test_individualOldWorkoutCanBeReadAfterLateIngestion() async throws {
+        let database = DatabaseManager.makeInMemoryForTesting()
+        let start = now.addingTimeInterval(-90 * 86400)
+        try database.write { db in
+            try HealthSampleRaw(sampleUUID: "old-run", hkType: TrainingTypes.workout, kind: .workout,
+                value: 1800, unit: "second", startAt: Int64(start.timeIntervalSince1970),
+                endAt: Int64(start.timeIntervalSince1970 + 1800), sourceName: "Synthetic", sourceBundleId: "watch-A",
+                deviceName: nil, deviceModel: nil, ingestedAt: Int64(now.timeIntervalSince1970 - 60), isDeleted: false,
+                extraJson: "{\"activityType\":37,\"duration\":1800,\"totalDistanceMeters\":5000,\"totalEnergyKcal\":300}", sourceOrigin: "apple").insert(db)
+        }
+        let detail = try await TrainingSnapshotLoader.session(database: database, id: "old-run", now: now, calendar: calendar)
+        let session = try XCTUnwrap(detail)
+        XCTAssertEqual(session.distanceKm, 5)
+        XCTAssertEqual(session.energyKcal, 300)
+        XCTAssertEqual(session.paceSecondsPerKm, 360)
+        XCTAssertNil(session.load)
+        XCTAssertNil(session.averageHeartRate)
+    }
+
+    func test_previousComparableScoreCanPredateReferenceWindow() throws {
+        let today = calendar.startOfDay(for: now)
+        let input = validHistory(days: 130).filter { sample in
+            guard sample.type == TrainingTypes.hrv else { return true }
+            let wakeDate = sample.start.addingTimeInterval(10 * 3600)
+            let back = calendar.dateComponents([.day], from: calendar.startOfDay(for: wakeDate), to: today).day ?? 0
+            return !(1...28).contains(back)
+        }
+        let current = snapshot(input).readiness
+        XCTAssertNotNil(current.score)
+        XCTAssertEqual(current.referenceCount, 0)
+        XCTAssertNil(current.referenceRange)
+        let previous = try XCTUnwrap(current.previousDate)
+        XCTAssertLessThan(previous, today.addingTimeInterval(-28 * 86400))
+        XCTAssertNotNil(current.previousScore)
+    }
+
+    func test_dailyWorkoutSeriesDoesNotBorrowSleepSource() throws {
+        let result = snapshot(validHistory())
+        XCTAssertEqual(result.series(for: .load).last?.source, "recorded-workouts")
+        XCTAssertEqual(result.series(for: .runMinutes).last?.source, "recorded-workouts")
+        XCTAssertEqual(result.series(for: .nightHRV).last?.source, "watch-A")
+    }
+
+    func test_unknownSourcesCannotClaimComparableRunningProgress() {
+        let input = [3, 6, 9, 12].flatMap { day in
+            workout(now.addingTimeInterval(-Double(day) * 86400), source: "unknown:watch")
+        }
+        XCTAssertNil(snapshot(input).comparison)
+    }
+
 }

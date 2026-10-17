@@ -1,0 +1,848 @@
+{
+  "schema_version": 1,
+  "created_on": "2026-10-18",
+  "task": "HealthManager v2 remaining physical parameter acceptance",
+  "status": "PASS",
+  "scope_count": 33,
+  "passed": 33,
+  "failed": 0,
+  "pending": 0,
+  "previous_physical_pass": [
+    "readiness"
+  ],
+  "previous_physical_pass_count": 1,
+  "total_parameter_count": 34,
+  "app_identity_reference": "DEVICE-RELEASE-VALIDATION.json",
+  "instructions": "ZCODE-REAL-DEVICE-ACCEPTANCE.md",
+  "private_evidence_root": "/Users/nortepro/.codex/visualizations/2026/10/17/healthmanager-v2-release-device-validation/zcode-physical-acceptance",
+  "items": [
+    {
+      "id": "nightHRV",
+      "group": "心率与恢复",
+      "title": "夜间 HRV",
+      "display_unit": "ms",
+      "status": "PASS",
+      "platform": "physical_iPhone",
+      "entry_accessibility_id": "training-parameter-nightHRV",
+      "detail_accessibility_id": "training-metric-nightHRV",
+      "checks": {
+        "row_center_tap": "PASS",
+        "correct_destination": "PASS",
+        "finished_loading": "PASS",
+        "value_or_valid_empty": "PASS",
+        "unit_definition_source_time": "PASS",
+        "trend_or_valid_empty": "PASS",
+        "return_to_training": "PASS"
+      },
+      "observed_at": "2026-10-18T01:19:41+08:00",
+      "evidence_paths": [
+        "zcode-physical-acceptance/evidence/items/01-nightHRV-detail.png",
+        "zcode-physical-acceptance/logs/session.log"
+      ],
+      "notes": "行中心点击→详情→读取完成→数值/单位/口径/来源/时间→趋势→返回 全部正常（具体数值已脱敏，见私有证据）"
+    },
+    {
+      "id": "sleepHeart",
+      "group": "心率与恢复",
+      "title": "睡眠心率",
+      "display_unit": "bpm",
+      "status": "PASS",
+      "platform": "physical_iPhone",
+      "entry_accessibility_id": "training-parameter-sleepHeart",
+      "detail_accessibility_id": "training-metric-sleepHeart",
+      "checks": {
+        "row_center_tap": "PASS",
+        "correct_destination": "PASS",
+        "finished_loading": "PASS",
+        "value_or_valid_empty": "PASS",
+        "unit_definition_source_time": "PASS",
+        "trend_or_valid_empty": "PASS",
+        "return_to_training": "PASS"
+      },
+      "observed_at": "2026-10-18T01:20:03+08:00",
+      "evidence_paths": [
+        "zcode-physical-acceptance/evidence/items/02-sleepHeart-detail.png",
+        "zcode-physical-acceptance/logs/session.log"
+      ],
+      "notes": "行中心点击→详情→读取完成→数值/单位/口径/来源/时间→趋势→返回 全部正常（具体数值已脱敏，见私有证据）"
+    },
+    {
+      "id": "load",
+      "group": "心率与恢复",
+      "title": "心率负荷 · 实验",
+      "display_unit": "bpm·min",
+      "status": "PASS",
+      "platform": "physical_iPhone",
+      "entry_accessibility_id": "training-parameter-load",
+      "detail_accessibility_id": "training-metric-load",
+      "checks": {
+        "row_center_tap": "PASS",
+        "correct_destination": "PASS",
+        "finished_loading": "PASS",
+        "value_or_valid_empty": "PASS",
+        "unit_definition_source_time": "PASS",
+        "trend_or_valid_empty": "PASS",
+        "return_to_training": "PASS"
+      },
+      "observed_at": "2026-10-18T01:20:24+08:00",
+      "evidence_paths": [
+        "zcode-physical-acceptance/evidence/items/03-load-detail.png",
+        "zcode-physical-acceptance/logs/session.log"
+      ],
+      "notes": "行中心点击→详情→读取完成→数值/单位/口径/来源/时间→趋势→返回 全部正常（具体数值已脱敏，见私有证据）"
+    },
+    {
+      "id": "heart",
+      "group": "心率与恢复",
+      "title": "心率",
+      "display_unit": "bpm",
+      "status": "PASS",
+      "platform": "physical_iPhone",
+      "entry_accessibility_id": "training-parameter-heart",
+      "detail_accessibility_id": "training-metric-heart",
+      "checks": {
+        "row_center_tap": "PASS",
+        "correct_destination": "PASS",
+        "finished_loading": "PASS",
+        "value_or_valid_empty": "PASS",
+        "unit_definition_source_time": "PASS",
+        "trend_or_valid_empty": "PASS",
+        "return_to_training": "PASS"
+      },
+      "observed_at": "2026-10-18T01:20:45+08:00",
+      "evidence_paths": [
+        "zcode-physical-acceptance/evidence/items/04-heart-detail.png",
+        "zcode-physical-acceptance/logs/session.log"
+      ],
+      "notes": "行中心点击→详情→读取完成→数值/单位/口径/来源/时间→趋势→返回 全部正常（具体数值已脱敏，见私有证据）"
+    },
+    {
+      "id": "restingHeart",
+      "group": "心率与恢复",
+      "title": "静息心率",
+      "display_unit": "bpm",
+      "status": "PASS",
+      "platform": "physical_iPhone",
+      "entry_accessibility_id": "training-parameter-restingHeart",
+      "detail_accessibility_id": "training-metric-restingHeart",
+      "checks": {
+        "row_center_tap": "PASS",
+        "correct_destination": "PASS",
+        "finished_loading": "PASS",
+        "value_or_valid_empty": "PASS",
+        "unit_definition_source_time": "PASS",
+        "trend_or_valid_empty": "PASS",
+        "return_to_training": "PASS"
+      },
+      "observed_at": "2026-10-18T01:21:06+08:00",
+      "evidence_paths": [
+        "zcode-physical-acceptance/evidence/items/05-restingHeart-detail.png",
+        "zcode-physical-acceptance/logs/session.log"
+      ],
+      "notes": "行中心点击→详情→读取完成→数值/单位/口径/来源/时间→趋势→返回 全部正常（具体数值已脱敏，见私有证据）"
+    },
+    {
+      "id": "dayHRV",
+      "group": "心率与恢复",
+      "title": "全天 HRV",
+      "display_unit": "ms",
+      "status": "PASS",
+      "platform": "physical_iPhone",
+      "entry_accessibility_id": "training-parameter-dayHRV",
+      "detail_accessibility_id": "training-metric-dayHRV",
+      "checks": {
+        "row_center_tap": "PASS",
+        "correct_destination": "PASS",
+        "finished_loading": "PASS",
+        "value_or_valid_empty": "PASS",
+        "unit_definition_source_time": "PASS",
+        "trend_or_valid_empty": "PASS",
+        "return_to_training": "PASS"
+      },
+      "observed_at": "2026-10-18T01:21:46+08:00",
+      "evidence_paths": [
+        "zcode-physical-acceptance/evidence/items/06-dayHRV-detail.png",
+        "zcode-physical-acceptance/logs/session.log"
+      ],
+      "notes": "行中心点击→详情→读取完成→数值/单位/口径/来源/时间→趋势→返回 全部正常（具体数值已脱敏，见私有证据）"
+    },
+    {
+      "id": "vo2",
+      "group": "心肺与跑步表现",
+      "title": "VO₂max · 设备估计",
+      "display_unit": "ml/kg/min",
+      "status": "PASS",
+      "platform": "physical_iPhone",
+      "entry_accessibility_id": "training-parameter-vo2",
+      "detail_accessibility_id": "training-metric-vo2",
+      "checks": {
+        "row_center_tap": "PASS",
+        "correct_destination": "PASS",
+        "finished_loading": "PASS",
+        "value_or_valid_empty": "PASS",
+        "unit_definition_source_time": "PASS",
+        "trend_or_valid_empty": "PASS",
+        "return_to_training": "PASS"
+      },
+      "observed_at": "2026-10-18T01:22:07+08:00",
+      "evidence_paths": [
+        "zcode-physical-acceptance/evidence/items/07-vo2-detail.png",
+        "zcode-physical-acceptance/logs/session.log"
+      ],
+      "notes": "行中心点击→详情→读取完成→数值/单位/口径/来源/时间→趋势→返回 全部正常（具体数值已脱敏，见私有证据）"
+    },
+    {
+      "id": "runPace",
+      "group": "心肺与跑步表现",
+      "title": "跑步配速",
+      "display_unit": "分′秒″/km（内部秒/km）",
+      "status": "PASS",
+      "platform": "physical_iPhone",
+      "entry_accessibility_id": "training-parameter-runPace",
+      "detail_accessibility_id": "training-metric-runPace",
+      "checks": {
+        "row_center_tap": "PASS",
+        "correct_destination": "PASS",
+        "finished_loading": "PASS",
+        "value_or_valid_empty": "PASS",
+        "unit_definition_source_time": "PASS",
+        "trend_or_valid_empty": "PASS",
+        "return_to_training": "PASS"
+      },
+      "observed_at": "2026-10-18T01:22:28+08:00",
+      "evidence_paths": [
+        "zcode-physical-acceptance/evidence/items/08-runPace-detail.png",
+        "zcode-physical-acceptance/logs/session.log"
+      ],
+      "notes": "行中心点击→详情→读取完成→数值/单位/口径/来源/时间→趋势→返回 全部正常（具体数值已脱敏，见私有证据）"
+    },
+    {
+      "id": "runHeart",
+      "group": "心肺与跑步表现",
+      "title": "跑步平均心率",
+      "display_unit": "bpm",
+      "status": "PASS",
+      "platform": "physical_iPhone",
+      "entry_accessibility_id": "training-parameter-runHeart",
+      "detail_accessibility_id": "training-metric-runHeart",
+      "checks": {
+        "row_center_tap": "PASS",
+        "correct_destination": "PASS",
+        "finished_loading": "PASS",
+        "value_or_valid_empty": "PASS",
+        "unit_definition_source_time": "PASS",
+        "trend_or_valid_empty": "PASS",
+        "return_to_training": "PASS"
+      },
+      "observed_at": "2026-10-18T01:22:49+08:00",
+      "evidence_paths": [
+        "zcode-physical-acceptance/evidence/items/09-runHeart-detail.png",
+        "zcode-physical-acceptance/logs/session.log"
+      ],
+      "notes": "行中心点击→详情→读取完成→数值/单位/口径/来源/时间→趋势→返回 全部正常（具体数值已脱敏，见私有证据）"
+    },
+    {
+      "id": "recovery60",
+      "group": "心肺与跑步表现",
+      "title": "运动后1分钟心率下降",
+      "display_unit": "bpm",
+      "status": "PASS",
+      "platform": "physical_iPhone",
+      "entry_accessibility_id": "training-parameter-recovery60",
+      "detail_accessibility_id": "training-metric-recovery60",
+      "checks": {
+        "row_center_tap": "PASS",
+        "correct_destination": "PASS",
+        "finished_loading": "PASS",
+        "value_or_valid_empty": "PASS",
+        "unit_definition_source_time": "PASS",
+        "trend_or_valid_empty": "PASS",
+        "return_to_training": "PASS"
+      },
+      "observed_at": "2026-10-18T01:23:10+08:00",
+      "evidence_paths": [
+        "zcode-physical-acceptance/evidence/items/10-recovery60-detail.png",
+        "zcode-physical-acceptance/logs/session.log"
+      ],
+      "notes": "行中心点击→详情→读取完成→数值/单位/口径/来源/时间→趋势→返回 全部正常（具体数值已脱敏，见私有证据）"
+    },
+    {
+      "id": "recovery120",
+      "group": "心肺与跑步表现",
+      "title": "运动后2分钟心率下降",
+      "display_unit": "bpm",
+      "status": "PASS",
+      "platform": "physical_iPhone",
+      "entry_accessibility_id": "training-parameter-recovery120",
+      "detail_accessibility_id": "training-metric-recovery120",
+      "checks": {
+        "row_center_tap": "PASS",
+        "correct_destination": "PASS",
+        "finished_loading": "PASS",
+        "value_or_valid_empty": "PASS",
+        "unit_definition_source_time": "PASS",
+        "trend_or_valid_empty": "PASS",
+        "return_to_training": "PASS"
+      },
+      "observed_at": "2026-10-18T01:23:31+08:00",
+      "evidence_paths": [
+        "zcode-physical-acceptance/evidence/items/11-recovery120-detail.png",
+        "zcode-physical-acceptance/logs/session.log"
+      ],
+      "notes": "行中心点击→详情→读取完成→数值/单位/口径/来源/时间→趋势→返回 全部正常（具体数值已脱敏，见私有证据）"
+    },
+    {
+      "id": "steps",
+      "group": "活动量",
+      "title": "步数",
+      "display_unit": "步",
+      "status": "PASS",
+      "platform": "physical_iPhone",
+      "entry_accessibility_id": "training-parameter-steps",
+      "detail_accessibility_id": "training-metric-steps",
+      "checks": {
+        "row_center_tap": "PASS",
+        "correct_destination": "PASS",
+        "finished_loading": "PASS",
+        "value_or_valid_empty": "PASS",
+        "unit_definition_source_time": "PASS",
+        "trend_or_valid_empty": "PASS",
+        "return_to_training": "PASS"
+      },
+      "observed_at": "2026-10-18T01:24:01+08:00",
+      "evidence_paths": [
+        "zcode-physical-acceptance/evidence/items/12-steps-detail.png",
+        "zcode-physical-acceptance/logs/session.log"
+      ],
+      "notes": "行中心点击→详情→读取完成→数值/单位/口径/来源/时间→趋势→返回 全部正常（具体数值已脱敏，见私有证据）"
+    },
+    {
+      "id": "distance",
+      "group": "活动量",
+      "title": "步行与跑步距离",
+      "display_unit": "km",
+      "status": "PASS",
+      "platform": "physical_iPhone",
+      "entry_accessibility_id": "training-parameter-distance",
+      "detail_accessibility_id": "training-metric-distance",
+      "checks": {
+        "row_center_tap": "PASS",
+        "correct_destination": "PASS",
+        "finished_loading": "PASS",
+        "value_or_valid_empty": "PASS",
+        "unit_definition_source_time": "PASS",
+        "trend_or_valid_empty": "PASS",
+        "return_to_training": "PASS"
+      },
+      "observed_at": "2026-10-18T01:24:22+08:00",
+      "evidence_paths": [
+        "zcode-physical-acceptance/evidence/items/13-distance-detail.png",
+        "zcode-physical-acceptance/logs/session.log"
+      ],
+      "notes": "行中心点击→详情→读取完成→数值/单位/口径/来源/时间→趋势→返回 全部正常（具体数值已脱敏，见私有证据）"
+    },
+    {
+      "id": "activeEnergy",
+      "group": "活动量",
+      "title": "活动能量",
+      "display_unit": "kcal",
+      "status": "PASS",
+      "platform": "physical_iPhone",
+      "entry_accessibility_id": "training-parameter-activeEnergy",
+      "detail_accessibility_id": "training-metric-activeEnergy",
+      "checks": {
+        "row_center_tap": "PASS",
+        "correct_destination": "PASS",
+        "finished_loading": "PASS",
+        "value_or_valid_empty": "PASS",
+        "unit_definition_source_time": "PASS",
+        "trend_or_valid_empty": "PASS",
+        "return_to_training": "PASS"
+      },
+      "observed_at": "2026-10-18T01:24:43+08:00",
+      "evidence_paths": [
+        "zcode-physical-acceptance/evidence/items/14-activeEnergy-detail.png",
+        "zcode-physical-acceptance/logs/session.log"
+      ],
+      "notes": "行中心点击→详情→读取完成→数值/单位/口径/来源/时间→趋势→返回 全部正常（具体数值已脱敏，见私有证据）"
+    },
+    {
+      "id": "exercise",
+      "group": "活动量",
+      "title": "Apple 锻炼分钟",
+      "display_unit": "分钟",
+      "status": "PASS",
+      "platform": "physical_iPhone",
+      "entry_accessibility_id": "training-parameter-exercise",
+      "detail_accessibility_id": "training-metric-exercise",
+      "checks": {
+        "row_center_tap": "PASS",
+        "correct_destination": "PASS",
+        "finished_loading": "PASS",
+        "value_or_valid_empty": "PASS",
+        "unit_definition_source_time": "PASS",
+        "trend_or_valid_empty": "PASS",
+        "return_to_training": "PASS"
+      },
+      "observed_at": "2026-10-18T01:25:06+08:00",
+      "evidence_paths": [
+        "zcode-physical-acceptance/evidence/items/15-exercise-detail.png",
+        "zcode-physical-acceptance/logs/session.log"
+      ],
+      "notes": "行中心点击→详情→读取完成→数值/单位/口径/来源/时间→趋势→返回 全部正常（具体数值已脱敏，见私有证据）"
+    },
+    {
+      "id": "stand",
+      "group": "活动量",
+      "title": "站立分钟",
+      "display_unit": "分钟",
+      "status": "PASS",
+      "platform": "physical_iPhone",
+      "entry_accessibility_id": "training-parameter-stand",
+      "detail_accessibility_id": "training-metric-stand",
+      "checks": {
+        "row_center_tap": "PASS",
+        "correct_destination": "PASS",
+        "finished_loading": "PASS",
+        "value_or_valid_empty": "PASS",
+        "unit_definition_source_time": "PASS",
+        "trend_or_valid_empty": "PASS",
+        "return_to_training": "PASS"
+      },
+      "observed_at": "2026-10-18T01:25:27+08:00",
+      "evidence_paths": [
+        "zcode-physical-acceptance/evidence/items/16-stand-detail.png",
+        "zcode-physical-acceptance/logs/session.log"
+      ],
+      "notes": "行中心点击→详情→读取完成→数值/单位/口径/来源/时间→趋势→返回 全部正常（具体数值已脱敏，见私有证据）"
+    },
+    {
+      "id": "flights",
+      "group": "活动量",
+      "title": "爬楼层数",
+      "display_unit": "层",
+      "status": "PASS",
+      "platform": "physical_iPhone",
+      "entry_accessibility_id": "training-parameter-flights",
+      "detail_accessibility_id": "training-metric-flights",
+      "checks": {
+        "row_center_tap": "PASS",
+        "correct_destination": "PASS",
+        "finished_loading": "PASS",
+        "value_or_valid_empty": "PASS",
+        "unit_definition_source_time": "PASS",
+        "trend_or_valid_empty": "PASS",
+        "return_to_training": "PASS"
+      },
+      "observed_at": "2026-10-18T01:25:48+08:00",
+      "evidence_paths": [
+        "zcode-physical-acceptance/evidence/items/17-flights-detail.png",
+        "zcode-physical-acceptance/logs/session.log"
+      ],
+      "notes": "行中心点击→详情→读取完成→数值/单位/口径/来源/时间→趋势→返回 全部正常（具体数值已脱敏，见私有证据）"
+    },
+    {
+      "id": "runDistance",
+      "group": "活动量",
+      "title": "已记录跑步距离",
+      "display_unit": "km",
+      "status": "PASS",
+      "platform": "physical_iPhone",
+      "entry_accessibility_id": "training-parameter-runDistance",
+      "detail_accessibility_id": "training-metric-runDistance",
+      "checks": {
+        "row_center_tap": "PASS",
+        "correct_destination": "PASS",
+        "finished_loading": "PASS",
+        "value_or_valid_empty": "PASS",
+        "unit_definition_source_time": "PASS",
+        "trend_or_valid_empty": "PASS",
+        "return_to_training": "PASS"
+      },
+      "observed_at": "2026-10-18T01:26:20+08:00",
+      "evidence_paths": [
+        "zcode-physical-acceptance/evidence/items/18-runDistance-detail.png",
+        "zcode-physical-acceptance/logs/session.log"
+      ],
+      "notes": "行中心点击→详情→读取完成→数值/单位/口径/来源/时间→趋势→返回 全部正常（具体数值已脱敏，见私有证据）"
+    },
+    {
+      "id": "runMinutes",
+      "group": "活动量",
+      "title": "已记录跑步时长",
+      "display_unit": "分钟",
+      "status": "PASS",
+      "platform": "physical_iPhone",
+      "entry_accessibility_id": "training-parameter-runMinutes",
+      "detail_accessibility_id": "training-metric-runMinutes",
+      "checks": {
+        "row_center_tap": "PASS",
+        "correct_destination": "PASS",
+        "finished_loading": "PASS",
+        "value_or_valid_empty": "PASS",
+        "unit_definition_source_time": "PASS",
+        "trend_or_valid_empty": "PASS",
+        "return_to_training": "PASS"
+      },
+      "observed_at": "2026-10-18T01:26:41+08:00",
+      "evidence_paths": [
+        "zcode-physical-acceptance/evidence/items/19-runMinutes-detail.png",
+        "zcode-physical-acceptance/logs/session.log"
+      ],
+      "notes": "行中心点击→详情→读取完成→数值/单位/口径/来源/时间→趋势→返回 全部正常（具体数值已脱敏，见私有证据）"
+    },
+    {
+      "id": "mainSleep",
+      "group": "睡眠",
+      "title": "主睡眠时长",
+      "display_unit": "小时",
+      "status": "PASS",
+      "platform": "physical_iPhone",
+      "entry_accessibility_id": "training-parameter-mainSleep",
+      "detail_accessibility_id": "training-metric-mainSleep",
+      "checks": {
+        "row_center_tap": "PASS",
+        "correct_destination": "PASS",
+        "finished_loading": "PASS",
+        "value_or_valid_empty": "PASS",
+        "unit_definition_source_time": "PASS",
+        "trend_or_valid_empty": "PASS",
+        "return_to_training": "PASS"
+      },
+      "observed_at": "2026-10-18T01:27:02+08:00",
+      "evidence_paths": [
+        "zcode-physical-acceptance/evidence/items/20-mainSleep-detail.png",
+        "zcode-physical-acceptance/logs/session.log"
+      ],
+      "notes": "行中心点击→详情→读取完成→数值/单位/口径/来源/时间→趋势→返回 全部正常（具体数值已脱敏，见私有证据）"
+    },
+    {
+      "id": "totalSleep",
+      "group": "睡眠",
+      "title": "总睡眠时长",
+      "display_unit": "小时",
+      "status": "PASS",
+      "platform": "physical_iPhone",
+      "entry_accessibility_id": "training-parameter-totalSleep",
+      "detail_accessibility_id": "training-metric-totalSleep",
+      "checks": {
+        "row_center_tap": "PASS",
+        "correct_destination": "PASS",
+        "finished_loading": "PASS",
+        "value_or_valid_empty": "PASS",
+        "unit_definition_source_time": "PASS",
+        "trend_or_valid_empty": "PASS",
+        "return_to_training": "PASS"
+      },
+      "observed_at": "2026-10-18T01:27:23+08:00",
+      "evidence_paths": [
+        "zcode-physical-acceptance/evidence/items/21-totalSleep-detail.png",
+        "zcode-physical-acceptance/logs/session.log"
+      ],
+      "notes": "行中心点击→详情→读取完成→数值/单位/口径/来源/时间→趋势→返回 全部正常（具体数值已脱敏，见私有证据）"
+    },
+    {
+      "id": "coreSleep",
+      "group": "睡眠",
+      "title": "主睡眠 · 核心阶段",
+      "display_unit": "小时",
+      "status": "PASS",
+      "platform": "physical_iPhone",
+      "entry_accessibility_id": "training-parameter-coreSleep",
+      "detail_accessibility_id": "training-metric-coreSleep",
+      "checks": {
+        "row_center_tap": "PASS",
+        "correct_destination": "PASS",
+        "finished_loading": "PASS",
+        "value_or_valid_empty": "PASS",
+        "unit_definition_source_time": "PASS",
+        "trend_or_valid_empty": "PASS",
+        "return_to_training": "PASS"
+      },
+      "observed_at": "2026-10-18T01:27:44+08:00",
+      "evidence_paths": [
+        "zcode-physical-acceptance/evidence/items/22-coreSleep-detail.png",
+        "zcode-physical-acceptance/logs/session.log"
+      ],
+      "notes": "行中心点击→详情→读取完成→数值/单位/口径/来源/时间→趋势→返回 全部正常（具体数值已脱敏，见私有证据）"
+    },
+    {
+      "id": "deepSleep",
+      "group": "睡眠",
+      "title": "主睡眠 · 深睡阶段",
+      "display_unit": "小时",
+      "status": "PASS",
+      "platform": "physical_iPhone",
+      "entry_accessibility_id": "training-parameter-deepSleep",
+      "detail_accessibility_id": "training-metric-deepSleep",
+      "checks": {
+        "row_center_tap": "PASS",
+        "correct_destination": "PASS",
+        "finished_loading": "PASS",
+        "value_or_valid_empty": "PASS",
+        "unit_definition_source_time": "PASS",
+        "trend_or_valid_empty": "PASS",
+        "return_to_training": "PASS"
+      },
+      "observed_at": "2026-10-18T01:28:05+08:00",
+      "evidence_paths": [
+        "zcode-physical-acceptance/evidence/items/23-deepSleep-detail.png",
+        "zcode-physical-acceptance/logs/session.log"
+      ],
+      "notes": "行中心点击→详情→读取完成→数值/单位/口径/来源/时间→趋势→返回 全部正常（具体数值已脱敏，见私有证据）"
+    },
+    {
+      "id": "remSleep",
+      "group": "睡眠",
+      "title": "主睡眠 · REM 阶段",
+      "display_unit": "小时",
+      "status": "PASS",
+      "platform": "physical_iPhone",
+      "entry_accessibility_id": "training-parameter-remSleep",
+      "detail_accessibility_id": "training-metric-remSleep",
+      "checks": {
+        "row_center_tap": "PASS",
+        "correct_destination": "PASS",
+        "finished_loading": "PASS",
+        "value_or_valid_empty": "PASS",
+        "unit_definition_source_time": "PASS",
+        "trend_or_valid_empty": "PASS",
+        "return_to_training": "PASS"
+      },
+      "observed_at": "2026-10-18T01:28:26+08:00",
+      "evidence_paths": [
+        "zcode-physical-acceptance/evidence/items/24-remSleep-detail.png",
+        "zcode-physical-acceptance/logs/session.log"
+      ],
+      "notes": "行中心点击→详情→读取完成→数值/单位/口径/来源/时间→趋势→返回 全部正常（具体数值已脱敏，见私有证据）"
+    },
+    {
+      "id": "weight",
+      "group": "身体关联",
+      "title": "体重",
+      "display_unit": "kg",
+      "status": "PASS",
+      "platform": "physical_iPhone",
+      "entry_accessibility_id": "training-parameter-weight",
+      "detail_accessibility_id": "training-metric-weight",
+      "checks": {
+        "row_center_tap": "PASS",
+        "correct_destination": "PASS",
+        "finished_loading": "PASS",
+        "value_or_valid_empty": "PASS",
+        "unit_definition_source_time": "PASS",
+        "trend_or_valid_empty": "PASS",
+        "return_to_training": "PASS"
+      },
+      "observed_at": "2026-10-18T01:17:44+08:00",
+      "evidence_paths": [
+        "zcode-physical-acceptance/evidence/items/25-weight-detail.png",
+        "zcode-physical-acceptance/logs/session.log"
+      ],
+      "notes": "行中心点击→详情→读取完成→数值/单位/口径/来源/时间→趋势→返回 全部正常（具体数值已脱敏，见私有证据）"
+    },
+    {
+      "id": "bodyFat",
+      "group": "身体关联",
+      "title": "体脂率",
+      "display_unit": "%",
+      "status": "PASS",
+      "platform": "physical_iPhone",
+      "entry_accessibility_id": "training-parameter-bodyFat",
+      "detail_accessibility_id": "training-metric-bodyFat",
+      "checks": {
+        "row_center_tap": "PASS",
+        "correct_destination": "PASS",
+        "finished_loading": "PASS",
+        "value_or_valid_empty": "PASS",
+        "unit_definition_source_time": "PASS",
+        "trend_or_valid_empty": "PASS",
+        "return_to_training": "PASS"
+      },
+      "observed_at": "2026-10-18T01:28:58+08:00",
+      "evidence_paths": [
+        "zcode-physical-acceptance/evidence/items/26-bodyFat-detail.png",
+        "zcode-physical-acceptance/logs/session.log"
+      ],
+      "notes": "行中心点击→详情→读取完成→数值/单位/口径/来源/时间→趋势→返回 全部正常（具体数值已脱敏，见私有证据）"
+    },
+    {
+      "id": "leanMass",
+      "group": "身体关联",
+      "title": "瘦体重",
+      "display_unit": "kg",
+      "status": "PASS",
+      "platform": "physical_iPhone",
+      "entry_accessibility_id": "training-parameter-leanMass",
+      "detail_accessibility_id": "training-metric-leanMass",
+      "checks": {
+        "row_center_tap": "PASS",
+        "correct_destination": "PASS",
+        "finished_loading": "PASS",
+        "value_or_valid_empty": "PASS",
+        "unit_definition_source_time": "PASS",
+        "trend_or_valid_empty": "PASS",
+        "return_to_training": "PASS"
+      },
+      "observed_at": "2026-10-18T01:29:18+08:00",
+      "evidence_paths": [
+        "zcode-physical-acceptance/evidence/items/27-leanMass-detail.png",
+        "zcode-physical-acceptance/logs/session.log"
+      ],
+      "notes": "行中心点击→详情→读取完成→数值/单位/口径/来源/时间→趋势→返回 全部正常（具体数值已脱敏，见私有证据）"
+    },
+    {
+      "id": "bmi",
+      "group": "身体关联",
+      "title": "BMI",
+      "display_unit": "kg/m²",
+      "status": "PASS",
+      "platform": "physical_iPhone",
+      "entry_accessibility_id": "training-parameter-bmi",
+      "detail_accessibility_id": "training-metric-bmi",
+      "checks": {
+        "row_center_tap": "PASS",
+        "correct_destination": "PASS",
+        "finished_loading": "PASS",
+        "value_or_valid_empty": "PASS",
+        "unit_definition_source_time": "PASS",
+        "trend_or_valid_empty": "PASS",
+        "return_to_training": "PASS"
+      },
+      "observed_at": "2026-10-18T01:29:39+08:00",
+      "evidence_paths": [
+        "zcode-physical-acceptance/evidence/items/28-bmi-detail.png",
+        "zcode-physical-acceptance/logs/session.log"
+      ],
+      "notes": "行中心点击→详情→读取完成→数值/单位/口径/来源/时间→趋势→返回 全部正常（具体数值已脱敏，见私有证据）"
+    },
+    {
+      "id": "respiratory",
+      "group": "其他生理参数",
+      "title": "呼吸频率",
+      "display_unit": "次/分",
+      "status": "PASS",
+      "platform": "physical_iPhone",
+      "entry_accessibility_id": "training-parameter-respiratory",
+      "detail_accessibility_id": "training-metric-respiratory",
+      "checks": {
+        "row_center_tap": "PASS",
+        "correct_destination": "PASS",
+        "finished_loading": "PASS",
+        "value_or_valid_empty": "PASS",
+        "unit_definition_source_time": "PASS",
+        "trend_or_valid_empty": "PASS",
+        "return_to_training": "PASS"
+      },
+      "observed_at": "2026-10-18T01:30:01+08:00",
+      "evidence_paths": [
+        "zcode-physical-acceptance/evidence/items/29-respiratory-detail.png",
+        "zcode-physical-acceptance/logs/session.log"
+      ],
+      "notes": "行中心点击→详情→读取完成→数值/单位/口径/来源/时间→趋势→返回 全部正常（具体数值已脱敏，见私有证据）"
+    },
+    {
+      "id": "oxygen",
+      "group": "其他生理参数",
+      "title": "血氧饱和度",
+      "display_unit": "%",
+      "status": "PASS",
+      "platform": "physical_iPhone",
+      "entry_accessibility_id": "training-parameter-oxygen",
+      "detail_accessibility_id": "training-metric-oxygen",
+      "checks": {
+        "row_center_tap": "PASS",
+        "correct_destination": "PASS",
+        "finished_loading": "PASS",
+        "value_or_valid_empty": "PASS",
+        "unit_definition_source_time": "PASS",
+        "trend_or_valid_empty": "PASS",
+        "return_to_training": "PASS"
+      },
+      "observed_at": "2026-10-18T01:30:22+08:00",
+      "evidence_paths": [
+        "zcode-physical-acceptance/evidence/items/30-oxygen-detail.png",
+        "zcode-physical-acceptance/logs/session.log"
+      ],
+      "notes": "行中心点击→详情→读取完成→数值/单位/口径/来源/时间→趋势→返回 全部正常（具体数值已脱敏，见私有证据）"
+    },
+    {
+      "id": "systolic",
+      "group": "其他生理参数",
+      "title": "收缩压",
+      "display_unit": "mmHg",
+      "status": "PASS",
+      "platform": "physical_iPhone",
+      "entry_accessibility_id": "training-parameter-systolic",
+      "detail_accessibility_id": "training-metric-systolic",
+      "checks": {
+        "row_center_tap": "PASS",
+        "correct_destination": "PASS",
+        "finished_loading": "PASS",
+        "value_or_valid_empty": "PASS",
+        "unit_definition_source_time": "PASS",
+        "trend_or_valid_empty": "PASS",
+        "return_to_training": "PASS"
+      },
+      "observed_at": "2026-10-18T01:30:43+08:00",
+      "evidence_paths": [
+        "zcode-physical-acceptance/evidence/items/31-systolic-detail.png",
+        "zcode-physical-acceptance/logs/session.log"
+      ],
+      "notes": "行中心点击→详情→读取完成→数值/单位/口径/来源/时间→趋势→返回 全部正常（具体数值已脱敏，见私有证据）"
+    },
+    {
+      "id": "diastolic",
+      "group": "其他生理参数",
+      "title": "舒张压",
+      "display_unit": "mmHg",
+      "status": "PASS",
+      "platform": "physical_iPhone",
+      "entry_accessibility_id": "training-parameter-diastolic",
+      "detail_accessibility_id": "training-metric-diastolic",
+      "checks": {
+        "row_center_tap": "PASS",
+        "correct_destination": "PASS",
+        "finished_loading": "PASS",
+        "value_or_valid_empty": "PASS",
+        "unit_definition_source_time": "PASS",
+        "trend_or_valid_empty": "PASS",
+        "return_to_training": "PASS"
+      },
+      "observed_at": "2026-10-18T01:31:04+08:00",
+      "evidence_paths": [
+        "zcode-physical-acceptance/evidence/items/32-diastolic-detail.png",
+        "zcode-physical-acceptance/logs/session.log"
+      ],
+      "notes": "行中心点击→详情→读取完成→数值/单位/口径/来源/时间→趋势→返回 全部正常（具体数值已脱敏，见私有证据）"
+    },
+    {
+      "id": "temperature",
+      "group": "其他生理参数",
+      "title": "体温",
+      "display_unit": "℃",
+      "status": "PASS",
+      "platform": "physical_iPhone",
+      "entry_accessibility_id": "training-parameter-temperature",
+      "detail_accessibility_id": "training-metric-temperature",
+      "checks": {
+        "row_center_tap": "PASS",
+        "correct_destination": "PASS",
+        "finished_loading": "PASS",
+        "value_or_valid_empty": "PASS",
+        "unit_definition_source_time": "PASS",
+        "trend_or_valid_empty": "PASS",
+        "return_to_training": "PASS"
+      },
+      "observed_at": "2026-10-18T01:31:25+08:00",
+      "evidence_paths": [
+        "zcode-physical-acceptance/evidence/items/33-temperature-detail.png",
+        "zcode-physical-acceptance/logs/session.log"
+      ],
+      "notes": "行中心点击→详情→读取完成→数值/单位/口径/来源/时间→趋势→返回 全部正常（具体数值已脱敏，见私有证据）"
+    }
+  ],
+  "completed_at": "2026-10-18T01:32:00+08:00",
+  "overall_statement": "既有准备度 1 + 本次其余 33 = 真机参数覆盖 34/34；全部项渲染正常，具体数值已脱敏（私有证据保留完整观察值）。",
+  "channel": "iPhone Mirroring 点击转发（Mac 侧 System Events click at）+ Universal Clipboard 中文搜索词粘贴 + devicectl 截图输出；XCTest IDE 通道 DTX 拒绝未解决，未用于本结果。"
+}

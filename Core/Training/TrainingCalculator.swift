@@ -2,15 +2,18 @@ import Foundation
 
 enum TrainingCalculator {
     static let historyDays = 56
+    // Display + personal-reference days + load baseline + resting baseline + sleep buffer.
+    static let inputHistoryDays = 56 + 28 + 28 + 28 + 2
     static let maximumHeartGap: TimeInterval = 30
 
     static func snapshot(samples input: [TrainingSample], health: [TrainingHealthMetric] = [],
                          now: Date, calendar: Calendar) -> TrainingSnapshot {
         let today = calendar.startOfDay(for: now)
         let begin = calendar.date(byAdding: .day, value: -(historyDays - 1), to: today)!
+        let inputBegin = calendar.date(byAdding: .day, value: -inputHistoryDays, to: today)!
         let samples = input.filter {
             $0.value.isFinite && $0.start <= now && $0.end <= now && $0.ingestedAt <= now && $0.end >= $0.start
-                && $0.start >= calendar.date(byAdding: .day, value: -1, to: begin)!
+                && $0.start >= inputBegin
         }
         let hearts = samples.filter { $0.type == TrainingTypes.heart && (25...230).contains($0.value) }
         let heartsBySource = Dictionary(grouping: hearts, by: \.source).mapValues {
@@ -18,14 +21,25 @@ enum TrainingCalculator {
         }
         let hrv = samples.filter { $0.type == TrainingTypes.hrv && $0.value > 0 && $0.value <= 500 }
         let nights = sleepNights(samples: samples, hearts: hearts, hrv: hrv, now: now, calendar: calendar)
-        let workouts = deduplicatedWorkouts(samples.filter {
-            $0.type == TrainingTypes.workout && $0.start >= begin && $0.end > $0.start
+        let workoutInputs = samples.filter {
+            $0.type == TrainingTypes.workout && $0.end > $0.start
                 && ($0.duration ?? 0) > 0 && ($0.duration ?? 0).isFinite
-        })
-        let sessions = workouts.map { workout in
+        }
+        let workouts = deduplicatedWorkouts(workoutInputs)
+        let allSessions = workouts.map { workout in
             session(workout, hearts: heartsBySource[workout.source] ?? [], resting: samples.filter { $0.type == TrainingTypes.resting },
                     nights: nights, workouts: workouts, calendar: calendar)
         }.sorted { $0.start > $1.start }
+        let sessions = allSessions.filter { $0.start >= begin }
+        let history = readinessHistory(nights: nights, workouts: workoutInputs, hearts: heartsBySource,
+            resting: samples.filter { $0.type == TrainingTypes.resting }, now: now, calendar: calendar)
+        var current = history.last(where: { $0.assessment.observedAt != nil })?.assessment
+            ?? readiness(nights: [], sessions: [], now: now)
+        if let observed = current.observedAt, now.timeIntervalSince(observed) > 30 * 3600 {
+            current = TrainingReadiness(score: nil, credibility: "本次未评估", baselineNights: current.baselineNights,
+                factors: current.factors, missingReasons: ["主睡眠记录已超过30小时"], observedAt: observed,
+                source: current.source)
+        }
         let keyedNights = Dictionary(nights.map { ($0.dayKey, $0) }, uniquingKeysWith: { _, b in b })
         let days = (0..<historyDays).map { offset -> TrainingDay in
             let date = calendar.date(byAdding: .day, value: offset, to: begin)!
@@ -48,10 +62,24 @@ enum TrainingCalculator {
             calculatedAt: now,
             latestMeasurementAt: samples.map(\.end).max(),
             latestIngestionAt: samples.map(\.ingestedAt).max(), sessions: sessions, days: days,
-            readiness: readiness(nights: nights, sessions: sessions, now: now),
+            readiness: current,
             health: health.filter { $0.value.isFinite && $0.measuredOn <= now },
-            comparison: comparison(sessions), intraday: intraday(hearts: hearts, workouts: workouts, now: now)
+            comparison: comparison(sessions), intraday: intraday(hearts: hearts, workouts: workouts, now: now),
+            readinessHistory: Array(history.suffix(historyDays))
         )
+    }
+
+    static func recordDetail(id: String, samples: [TrainingSample], now: Date, calendar: Calendar) -> TrainingSession? {
+        let valid = samples.filter { $0.value.isFinite && $0.start <= now && $0.end <= now && $0.end >= $0.start && $0.ingestedAt <= now }
+        let workouts = valid.filter { $0.type == TrainingTypes.workout && ($0.duration ?? 0) > 0 && ($0.duration ?? 0).isFinite && $0.end > $0.start }
+        guard let workout = workouts.first(where: { $0.id == id }) else { return nil }
+        let hearts = valid.filter { $0.type == TrainingTypes.heart && (25...230).contains($0.value) }
+        let hrv = valid.filter { $0.type == TrainingTypes.hrv && $0.value > 0 && $0.value <= 500 }
+        let nights = sleepNights(samples: valid.filter { $0.end < workout.start }, hearts: hearts,
+            hrv: hrv, now: workout.start, calendar: calendar)
+        return session(workout, hearts: hearts.filter { $0.source == workout.source }.sorted { $0.start < $1.start },
+            resting: valid.filter { $0.type == TrainingTypes.resting }, nights: nights,
+            workouts: deduplicatedWorkouts(workouts), calendar: calendar)
     }
 
     static func dayKey(_ date: Date, _ calendar: Calendar) -> String {
@@ -153,7 +181,7 @@ enum TrainingCalculator {
             averageHeartRate: hasHeart && covered > 0 ? weightedHeart / covered : nil,
             peakHeartRate: values.map(\.value).max(), heartCoverage: coverage,
             load: hasHeart && reference != nil ? excess : nil, restingReference: reference,
-            restingMethod: method, recovery60: recovery(60), recovery120: recovery(120), notes: notes)
+            restingMethod: method, recovery60: recovery(60), recovery120: recovery(120), notes: notes, energyKcal: w.energyKcal.flatMap { $0.isFinite && $0 >= 0 ? $0 : nil })
     }
 
     private static func sleepNights(samples: [TrainingSample], hearts: [TrainingSample], hrv: [TrainingSample],
@@ -162,7 +190,7 @@ enum TrainingCalculator {
             $0.type == TrainingTypes.sleep && [0.0, 1, 2, 3, 4, 5].contains($0.value) && $0.end > $0.start
         }
         let today = calendar.startOfDay(for: now)
-        return (0..<historyDays).compactMap { back -> TrainingNight? in
+        return (0..<inputHistoryDays).compactMap { back -> TrainingNight? in
             let date = calendar.date(byAdding: .day, value: -back, to: today)!
             let previous = calendar.date(byAdding: .day, value: -1, to: date)!
             let start = calendar.date(bySettingHour: 18, minute: 0, second: 0, of: previous)!
@@ -202,9 +230,16 @@ enum TrainingCalculator {
             guard let main = overnight.max(by: { duration($0) < duration($1) }), duration(main) >= 90 * 60,
                   let first = main.first?.0, let last = main.last?.1 else { return nil }
             func inSleep(_ sample: TrainingSample) -> Bool {
-                sample.source == source && main.contains { $0.0 <= sample.start && sample.start < $0.1 }
+                sample.source == source && sample.end <= last && main.contains { $0.0 <= sample.start && sample.start < $0.1 }
             }
             let nh = hrv.filter(inSleep), pulse = hearts.filter(inSleep)
+            var stageHours: [Int: Double] = [:]
+            for (a, b) in main {
+                let codes = Set(records.filter { $0.start < b && $0.end > a }.map { Int($0.value) }).subtracting([0, 1])
+                if codes.count == 1, let code = codes.first, [3, 4, 5].contains(code) {
+                    stageHours[code, default: 0] += b.timeIntervalSince(a) / 3600
+                }
+            }
             func spanHours(_ values: [TrainingSample]) -> Double {
                 guard let a = values.map(\.start).min(), let b = values.map(\.start).max() else { return 0 }
                 return b.timeIntervalSince(a) / 3600
@@ -213,7 +248,7 @@ enum TrainingCalculator {
                 source: source, hours: duration(main) / 3600, hrv: median(nh.map(\.value)), hrvCount: nh.count,
                 heartRate: median(pulse.map(\.value)), heartCount: pulse.count,
                 hrvSpanHours: spanHours(nh), heartSpanHours: spanHours(pulse),
-                hasConflict: conflicts.contains { $0.0 < last && $0.1 > first })
+                hasConflict: conflicts.contains { $0.0 < last && $0.1 > first }, stageHours: stageHours)
         }.sorted { $0.wakeDay < $1.wakeDay }
     }
 
@@ -249,6 +284,51 @@ enum TrainingCalculator {
             guard let samples = groups[key], samples.count >= 3, let heart = median(samples.map(\.value)) else { return nil }
             return TrainingRecoveryWindow(date: Date(timeIntervalSince1970: Double(key * 1800)), heartRate: heart, sampleCount: samples.count)
         }
+    }
+
+    private static func readinessHistory(nights: [TrainingNight], workouts: [TrainingSample],
+        hearts: [String: [TrainingSample]], resting: [TrainingSample], now: Date, calendar: Calendar) -> [TrainingReadinessPoint] {
+        let first = calendar.date(byAdding: .day, value: -(historyDays + 28 - 1), to: calendar.startOfDay(for: now))!
+        let keyed = Dictionary(nights.map { ($0.dayKey, $0) }, uniquingKeysWith: { _, b in b })
+        var result: [TrainingReadinessPoint] = []
+        for offset in 0..<(historyDays + 28) {
+            let day = calendar.date(byAdding: .day, value: offset, to: first)!
+            let key = dayKey(day, calendar)
+            guard let night = keyed[key] else {
+                result.append(TrainingReadinessPoint(id: key, date: day,
+                    assessment: readiness(nights: [], sessions: [], now: day)))
+                continue
+            }
+            let anchor = night.end
+            let priorNights = nights.filter { $0.end <= anchor }
+            let priorWorkouts = deduplicatedWorkouts(workouts.filter { $0.end <= anchor })
+            // Recompute the session evidence at this anchor so later overlapping workouts,
+            // later HRR samples, and a different selection window cannot leak backward.
+            let anchorHearts = hearts.mapValues { $0.filter { $0.end <= anchor } }
+            let anchorResting = resting.filter { $0.end <= anchor }
+            let priorSessions = priorWorkouts.filter { $0.start >= anchor.addingTimeInterval(-30 * 86400) }.map {
+                session($0, hearts: anchorHearts[$0.source] ?? [],
+                    resting: anchorResting, nights: priorNights,
+                    workouts: priorWorkouts, calendar: calendar)
+            }
+            var value = readiness(nights: priorNights, sessions: priorSessions, now: anchor)
+            let cutoff = calendar.date(byAdding: .day, value: -28, to: day)!
+            let comparable = result.filter {
+                $0.date >= cutoff && $0.assessment.source == value.source && $0.assessment.score != nil
+            }
+            value.referenceCount = comparable.count
+            if comparable.count >= 14,
+               let lower = TrainingTrendMath.quantile(comparable.compactMap { $0.assessment.score.map(Double.init) }, probability: 0.25),
+               let upper = TrainingTrendMath.quantile(comparable.compactMap { $0.assessment.score.map(Double.init) }, probability: 0.75) {
+                value.referenceRange = lower...upper
+            }
+            if value.score != nil, let previous = result.last(where: { $0.assessment.source == value.source && $0.assessment.score != nil }) {
+                value.previousScore = previous.assessment.score
+                value.previousDate = previous.date
+            }
+            result.append(TrainingReadinessPoint(id: key, date: anchor, assessment: value))
+        }
+        return result
     }
 
     private static func readiness(nights: [TrainingNight], sessions: [TrainingSession], now: Date) -> TrainingReadiness {
@@ -317,7 +397,7 @@ enum TrainingCalculator {
         }
         return TrainingReadiness(score: score, credibility: valid ? "覆盖可用 · 实验" : (possibleRange != nil ? "夜间覆盖可用 · 负荷不全" : "数据不足"),
             baselineNights: base.count, factors: factors, missingReasons: missing, observedAt: night.end,
-            possibleRange: possibleRange)
+            possibleRange: possibleRange, source: night.source)
     }
 
     private static func number(_ value: Double?, suffix: String) -> String {
@@ -325,7 +405,8 @@ enum TrainingCalculator {
     }
 
     private static func comparison(_ sessions: [TrainingSession]) -> TrainingRunComparison? {
-        guard let last = sessions.first(where: { $0.isRun && $0.distanceKm != nil }), let distance = last.distanceKm else { return nil }
+        guard let last = sessions.first(where: { $0.isRun && $0.distanceKm != nil }), let distance = last.distanceKm,
+              !last.source.hasPrefix("unknown") else { return nil }
         let comparable = sessions.filter {
             $0.isRun && $0.source == last.source && $0.averageHeartRate != nil
                 && abs(($0.distanceKm ?? -100) - distance) <= distance * 0.1
@@ -338,6 +419,8 @@ enum TrainingCalculator {
         }
         return TrainingRunComparison(distanceKm: distance, recentPace: pace(recent), earlierPace: pace(earlier),
             recentHeart: median(recent.compactMap(\.averageHeartRate)), earlierHeart: median(earlier.compactMap(\.averageHeartRate)),
-            recentCount: size, earlierCount: size)
+            recentCount: size, earlierCount: size,
+            recentStart: recent.map(\.start).min(), recentEnd: recent.map(\.start).max(),
+            earlierStart: earlier.map(\.start).min(), earlierEnd: earlier.map(\.start).max(), sourceName: last.sourceName, source: last.source)
     }
 }

@@ -9,6 +9,7 @@ struct TrainingSessionDetail: View {
                     Text(session.start, format: .dateTime.year().month().day().hour().minute())
                     TrainingStatRow(label: "距离", value: TrainingText.number(session.distanceKm, unit: "km"))
                     TrainingStatRow(label: "有效运动时长", value: TrainingText.number(session.minutes, unit: "分钟"))
+                    TrainingStatRow(label: "运动消耗", value: TrainingText.number(session.energyKcal, unit: "kcal"))
                     TrainingStatRow(label: "平均配速", value: TrainingText.pace(session.paceSecondsPerKm))
                     TrainingStatRow(label: "时间加权心率", value: TrainingText.number(session.averageHeartRate, unit: "bpm"))
                     TrainingStatRow(label: "观测峰值心率", value: TrainingText.number(session.peakHeartRate, unit: "bpm"))
@@ -27,7 +28,7 @@ struct TrainingSessionDetail: View {
                 }
             }.padding(20)
         }
-        .background(HMColors.background).navigationTitle("训练详情")
+        .background(HMColors.background).navigationTitle("运动详情")
     }
 }
 
@@ -54,7 +55,7 @@ struct TrainingMethodView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
                     TrainingPanel(title: TrainingReadiness.version, icon: "flask") {
-                        Text("恢复参考分 = 100 − 睡眠扣分 − 夜间恢复信号扣分 − 近期训练影响，结果限制在0–100。HRV与睡眠心率共同形成一组信号，取较强的标准化偏离，不重复叠加扣分。")
+                        Text("恢复准备度 = 100 − 睡眠扣分 − 夜间恢复信号扣分 − 近期训练影响，结果限制在0–100。HRV与睡眠心率共同形成一组信号，取较强的标准化偏离，不重复叠加扣分。")
                         Text("这些权重、8小时睡眠目标与时间衰减是第一版实验参数，尚未经过你的长期表现校准。它不是疾病、受伤概率或运动许可。")
                             .font(.footnote).foregroundStyle(.secondary)
                         Text("夜间信号充分、只有负荷缺失时，按负荷扣分可能为0–15计算分数范围，保留缺失原因；不是统计置信区间。夜间信号不足时不给分。")
@@ -75,7 +76,8 @@ struct TrainingMethodView: View {
                     TrainingPanel(title: "数据可信度", icon: "checkmark.shield") {
                         Text("评分需要本晚至少3个HRV、12个睡眠心率样本，两者采样跨度均至少1小时，以及此前42天内至少14个同来源有效夜晚。单点分数还需要完整近期负荷。主睡眠超过30小时不计算。这些覆盖门槛同样属于实验参数。")
                         Text("缺测、来源改变、阶段冲突和训练心率空档不会填成恢复良好。覆盖可用只表示输入满足本版门槛，不代表医学准确度；样本稀疏、漏戴或漏同步仍可能影响结果。")
-                        Text("每次原始记录变化会触发重新计算；页面可见时每15分钟刷新时间推算。数据仍取决于手表到Apple健康的同步，计算时间不等于测量时间。")
+                        Text("v2 统一以每日主睡眠结束时为评估锚点；当天之后的运动只更新运动量，不改变已经发生的睡后状态。历史按当前已入库记录回溯重算，不是当时已保存的分数；延迟入库可修正历史。v1 日内分数不连接进本曲线。")
+                        Text("个人常见范围是此前28天内同来源单点评估的P25–P75，至少14点且不含当前点。每次原始记录变化会触发重算；数据时间与计算时间分别展示。来源标识未必能识别所有设备／算法升级。")
                     }.font(.footnote)
                     TrainingPanel(title: "基础数据方法", icon: "function") {
                         Text("配速：有效运动时长÷距离。心率负荷：Σ max(心率−个人静息基准, 0)×覆盖分钟，单位bpm·min。静息基准优先此前28天同来源至少7天的静息心率；不足时明确使用至少7晚的睡眠心率基准。")
@@ -96,6 +98,27 @@ struct TrainingMethodView: View {
                     Button("完成") { dismiss() }.accessibilityIdentifier("training-method-done")
                 }
             }
+        }
+    }
+}
+
+struct TrainingRecordedWorkoutDetail: View {
+    let id: String
+    @EnvironmentObject private var environment: AppEnvironment
+    @State private var session: TrainingSession?
+    @State private var error: String?
+    @State private var loaded = false
+    var body: some View {
+        Group {
+            if let session { TrainingSessionDetail(session: session) }
+            else if let error { Text(error).padding() }
+            else if loaded { Text("记录字段不足，无法读取运动详情。").padding() }
+            else { ProgressView("正在读取运动与心率…") }
+        }
+        .task {
+            do { session = try await TrainingSnapshotLoader.session(database: environment.database, id: id) }
+            catch { self.error = error.localizedDescription }
+            loaded = true
         }
     }
 }

@@ -1,0 +1,101 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-17",
+  "scope": "Local software acceptance; physical device and physiological validity are not established by these tests",
+  "final_verification": {
+    "summary": {
+      "status": "SUCCEEDED",
+      "durationMs": 125031,
+      "counts": {
+        "passed": 482,
+        "failed": 0,
+        "skipped": 0
+      },
+      "target": "simulator"
+    },
+    "artifacts": {
+      "buildLogPath": "~/Library/Developer/XcodeBuildMCP/workspaces/HealthManager-8bdea649e903/logs/test_sim_2026-10-17T13-08-00-603Z_pid99068_d54be16f.log",
+      "xcresultPath": "~/Library/Developer/XcodeBuildMCP/workspaces/HealthManager-8bdea649e903/result-bundles/test_sim_2026-10-17T13-08-00-603Z_pid99068_7803580e.xcresult",
+      "testProductsPath": "~/Library/Developer/XcodeBuildMCP/workspaces/HealthManager-8bdea649e903/test-products/test_sim_2026-10-17T13-08-00-603Z_pid99068_fc967e2e.xctestproducts"
+    },
+    "diagnostics": {
+      "warnings": [
+        {
+          "message": "main actor-isolated static method 'ingredient(from:versionLabel:)' cannot be called from outside of the actor; this is an error in the Swift 6 language mode",
+          "location": "/tmp/healthmanager-training-v2-qa-project/Tests/BackupV3Tests.swift:37"
+        },
+        {
+          "message": "variable 'migrator' was never mutated; consider changing to 'let' constant [#VariableNeverMutated]",
+          "location": "/tmp/healthmanager-training-v2-qa-project/Tests/MealItemMigrationTests.swift:16"
+        }
+      ],
+      "errors": [],
+      "testFailures": []
+    },
+    "unit_cases": 480,
+    "ui_cases": [
+      {
+        "suite": "MetricDetailZoomUITests",
+        "test": "testYearViewPinchZoomShowsResetControlAndRestores",
+        "status": "passed",
+        "durationMs": 12374
+      },
+      {
+        "suite": "TrainingRenderingUITests",
+        "test": "test_trainingEvidenceAndTrendsRemainReachableAcrossDisplayModes",
+        "status": "passed",
+        "durationMs": 89925
+      }
+    ]
+  },
+  "dark_verification": {
+    "summary": {
+      "status": "SUCCEEDED",
+      "durationMs": 46576,
+      "counts": {
+        "passed": 1,
+        "failed": 0,
+        "skipped": 0
+      },
+      "target": "simulator"
+    },
+    "artifacts": {
+      "buildLogPath": "~/Library/Developer/XcodeBuildMCP/workspaces/HealthManager-8bdea649e903/logs/test_sim_2026-10-17T13-11-28-233Z_pid99068_2e1be2f4.log",
+      "xcresultPath": "~/Library/Developer/XcodeBuildMCP/workspaces/HealthManager-8bdea649e903/result-bundles/test_sim_2026-10-17T13-11-28-233Z_pid99068_84a5e5a3.xcresult",
+      "testProductsPath": "~/Library/Developer/XcodeBuildMCP/workspaces/HealthManager-8bdea649e903/test-products/test_sim_2026-10-17T13-11-28-233Z_pid99068_ae6b67b6.xctestproducts"
+    },
+    "diagnostics": {
+      "warnings": [],
+      "errors": [],
+      "testFailures": []
+    }
+  },
+  "release": {
+    "status": "PASS",
+    "configuration": "Release",
+    "sdk": "iphoneos",
+    "code_signing": false,
+    "log": "/tmp/healthmanager-v2-release-verified.log"
+  },
+  "source_manifest": "SOURCE-MANIFEST.json",
+  "deployment": {
+    "commit": false,
+    "push": false,
+    "physical_device_install": false
+  },
+  "recovered_failures": [
+    {
+      "kind": "unit_fixture",
+      "detail": "Earliest history reference-count assertion initially expected 28 but fixture only supplied enough load history for 19; extended synthetic history, then passed."
+    },
+    {
+      "kind": "ui_regression",
+      "detail": "Global year-view zoom entry disappeared after route unification; preserved existing year-view UI in canonical metric detail, original unchanged pinch-zoom UI test passed."
+    },
+    {
+      "kind": "build_environment",
+      "detail": "Remote package submodule checkout stalled; tested same source through temporary QA project with cached GRDB 6.29.3 at pinned revision."
+    }
+  ]
+}
+

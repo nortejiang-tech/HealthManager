@@ -1,0 +1,105 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-17",
+  "timezone": "Asia/Shanghai",
+  "task": "HealthManager 锻炼页状态/能力数值化与参数入口重规划",
+  "scope": "product_planning_and_review_artifacts",
+  "call_count": 0,
+  "calls": [],
+  "no_call_reason": "本轮响应用户纠正，修订产品指标与趋势规划、参数归属和HTML审阅示意；没有实施iOS软件功能。",
+  "planner": "current_primary_model",
+  "fallback_calls": [],
+  "baseline": {
+    "workdir": "/Users/nortepro/HealthManager",
+    "branch": "main",
+    "commit": "0cfc55b5b2f9d504ad6e7e4039349badf8a68f1a",
+    "tracked_dirty_before": false,
+    "tracked_dirty_after": false,
+    "preexisting_untracked_file_count": 3,
+    "preexisting_untracked_preserved": true,
+    "isolation": "additive_new_planning_directory_and_task_visualization_directory"
+  },
+  "new_artifacts": [
+    "/Users/nortepro/HealthManager/docs/planning/2026-10-17-training-action-redesign/PLAN.md",
+    "/Users/nortepro/HealthManager/docs/planning/2026-10-17-training-action-redesign/HANDOFF.md",
+    "/Users/nortepro/HealthManager/docs/planning/2026-10-17-training-action-redesign/EVO-CODER-REPORT.md",
+    "/Users/nortepro/HealthManager/docs/planning/2026-10-17-training-action-redesign/EVO-CODER-REPORT.json",
+    "/Users/nortepro/.codex/visualizations/2026/10/17/01a149ba-5d06-78b2-a602-52bed459a33f/training-redesign.html"
+  ],
+  "rates": {
+    "supervisor_pass_rate": {
+      "numerator": 0,
+      "denominator": 0,
+      "value": null,
+      "availability": "unavailable_no_calls"
+    },
+    "first_independent_acceptance_rate": {
+      "numerator": 0,
+      "denominator": 0,
+      "value": null,
+      "availability": "unavailable_no_calls"
+    },
+    "useful_output_adoption_rate": {
+      "numerator": 0,
+      "denominator": 0,
+      "value": null,
+      "availability": "unavailable_no_calls"
+    }
+  },
+  "planner_verification": [
+    {
+      "name": "html_parse_static_ids_and_internal_anchors",
+      "status": "PASS",
+      "static_id_count": 10
+    },
+    {
+      "name": "javascript_syntax_node_check",
+      "status": "PASS",
+      "exit_code": 0
+    },
+    {
+      "name": "obsolete_training_action_controls_removed",
+      "status": "PASS"
+    },
+    {
+      "name": "no_external_active_assets",
+      "status": "PASS",
+      "script_img_iframe_src_count": 0
+    },
+    {
+      "name": "tracked_product_diff_empty_and_diff_check",
+      "status": "PASS",
+      "exit_code": 0
+    },
+    {
+      "name": "browser_render_and_interaction",
+      "status": "PENDING",
+      "reason": "Previous file protocol security denial retained; no retries or workaround"
+    },
+    {
+      "name": "ios_implementation_historical_scores_and_device_validation",
+      "status": "PENDING",
+      "reason": "planning only"
+    },
+    {
+      "name": "v2_user_review",
+      "status": "PENDING"
+    }
+  ],
+  "html_sha256": "da690ff3634ccaa647723ce4d466cc2ca335ded0550e1effe5b157bf4a8279cf",
+  "proposal_status": "Proposed",
+  "committed": false,
+  "pushed": false,
+  "health_database_mutated": false,
+  "installed_on_device": false,
+  "rollback": "Remove only newly created planning and visualization artifacts; no app or database rollback required",
+  "performance_evaluation": "EVO-Coder未调用，编码质量与性能不可评价。Planner纠正前版对用户意图的过度扩展，v2仍待用户审阅。",
+  "revision": 2,
+  "superseded_direction": "v1训练安排与周计划已被用户否定并撤销",
+  "current_direction": "身体准备程度与运动能力数值、趋势、统一客观参数入口",
+  "revision_review": {
+    "v1_direction": "FAIL_USER_SCOPE_MISMATCH",
+    "v2_user_review": "PENDING"
+  },
+  "artifact_update_note": "All listed artifacts were created earlier in this chat and revised in this turn; no product implementation files changed."
+}

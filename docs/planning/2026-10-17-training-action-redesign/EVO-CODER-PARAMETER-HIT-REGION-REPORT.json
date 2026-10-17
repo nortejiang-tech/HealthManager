@@ -1,0 +1,92 @@
+{
+  "schema_version": 1,
+  "task": "Wireless deployment follow-up and parameter row hit-region repair",
+  "calls": [
+    {
+      "changed_paths": [
+        "UI/Training/TrainingParameterViews.swift"
+      ],
+      "classification": "CODER_DONE_PENDING_REVIEW",
+      "config_sha256": {
+        "extension": "28743c2cf6792ea1bbf5bad62e973fcd632f5e8c8304f1ebcdb0e7fb329f4d29",
+        "models": "8fc0d2b000a76990fa51d0183483b1f88ad94e972eea203327c20e267de6a9d4",
+        "policy": "87096fc22ab6b9b9a90c73464bf1c2559d30d5f01fa0536e088d2352072568ea",
+        "supervisor": "f11605d243b6b7561c1191a6f3e8196e709139bfacf964fa3489783514fb65bf"
+      },
+      "duration_seconds": 4.98,
+      "failure_reason": null,
+      "final_message_characters": 0,
+      "final_message_sha256": null,
+      "guard_violation_codes": [],
+      "interrupt_signal": null,
+      "max_context_tokens": 5377,
+      "max_output_tokens": 4096,
+      "model": "halogen-qwen3.8-flash-next",
+      "out_of_scope_paths": [],
+      "parse_errors": 0,
+      "prompt_sha256": "6a3ec3d80fdef0b7c0ce6a30d08707632fb83aab3794b82d8e0afc2004f3b1b1",
+      "provider": "EVO-X2",
+      "run_id": "ecef64fb-6554-4feb-ab39-2a0c412b6966",
+      "schema_version": 1,
+      "source_generation": 1,
+      "started_at_unix": 1792250785.378,
+      "status": "PASS",
+      "stderr_bytes": 0,
+      "stop_reason": "toolUse",
+      "structured_terminal": true,
+      "temperature": 0.0,
+      "tool_calls": 3,
+      "top_p": 1,
+      "turns": 3,
+      "verification_expected": 1,
+      "verification_pass_indexes": [
+        0
+      ],
+      "verification_passes": 1,
+      "verification_runs": 1,
+      "verification_source_generation": 1,
+      "workdir": "/Users/nortepro/HealthManager",
+      "stage": "Fix blank center hit region of TrainingParameterDirectory links",
+      "baseline": "main@0cfc55b5b2f9d504ad6e7e4039349badf8a68f1a, preserve pre-existing dirty v2 work",
+      "isolation": "Exact one-file write allowlist; complete exposed source reviewed by Planner; private device data excluded",
+      "allowed_paths": [
+        "UI/Training/TrainingParameterViews.swift"
+      ],
+      "enable_thinking": {
+        "value": false,
+        "evidence": "fixed wrapper contract; not emitted by receipt"
+      },
+      "total_consumed_tokens": "unavailable",
+      "verification_commands": [
+        "xcrun swiftc -frontend -parse UI/Training/TrainingParameterViews.swift"
+      ],
+      "verification_test_count": 0,
+      "independent_acceptance": "directly_accepted",
+      "planner_evidence": [
+        "Exact one-line diff independently reviewed",
+        "Independent Swift parser exit 0",
+        "Signed Release-iphoneos rebuild succeeded",
+        "SOURCE-MANIFEST-RELEASE-FIX.json: only expected file differs; other 20 source hashes match",
+        "Actual Xcode xcresult: 1 UI case passed, 34 normal center-tap routes, copied real-device database",
+        "Physical readiness center tap opened fully loaded detail on installed fixed Release"
+      ]
+    }
+  ],
+  "metrics": {
+    "supervisor_pass_rate": {
+      "numerator": 1,
+      "denominator": 1
+    },
+    "first_independent_acceptance_rate": {
+      "numerator": 1,
+      "denominator": 1
+    },
+    "useful_output_adoption_rate": {
+      "numerator": 1,
+      "denominator": 1
+    }
+  },
+  "evaluation": "Local Coder produced the exact one-modifier fix in 4.98 seconds, 3 turns and 3 tools, with one syntax verification and no out-of-scope writes. Planner independently accepted the unchanged output after diff, parser, Release build and all-34-route real-data UI verification. No product-code rework was needed. Full physical acceptance remains PENDING because of input/control-channel failures. One sample does not establish long-term model quality.",
+  "deployment_control_and_private_health_data_delegated": false,
+  "changes_to_wrapper_or_routing": false
+}

@@ -12,7 +12,7 @@ struct TrainingView: View {
     @State private var isLoading = false
     @State private var revision = 0
     @State private var generation = 0
-    @State private var window = 28
+    @State private var section = "总览"
     @State private var showingMethod = false
     @State private var observation: AnyDatabaseCancellable?
 
@@ -30,19 +30,23 @@ struct TrainingView: View {
                         }
                     }
                     if let snapshot {
-                        TrainingReadinessCard(readiness: snapshot.readiness, isStale: loadError != nil) { showingMethod = true }
-                        Picker("趋势窗口", selection: $window) {
-                            Text("近7天").tag(7)
-                            Text("近4周").tag(28)
-                            Text("近8周").tag(56)
+                        Picker("锻炼分区", selection: $section) {
+                            Text("总览").tag("总览")
+                            Text("趋势").tag("趋势")
+                            Text("全部参数").tag("全部参数")
+                        }.pickerStyle(.segmented).accessibilityIdentifier("training-sections")
+                        switch section {
+                        case "趋势": TrainingTrendsPanel(snapshot: snapshot)
+                        case "全部参数": TrainingParameterDirectory(snapshot: snapshot)
+                        default:
+                            TrainingOverviewReadiness(snapshot: snapshot, isStale: loadError != nil || observationError != nil) { showingMethod = true }
+                            TrainingCapabilityPanel(snapshot: snapshot)
+                            TrainingStateInputsPanel(snapshot: snapshot)
+                            TrainingVolumePanel(snapshot: snapshot)
+                            records(snapshot)
+                            Button("浏览全部运动参数") { section = "全部参数" }
+                                .font(.headline).accessibilityIdentifier("training-all-parameters")
                         }
-                        .pickerStyle(.segmented)
-                        .accessibilityIdentifier("training-window")
-                        TrainingPerformancePanel(snapshot: snapshot, window: window)
-                        TrainingLoadPanel(snapshot: snapshot, window: window)
-                        TrainingRecoveryPanel(snapshot: snapshot, window: window)
-                        TrainingHealthPanel(metrics: snapshot.health)
-                        records(snapshot)
                         freshness(snapshot)
                     } else if isLoading {
                         ProgressView("正在计算锻炼与恢复趋势…")
@@ -93,9 +97,9 @@ struct TrainingView: View {
                 .font(dynamicTypeSize.isAccessibilitySize ? .caption2 : .subheadline)
                 .foregroundStyle(.secondary)
             if !dynamicTypeSize.isAccessibilitySize {
-                Text("看见每次训练，也看见恢复")
+                Text("身体状态与运动能力")
                     .font(.title2.weight(.bold))
-                Text("以基础心率、运动和睡眠记录计算；新记录进入后自动更新。")
+                Text("看数值、看变化，和自己的历史比较。")
                     .font(.footnote).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -103,12 +107,12 @@ struct TrainingView: View {
     }
 
     private func records(_ snapshot: TrainingSnapshot) -> some View {
-        TrainingPanel(title: "最近训练", icon: "figure.run") {
+        TrainingPanel(title: "最近运动", icon: "figure.run") {
             if snapshot.sessions.isEmpty {
                 Text("近8周没有已同步训练记录。可在同步中心回补，或补录活动。")
                     .foregroundStyle(.secondary)
             }
-            ForEach(snapshot.sessions.prefix(5)) { session in
+            ForEach(snapshot.sessions.prefix(1)) { session in
                 NavigationLink { TrainingSessionDetail(session: session) } label: {
                     VStack(alignment: .leading, spacing: 5) {
                         HStack {
@@ -134,8 +138,8 @@ struct TrainingView: View {
     private func freshness(_ snapshot: TrainingSnapshot) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             Label("数据时间", systemImage: "clock").font(.caption.weight(.semibold))
-            Text("最近测量：\(TrainingText.time(snapshot.latestMeasurementAt))")
-            Text("最近入库：\(TrainingText.time(snapshot.latestIngestionAt))")
+            Text("恢复输入最近测量：\(TrainingText.time(snapshot.latestMeasurementAt))")
+            Text("恢复输入最近入库：\(TrainingText.time(snapshot.latestIngestionAt))")
             Text("本次计算：\(TrainingText.time(snapshot.calculatedAt))")
             Text("测量时间与计算时间分别展示。数据覆盖不代表医学准确度；准备度不用于诊断或判定伤病恢复。")
                 .fixedSize(horizontal: false, vertical: true)
@@ -194,6 +198,20 @@ struct TrainingPanel<Content: View>: View {
 }
 
 enum TrainingText {
+    static func readiness(_ value: TrainingReadiness) -> String {
+        if let score = value.score { return "\(score) / 100" }
+        if let range = value.possibleRange { return "\(range.lowerBound)–\(range.upperBound) / 100" }
+        return "本次未评估"
+    }
+    static func metricValue(_ value: Double, _ metric: TrainingMetric) -> String {
+        metric == .runPace ? pace(value) : number(value, unit: metric.unit)
+    }
+    static func change(_ points: [TrainingMetricValue], metric: TrainingMetric) -> String {
+        guard let last = points.last, !last.source.hasPrefix("unknown") else { return "暂无可比变化" }
+        let same = points.filter { $0.source == last.source }
+        guard same.count >= 2, let first = same.first, first.date < last.date else { return "同来源可比记录不足2次" }
+        return "区间首末 \(String(format: "%+.1f", last.value - first.value)) \(metric.unit)（\(same.count)次，\(first.date.formatted(.dateTime.month().day()))→\(last.date.formatted(.dateTime.month().day()))）"
+    }
     static func number(_ value: Double?, unit: String = "") -> String {
         guard let value, value.isFinite else { return "—" }
         return String(format: "%.1f", value) + (unit.isEmpty ? "" : " \(unit)")
@@ -203,7 +221,18 @@ enum TrainingText {
         let total = Int(seconds.rounded())
         return String(format: "%d′%02d″/km", total / 60, total % 60)
     }
+    static func observationTime(_ point: TrainingMetricValue) -> String {
+        if ["daily", "recorded-workouts"].contains(point.source) {
+            return point.date.formatted(.dateTime.month(.defaultDigits).day().locale(Locale(identifier: "zh_CN"))) + " · 日汇总"
+        }
+        return time(point.date)
+    }
     static func time(_ date: Date?) -> String {
-        date?.formatted(.dateTime.month().day().hour().minute()) ?? "暂无记录"
+        guard let date else { return "暂无记录" }
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "zh_CN")
+        formatter.timeZone = .current
+        formatter.dateFormat = "M月d日 HH:mm"
+        return formatter.string(from: date)
     }
 }

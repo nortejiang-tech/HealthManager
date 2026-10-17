@@ -4,7 +4,7 @@ import GRDB
 /// Lists `HKWorkout` samples ingested into `health_samples_raw`.
 ///
 /// Each row decodes `extra_json` to surface activityType / duration / energy / distance
-/// — fields V1 stowed but never displayed. Tap to expand into details (raw JSON).
+/// Each record opens the shared training detail with source and coverage.
 struct WorkoutsView: View {
     @EnvironmentObject private var environment: AppEnvironment
     @EnvironmentObject private var sync: SyncEngine
@@ -56,7 +56,9 @@ struct WorkoutsView: View {
                 }
                 Section {
                     ForEach(rows) { row in
-                        ActivityWorkoutRowView(row: row)
+                        NavigationLink {
+                            TrainingRecordedWorkoutDetail(id: row.id)
+                        } label: { ActivityWorkoutRowView(row: row) }
                     }
                 } header: {
                     Text("最近运动（\(rows.count) 次）")

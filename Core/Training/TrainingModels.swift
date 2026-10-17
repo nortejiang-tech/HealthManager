@@ -15,6 +15,7 @@ struct TrainingSample: Sendable {
     var duration: Double? = nil
     var distance: Double? = nil
     var motionContext: Int? = nil
+    var energyKcal: Double? = nil
 }
 
 enum TrainingTypes {
@@ -44,6 +45,7 @@ struct TrainingSession: Identifiable, Sendable {
     let recovery60: Double?
     let recovery120: Double?
     let notes: [String]
+    var energyKcal: Double? = nil
 
     var isRun: Bool { activityType == 37 }
     var paceSecondsPerKm: Double? {
@@ -67,6 +69,7 @@ struct TrainingNight: Identifiable, Sendable {
     let hrvSpanHours: Double
     let heartSpanHours: Double
     let hasConflict: Bool
+    var stageHours: [Int: Double] = [:]
     var qualifiesForBaseline: Bool {
         !source.hasPrefix("unknown") && hrvCount >= 3 && heartCount >= 12 && hrvSpanHours >= 1 && heartSpanHours >= 1
             && hours >= 1.5 && !hasConflict
@@ -95,7 +98,7 @@ struct TrainingFactor: Identifiable, Sendable {
 }
 
 struct TrainingReadiness: Sendable {
-    static let version = "恢复参考 v1 · 实验"
+    static let version = "恢复准备度 v2 · 睡后评估 · 实验"
     let score: Int?
     let credibility: String
     let baselineNights: Int
@@ -104,6 +107,17 @@ struct TrainingReadiness: Sendable {
     let observedAt: Date?
     /// Bounds caused only by an unknown load penalty, not a statistical confidence interval.
     var possibleRange: ClosedRange<Int>? = nil
+    var source: String = ""
+    var referenceRange: ClosedRange<Double>? = nil
+    var referenceCount: Int = 0
+    var previousScore: Int? = nil
+    var previousDate: Date? = nil
+}
+
+struct TrainingReadinessPoint: Identifiable, Sendable {
+    let id: String
+    let date: Date
+    let assessment: TrainingReadiness
 }
 
 struct TrainingHealthMetric: Identifiable, Sendable {
@@ -119,6 +133,9 @@ struct TrainingMetricValue: Identifiable, Sendable {
     let id: String
     let date: Date
     let value: Double
+    var source: String = ""
+    var sourceName: String = ""
+    var sampleCount: Int? = nil
 }
 
 struct TrainingRecoveryWindow: Identifiable, Sendable {
@@ -136,6 +153,12 @@ struct TrainingRunComparison: Sendable {
     let earlierHeart: Double?
     let recentCount: Int
     let earlierCount: Int
+    var recentStart: Date? = nil
+    var recentEnd: Date? = nil
+    var earlierStart: Date? = nil
+    var earlierEnd: Date? = nil
+    var sourceName: String = ""
+    var source: String = ""
 }
 
 struct TrainingSnapshot: Sendable {
@@ -148,6 +171,8 @@ struct TrainingSnapshot: Sendable {
     let health: [TrainingHealthMetric]
     let comparison: TrainingRunComparison?
     let intraday: [TrainingRecoveryWindow]
+    var readinessHistory: [TrainingReadinessPoint] = []
+    var parameters: [String: [TrainingMetricValue]] = [:]
 
     func recentDays(_ count: Int) -> [TrainingDay] { Array(days.suffix(count)) }
     var latestNight: TrainingNight? { days.compactMap(\.night).last }

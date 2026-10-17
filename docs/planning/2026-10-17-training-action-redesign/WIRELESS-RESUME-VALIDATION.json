@@ -1,0 +1,122 @@
+{
+  "schema_version": 2,
+  "updated_at": "2026-10-17T15:46:38.932523+00:00",
+  "overall_status": "PENDING",
+  "remaining_acceptance": "33 remaining physical-device parameter detail routes need direct UI interaction; wireless XCTest control channel fails and mirroring input is intermittent",
+  "user_constraint": "wireless only; minimize phone operations",
+  "release_build": "PASS",
+  "signature": "PASS",
+  "healthkit_entitlements": "PASS",
+  "configuration": "Release",
+  "sdk": "iphoneos27.1",
+  "physical_os": "iOS 27.2 (24B5110a)",
+  "device_model": "iPhone Air",
+  "bundle_id": "com.norte.HealthManager",
+  "version": "0.8.1",
+  "build": "17",
+  "signing": "Apple Development; optimized local Release build; not App Store/TestFlight distribution",
+  "binary_sha256": "2e185afda1cf47c8ed1350de83f5b2716599abe86fadddf5d083c430dc5dd896",
+  "binary_uuid": "FD2FB366-5AB3-3711-8B48-6DC6D2B955CE",
+  "preserved_package": "/Users/nortepro/.codex/visualizations/2026/10/17/healthmanager-v2-release-device-validation/parameter-hit-region-fix/signed-release/HealthManager.app",
+  "device_install": "PASS",
+  "installation_attempt_issued": true,
+  "installation_receipt": "/Users/nortepro/.codex/visualizations/2026/10/17/healthmanager-v2-release-device-validation/parameter-hit-region-fix/release-install-receipt.json",
+  "launch": "PASS",
+  "installed_identity_readback": "PASS",
+  "installed_url": "file:///private/var/containers/Bundle/Application/69F16E85-01CB-4F67-A133-8FD7BF51AB4C/HealthManager.app/",
+  "source_integrity": {
+    "status": "PASS",
+    "matching_final_manifest_files": 21,
+    "expected_change_from_original_v2": [
+      "UI/Training/TrainingParameterViews.swift"
+    ],
+    "other_original_source_hashes_matching": 20,
+    "manifest": "SOURCE-MANIFEST-RELEASE-FIX.json"
+  },
+  "real_data_readiness": {
+    "status": "PASS",
+    "evidence": "Direct physical UI, read-only current-device replay and independent arithmetic; experimental model validity is not established by this test"
+  },
+  "real_data_capability": {
+    "status": "PASS",
+    "evidence": "Physical VO2 display verified against latest raw device record; device estimate labeling retained"
+  },
+  "real_data_trends": {
+    "status": "PASS",
+    "physical_windows_days": [
+      7,
+      28,
+      56
+    ],
+    "physical_categories": [
+      "state",
+      "capability",
+      "activity"
+    ],
+    "limitation": "Observed current presentation plus 56-day calculator replay; not a long-duration reliability or physiological-validity claim"
+  },
+  "parameter_entry_points": {
+    "total": 34,
+    "verified_on_v2_physical_device": 1,
+    "physical_verified_ids": [
+      "readiness"
+    ],
+    "physical_status": "PENDING",
+    "verified_with_copied_real_data_on_isolated_simulator": 34,
+    "copied_real_data_status": "PASS",
+    "simulator_os": "iOS 26.5 (23F77)",
+    "required_physical_os": "iOS 27.2"
+  },
+  "supplementary_ui_case": {
+    "status": "PASS",
+    "case_count": 1,
+    "parameter_routes": 34,
+    "source": "xcresulttool test-results summary",
+    "mcp_transport_timeout": true,
+    "note": "MCP call timed out at 300s; actual Xcode test completed successfully after 322.424s. No rerun was needed."
+  },
+  "physical_xctest_framework": {
+    "status": "FAIL",
+    "attempts": 3,
+    "stage": "Before business test bootstrap; DTX XCTestDriverInterface/TestManager control channel peer refused",
+    "root_cause": "unresolved; does not prove a product assertion failure"
+  },
+  "parameter_hit_region_fix": {
+    "status": "PASS",
+    "file": "UI/Training/TrainingParameterViews.swift",
+    "change": "One .contentShape(Rectangle()) modifier in parameter NavigationLink label",
+    "evidence": "Before: center tap stays in directory; text tap opens detail. After: all 34 normal center-tap routes pass on real-data Simulator; readiness center tap also opened loaded detail on real iPhone."
+  },
+  "backup": {
+    "status": "PASS",
+    "latest_backup_integrity": "PRAGMA quick_check = ok",
+    "latest_backup": "/Users/nortepro/.codex/visualizations/2026/10/17/healthmanager-v2-release-device-validation/parameter-hit-region-fix/preinstall-database",
+    "original_preinstall_backup": "/Users/nortepro/.codex/visualizations/2026/10/17/healthmanager-v2-release-device-validation/preinstall-release-database",
+    "rollback_executed": false
+  },
+  "environment": {
+    "wireless_pairing": "paired and connected; app service accessible",
+    "new_pairing_completed": true,
+    "ssid_original": "Haeuschen_5G",
+    "ssid_restored": true,
+    "ipv6_original": "Off",
+    "ipv6_current": "LinkLocal",
+    "ipv6_retained_for_wireless_development": true,
+    "ipv4": "unchanged Manual configuration",
+    "network_rollback": "SSID restored; IPv6 intentionally retained, not a full original-network rollback",
+    "voiceover_restored_off": true,
+    "temporary_control_service": "unloaded; no new accessibility permission granted",
+    "original_qa_simulator": "restored Booted",
+    "new_real_data_simulator": "Shutdown; copied evidence retained privately",
+    "mcp_defaults": "restored default profile"
+  },
+  "healthkit_manual_writes": false,
+  "database_reset_or_seed_on_physical_device": false,
+  "app_uninstalled": false,
+  "pairing_records_deleted": false,
+  "worktree_committed": false,
+  "pushed": false,
+  "evidence_root": "/Users/nortepro/.codex/visualizations/2026/10/17/healthmanager-v2-release-device-validation",
+  "final_evidence": "/Users/nortepro/.codex/visualizations/2026/10/17/healthmanager-v2-release-device-validation/parameter-hit-region-fix",
+  "evo_coder_calls_this_resume": 1
+}

@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "stage": "2026-10-18 input-channel diagnostics and ZCode acceptance handoff",
+  "coder_calls": 0,
+  "calls": [],
+  "reason": "Planner-owned device control diagnostics and acceptance documentation; no product implementation delegated; private health data and control-plane work excluded from local Coder.",
+  "baseline": "0cfc55b5b2f9d504ad6e7e4039349badf8a68f1a",
+  "isolation": "Existing dirty worktree preserved; documentation-only closeout; diagnostic helper outside repository and never executed.",
+  "metrics": {
+    "supervisor_pass_rate": {
+      "numerator": 0,
+      "denominator": 0,
+      "rate": null,
+      "status": "not_applicable"
+    },
+    "first_independent_acceptance_pass_rate": {
+      "numerator": 0,
+      "denominator": 0,
+      "rate": null,
+      "status": "not_applicable"
+    },
+    "useful_output_adoption_rate": {
+      "numerator": 0,
+      "denominator": 0,
+      "rate": null,
+      "status": "not_applicable"
+    }
+  },
+  "run_id": null,
+  "model": null,
+  "reasoning_parameters": "unavailable",
+  "prompt_hash": "unavailable",
+  "tokens": "unavailable",
+  "elapsed_seconds": "unavailable",
+  "turns": "unavailable",
+  "tool_calls": "unavailable",
+  "independent_validation": [
+    "33 unique pending IDs match current TrainingMetric cases excluding readiness",
+    "21 source hashes verified against final Release source manifest",
+    "JSON and local document links checked"
+  ],
+  "stop_reason": "User requested documentation handoff; no further device interaction.",
+  "acceptance_status": "PENDING",
+  "physical_parameters_passed": 1,
+  "physical_parameters_total": 34,
+  "evaluation": "No EVO-Coder sample this stage; no model performance conclusion. Earlier one-call hit-region stage remains separately reported."
+}

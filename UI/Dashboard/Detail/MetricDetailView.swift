@@ -8,6 +8,13 @@ struct MetricDetailView: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     let config: MetricDetailConfig
+    var showsDirectionalTrend = true
+
+    init(config: MetricDetailConfig, initialPeriod: MetricPeriod = .week, showsDirectionalTrend: Bool = true) {
+        self.config = config
+        self.showsDirectionalTrend = showsDirectionalTrend
+        self._period = State(initialValue: initialPeriod)
+    }
 
     @State private var period: MetricPeriod = .week
     @State private var points: [MetricPoint] = []
@@ -103,7 +110,7 @@ struct MetricDetailView: View {
                 )
                 .fixedSize(horizontal: false, vertical: true)
                 if inspectedDate == nil {
-                    if canShowTrend {
+                    if canShowTrend && showsDirectionalTrend {
                         let trendSeries = visiblePoints.compactMap { p -> DatedDouble? in
                             guard let v = p.value else { return nil }
                             return DatedDouble(date: p.date, value: v)

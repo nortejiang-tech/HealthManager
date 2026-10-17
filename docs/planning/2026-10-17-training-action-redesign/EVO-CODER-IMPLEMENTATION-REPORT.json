@@ -1,0 +1,146 @@
+{
+  "schema_version": 1,
+  "task": "HealthManager training v2 implementation",
+  "date": "2026-10-17",
+  "calls": [
+    {
+      "changed_paths": [],
+      "classification": "LOCAL_PREWRITE_FAILURE",
+      "config_sha256": {
+        "extension": "28743c2cf6792ea1bbf5bad62e973fcd632f5e8c8304f1ebcdb0e7fb329f4d29",
+        "models": "8fc0d2b000a76990fa51d0183483b1f88ad94e972eea203327c20e267de6a9d4",
+        "policy": "87096fc22ab6b9b9a90c73464bf1c2559d30d5f01fa0536e088d2352072568ea",
+        "supervisor": "f11605d243b6b7561c1191a6f3e8196e709139bfacf964fa3489783514fb65bf"
+      },
+      "contract_error_codes": [
+        "VERIFICATION_COMMAND_UNSAFE"
+      ],
+      "duration_seconds": 0.038,
+      "failure_reason": "PROMPT_CONTRACT_INVALID",
+      "final_message_characters": 0,
+      "final_message_sha256": null,
+      "guard_violation_codes": [],
+      "interrupt_signal": null,
+      "max_context_tokens": 0,
+      "max_output_tokens": 4096,
+      "model": "halogen-qwen3.8-flash-next",
+      "out_of_scope_paths": [],
+      "parse_errors": 0,
+      "prompt_sha256": "f6836c3e5f91200bdd1d382b248009e334f30c6cead2cef0b425fa96b9ca21f6",
+      "provider": "EVO-X2",
+      "run_id": "7a7be162-77ca-45f7-84f4-57efe72e1c46",
+      "schema_version": 1,
+      "source_generation": 0,
+      "started_at_unix": 1792240425.818,
+      "status": "FAIL",
+      "stderr_bytes": 0,
+      "stop_reason": null,
+      "structured_terminal": false,
+      "temperature": 0.0,
+      "tool_calls": 0,
+      "top_p": 1,
+      "turns": 0,
+      "verification_expected": 1,
+      "verification_pass_indexes": [],
+      "verification_passes": 0,
+      "verification_runs": 0,
+      "verification_source_generation": null,
+      "workdir": "/Users/nortepro/.codex/visualizations/2026/10/17/01a149ba-5d06-78b2-a602-52bed459a33f/evo-trend-math",
+      "stage": "isolated pure trend math",
+      "baseline": "main@0cfc55b5b2f9d504ad6e7e4039349badf8a68f1a; isolated Planner-created directory",
+      "allowed_paths": [
+        "TrainingTrendMath.swift"
+      ],
+      "independent_acceptance": "not_started_contract_rejected",
+      "total_consumed_tokens": "unavailable",
+      "enable_thinking": {
+        "value": false,
+        "evidence": "documented fixed wrapper contract; not emitted by receipt"
+      },
+      "planner_note": "Planner compound verify command rejected before model start; replaced with reviewed single verifier."
+    },
+    {
+      "changed_paths": [
+        "TrainingTrendMath.swift"
+      ],
+      "classification": "CODER_DONE_PENDING_REVIEW",
+      "config_sha256": {
+        "extension": "28743c2cf6792ea1bbf5bad62e973fcd632f5e8c8304f1ebcdb0e7fb329f4d29",
+        "models": "8fc0d2b000a76990fa51d0183483b1f88ad94e972eea203327c20e267de6a9d4",
+        "policy": "87096fc22ab6b9b9a90c73464bf1c2559d30d5f01fa0536e088d2352072568ea",
+        "supervisor": "f11605d243b6b7561c1191a6f3e8196e709139bfacf964fa3489783514fb65bf"
+      },
+      "duration_seconds": 11.698,
+      "failure_reason": null,
+      "final_message_characters": 0,
+      "final_message_sha256": null,
+      "guard_violation_codes": [],
+      "interrupt_signal": null,
+      "max_context_tokens": 5677,
+      "max_output_tokens": 4096,
+      "model": "halogen-qwen3.8-flash-next",
+      "out_of_scope_paths": [],
+      "parse_errors": 0,
+      "prompt_sha256": "ada28d46c4014facf226a2f590c697ee8c0d8f2a375d8ceb72aa4f7c9905f1ea",
+      "provider": "EVO-X2",
+      "run_id": "8ef6e7f3-efaf-4623-834b-1a0599c962fc",
+      "schema_version": 1,
+      "source_generation": 1,
+      "started_at_unix": 1792240485.07,
+      "status": "PASS",
+      "stderr_bytes": 0,
+      "stop_reason": "toolUse",
+      "structured_terminal": true,
+      "temperature": 0.0,
+      "tool_calls": 4,
+      "top_p": 1,
+      "turns": 3,
+      "verification_expected": 1,
+      "verification_pass_indexes": [
+        0
+      ],
+      "verification_passes": 1,
+      "verification_runs": 1,
+      "verification_source_generation": 1,
+      "workdir": "/Users/nortepro/.codex/visualizations/2026/10/17/01a149ba-5d06-78b2-a602-52bed459a33f/evo-trend-math",
+      "stage": "isolated pure trend math",
+      "baseline": "main@0cfc55b5b2f9d504ad6e7e4039349badf8a68f1a; isolated Planner-created directory",
+      "allowed_paths": [
+        "TrainingTrendMath.swift"
+      ],
+      "independent_acceptance": "partially_accepted_with_planner_fix",
+      "total_consumed_tokens": "unavailable",
+      "enable_thinking": {
+        "value": false,
+        "evidence": "documented fixed wrapper contract; not emitted by receipt"
+      },
+      "planner_note": "Useful math implementation; interpolation overflow for opposite-sign extreme finite inputs was corrected by Planner and covered by XCTest."
+    }
+  ],
+  "metrics": {
+    "supervisor_pass_rate": {
+      "numerator": 1,
+      "denominator": 2
+    },
+    "model_started_supervisor_pass_rate": {
+      "numerator": 1,
+      "denominator": 1
+    },
+    "first_independent_acceptance_rate": {
+      "numerator": 0,
+      "denominator": 1
+    },
+    "useful_output_adoption_rate": {
+      "numerator": 1,
+      "denominator": 1
+    }
+  },
+  "independent_evidence": [
+    "TrainingMetricTests.test_quantilesAndChangesRespectMissingDenominatorsAndFiniteValues",
+    "Final run: 480 unit tests and 2 UI cases passed; dark UI rerun passed; unsigned Release-iphoneos build passed.",
+    "VALIDATION.md",
+    "VALIDATION.json"
+  ],
+  "evaluation": "Local Coder delivered one bounded helper in 11.698 seconds, 3 turns and 4 tool calls with no out-of-scope writes. Planner fixed one floating-point edge case. The first rejected attempt was a Planner verification-contract error, not model implementation quality. One sample does not establish long-term quality.",
+  "changes_to_wrapper_or_routing": false
+}

@@ -1,0 +1,32 @@
+{
+  "baseline": "0cfc55b5b2f9d504ad6e7e4039349badf8a68f1a",
+  "source_hashes": {
+    "Core/Training/TrainingCalculator.swift": "068705068e6e6ca37b20504209eb88e84a3f7e38f77e9c60906c77582a2efe27",
+    "Core/Training/TrainingMetric.swift": "d89c2a6c45bb559ce8609ff87fc544fad91436fb5dfad431439c1a129a751c09",
+    "Core/Training/TrainingModels.swift": "69838a80820959cf57e0f7743a135401597e70f7dfde8b807ba042015bafb732",
+    "Core/Training/TrainingParameterLoader.swift": "c420c275c39dc21fdd7d9cfb1c7fb961ef63f646f14ee1a51ba10b476cea1d95",
+    "Core/Training/TrainingSnapshotLoader.swift": "830c4b453da78fd1322d2ac97fa24ac3326cff39a4b7ba2f89779f215fb64ad0",
+    "Core/Training/TrainingTrendMath.swift": "0b29f24147545312e6a61209343db4c0cdafacbf998b91d7eaadf0624ee36cc6",
+    "Tests/TrainingCalculatorTests.swift": "d3a87fa4a1f8f283b464066a3db1ac7a55bb04e1720a95b20a4a441c1f73ef47",
+    "Tests/TrainingMetricTests.swift": "26e43f0fe9c1e9f900b630f7d5e87d39e4857ddb6dbc9c41a15f654212e7f966",
+    "UI/Dashboard/DashboardView.swift": "cab3732102f4424ca89191cd07d17d3d6d0cdc97719f23c15c0bc506bb08071a",
+    "UI/Dashboard/Detail/MetricDetailView.swift": "327c55f174006d06e8a8461843ba36c003e38bc51dbd9864a39667e996f6813b",
+    "UI/More/MoreView.swift": "420c39f35863d7510c17d03fb2955e5ed93a0bccc3c8f5598ca6fe9ee78feec6",
+    "UI/Training/TrainingDetailViews.swift": "3f1c65b0ed31cfb937c035142252d7a38703b9b6e03bffdb5079522262e2e72d",
+    "UI/Training/TrainingOverviewPanels.swift": "95425dfdc34aee1e8263f7f5da5feca3473a10066d53c991b2a30fa2884f3bcf",
+    "UI/Training/TrainingPanels.swift": "1f634c2b07bbbf271d3dc34874ed594099e0ad35790f7a976018b36f81bfc333",
+    "UI/Training/TrainingParameterViews.swift": "739db90b1a3c6955f2dd6999d9c943d876615a0116a09a97753bd0b9ab7d7627",
+    "UI/Training/TrainingRawRecordsView.swift": "93762dfbb6f6e8a2b80abf53721b536e726c447fe6d6dd305f5c167f87762dee",
+    "UI/Training/TrainingTrendViews.swift": "2a4cd50e92882bb762ca71e90d804cc85388dc2e8190d82e36acf04ad57ba96b",
+    "UI/Training/TrainingView.swift": "c68e06dd0d8dbb14d126f29066b2710243e8c4a9a476916800b13e31dfd9da7c",
+    "UI/Workouts/WorkoutsView.swift": "f08cacdfc7752448f98577bb5f906fbba7ad2f55c2d64e607cc5acee5e712cba",
+    "UITests/TrainingRenderingUITests.swift": "45504c97af685bbec1cb15ec1684920897755eae1d0c5b65d9306d00840d09d2",
+    "project.yml": "b53bc60a0041b5c269994dc8bf1b50d42825f67e8a858d8862b9de3be8e1996f"
+  },
+  "previous_manifest": "SOURCE-MANIFEST.json",
+  "expected_changed_paths": [
+    "UI/Training/TrainingParameterViews.swift"
+  ],
+  "change": "Parameter NavigationLink label gains .contentShape(Rectangle()) to include blank center hit area",
+  "calculated_at": "2026-10-17T15:29:07.461499+00:00"
+}

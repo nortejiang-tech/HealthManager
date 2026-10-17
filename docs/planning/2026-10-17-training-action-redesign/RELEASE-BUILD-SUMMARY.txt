@@ -1,0 +1,16 @@
+Release-iphoneos compile, CODE_SIGNING_ALLOWED=NO
+Original log: /tmp/healthmanager-v2-release-verified.log
+SHA256: d62d4eb38cf394a23340e7ff5e6c10aa17b00f0c6833826e60febf74ff11b683
+
+Command line invocation:
+    /Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild -project /tmp/healthmanager-training-v2-qa-project/HealthManager.xcodeproj -scheme HealthManager -configuration Release -destination generic/platform=iOS -derivedDataPath /tmp/HealthManager-training-v2-release CODE_SIGNING_ALLOWED=NO -disableAutomaticPackageResolution -skipPackageUpdates build
+/tmp/healthmanager-training-v2-qa-project/UI/Nutrition/NutritionView.swift:274:40: warning: no 'async' operations occur within 'await' expression [#UnnecessaryEffectMarker]
+    |                                        `- warning: no 'async' operations occur within 'await' expression [#UnnecessaryEffectMarker]
+/tmp/healthmanager-training-v2-qa-project/Core/PersonalFood/PersonalFoodStore.swift:477:25: warning: reference to captured var 'version' in concurrently-executing code; this is an error in the Swift 6 language mode [#SendableClosureCaptures]
+    |                         `- warning: reference to captured var 'version' in concurrently-executing code; this is an error in the Swift 6 language mode [#SendableClosureCaptures]
+/tmp/healthmanager-training-v2-qa-project/Core/FoodCatalog/USDA/USDAFoodService.swift:351:13: warning: initialization of immutable value 'edition' was never used; consider replacing with assignment to '_' or removing it [#NoUsage]
+    |             `- warning: initialization of immutable value 'edition' was never used; consider replacing with assignment to '_' or removing it [#NoUsage]
+/tmp/healthmanager-training-v2-qa-project/Core/PersonalFood/PersonalFoodStore.swift:475:41: warning: 'version' mutated after capture by sendable closure
+    |                                         `- warning: 'version' mutated after capture by sendable closure
+2026-10-17 21:08:33.221 appintentsmetadataprocessor[62591:63546949] warning: Metadata extraction skipped, no AppIntents.framework dependency found
+** BUILD SUCCEEDED **

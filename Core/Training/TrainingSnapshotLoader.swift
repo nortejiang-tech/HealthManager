@@ -4,7 +4,7 @@ import GRDB
 enum TrainingSnapshotLoader {
     /// One consistent, bounded reader transaction. No new tables, writes or full-history scans.
     static func load(database: DatabaseManager, now: Date = Date(), calendar: Calendar = .current) async throws -> TrainingSnapshot {
-        let begin = calendar.date(byAdding: .day, value: -TrainingCalculator.historyDays,
+        let begin = calendar.date(byAdding: .day, value: -TrainingCalculator.inputHistoryDays,
                                   to: calendar.startOfDay(for: now))!
         return try await database.asyncRead { db in
             let placeholders = TrainingTypes.inputs.map { _ in "?" }.joined(separator: ",")
@@ -17,8 +17,28 @@ enum TrainingSnapshotLoader {
                 ORDER BY start_at, sample_uuid
                 """, arguments: args)
             let samples = raw.compactMap(sample)
-            let health = try healthMetrics(db, now: now, calendar: calendar)
-            return TrainingCalculator.snapshot(samples: samples, health: health, now: now, calendar: calendar)
+            var parameters = try TrainingParameterLoader.load(db, now: now, calendar: calendar)
+            let displayStart = calendar.date(byAdding: .day, value: -55, to: calendar.startOfDay(for: now))!
+            parameters[TrainingMetric.heart.id] = TrainingParameterLoader.heartSeries(samples, since: displayStart)
+            var snapshot = TrainingCalculator.snapshot(samples: samples, now: now, calendar: calendar)
+            snapshot.parameters = parameters
+            return snapshot
+        }
+    }
+
+    static func session(database: DatabaseManager, id: String, now: Date = Date(), calendar: Calendar = .current) async throws -> TrainingSession? {
+        try await database.asyncRead { db in
+            guard let record = try HealthSampleRaw.fetchOne(db, key: id), record.hkType == TrainingTypes.workout,
+                  let workout = sample(record) else { return nil }
+            let types = TrainingTypes.inputs.map { _ in "?" }.joined(separator: ",")
+            var arguments = StatementArguments(TrainingTypes.inputs)
+            arguments += StatementArguments([workout.start.addingTimeInterval(-57 * 86400).timeIntervalSince1970,
+                min(now, workout.end.addingTimeInterval(135)).timeIntervalSince1970, now.timeIntervalSince1970, now.timeIntervalSince1970])
+            let raw = try HealthSampleRaw.fetchAll(db, sql: """
+                SELECT * FROM health_samples_raw WHERE hk_type IN (\(types)) AND is_deleted = 0
+                AND start_at >= ? AND start_at <= ? AND end_at <= ? AND ingested_at <= ? ORDER BY start_at, sample_uuid
+                """, arguments: arguments)
+            return TrainingCalculator.recordDetail(id: id, samples: raw.compactMap(sample), now: now, calendar: calendar)
         }
     }
 
@@ -50,58 +70,8 @@ enum TrainingSnapshotLoader {
             ingestedAt: Date(timeIntervalSince1970: Double(raw.ingestedAt)),
             activityType: (extra["activityType"] as? NSNumber)?.intValue,
             duration: (extra["duration"] as? NSNumber)?.doubleValue,
-            distance: (extra["totalDistanceMeters"] as? NSNumber)?.doubleValue, motionContext: context)
+            distance: (extra["totalDistanceMeters"] as? NSNumber)?.doubleValue, motionContext: context,
+            energyKcal: (extra["totalEnergyKcal"] as? NSNumber)?.doubleValue)
     }
 
-    private static func healthMetrics(_ db: Database, now: Date, calendar: Calendar) throws -> [TrainingHealthMetric] {
-        let cutoff = TrainingCalculator.dayKey(now, calendar)
-        let earliest = TrainingCalculator.dayKey(calendar.date(byAdding: .day, value: -56, to: now)!, calendar)
-        let f = DateFormatter()
-        f.calendar = calendar; f.timeZone = calendar.timeZone
-        f.locale = Locale(identifier: "en_US_POSIX"); f.dateFormat = "yyyy-MM-dd"
-        var metrics: [TrainingHealthMetric] = []
-        let specs: [(String, String, String, String, Double)] = [
-            ("activity_metrics_daily", "vo2_max", "VO₂max（设备估计）", "ml/kg/min", 1),
-            ("activity_metrics_daily", "resting_hr_bpm", "静息心率", "bpm", 1),
-            ("body_metrics_daily", "weight_kg", "体重", "kg", 1),
-            ("body_metrics_daily", "body_fat_pct", "体脂率", "%", 100),
-            ("body_metrics_daily", "lean_mass_kg", "瘦体重", "kg", 1)
-        ]
-        for (table, column, title, unit, multiplier) in specs {
-            let rows = try Row.fetchAll(db, sql: """
-                SELECT date, \(column) AS value FROM \(table)
-                WHERE date >= ? AND date <= ? AND \(column) IS NOT NULL ORDER BY date
-                """, arguments: [earliest, cutoff])
-            let history = rows.compactMap { row -> TrainingMetricValue? in
-                guard let value: Double = row["value"], value.isFinite, value > 0,
-                      let key: String = row["date"], let date = f.date(from: key) else { return nil }
-                return TrainingMetricValue(id: key, date: date, value: value * multiplier)
-            }
-            if let latest = history.last {
-                metrics.append(TrainingHealthMetric(id: column, title: title, value: latest.value,
-                                                    unit: unit, measuredOn: latest.date, history: history))
-            }
-        }
-        let rawSpecs: [(String, String, String, Double)] = [
-            ("HKQuantityTypeIdentifierRespiratoryRate", "呼吸频率", "次/分", 1),
-            ("HKQuantityTypeIdentifierOxygenSaturation", "血氧", "%", 100),
-            ("HKQuantityTypeIdentifierBloodPressureSystolic", "收缩压", "mmHg", 1),
-            ("HKQuantityTypeIdentifierBloodPressureDiastolic", "舒张压", "mmHg", 1),
-            ("HKQuantityTypeIdentifierBodyTemperature", "体温", "℃", 1)
-        ]
-        for (type, title, unit, multiplier) in rawSpecs {
-            let records = try HealthSampleRaw.fetchAll(db, sql: """
-                SELECT * FROM health_samples_raw WHERE hk_type = ? AND is_deleted = 0
-                  AND start_at >= ? AND end_at <= ? ORDER BY start_at
-                """, arguments: [type, now.addingTimeInterval(-56 * 86_400).timeIntervalSince1970, now.timeIntervalSince1970])
-            let history = records.filter { $0.value.isFinite && $0.value > 0 }.map {
-                TrainingMetricValue(id: $0.sampleUUID, date: Date(timeIntervalSince1970: Double($0.startAt)), value: $0.value * multiplier)
-            }
-            if let latest = history.last {
-                metrics.append(TrainingHealthMetric(id: type, title: title, value: latest.value,
-                    unit: unit, measuredOn: latest.date, history: history))
-            }
-        }
-        return metrics
-    }
 }

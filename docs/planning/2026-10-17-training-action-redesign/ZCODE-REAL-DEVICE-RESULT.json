@@ -1,0 +1,69 @@
+{
+  "schema_version": 1,
+  "task": "ZCode real-device acceptance for 33 remaining training parameter entries",
+  "result": "PASS",
+  "started_at": "2026-10-18T00:27:00+08:00",
+  "completed_at": "2026-10-18T01:32:00+08:00",
+  "coverage_statement": "既有准备度 1 + 本次其余 33 = 真机参数覆盖 34/34；模拟器（复制真实数据）34/34 为独立结果，不与本结果混用。",
+  "device": {
+    "name": "NortePro的iPhone",
+    "model": "iPhone Air (iPhone18,4)",
+    "udid": "00008150-001204800152401C",
+    "ios": "27.2 (24B5110a)",
+    "connection": "wireless (localNetwork), paired, Developer Mode enabled"
+  },
+  "build_identity": {
+    "bundle_id": "com.norte.HealthManager",
+    "version": "0.8.1 (17)",
+    "note": "已安装 Release 未重装、未卸载、未重签名；执行前后 devicectl apps 回读一致（见 logs/pre-run-installed-app-state.txt 与 logs/post-run-installed-apps.txt）。构建身份沿用 DEVICE-RELEASE-VALIDATION.json 的 SHA-256 链。",
+    "side_effect": "为 XCTest 通道尝试安装了 HMZcodeAcceptanceUITests-Runner（com.norte.HealthManagerUITests.xctrunner, 1.0(1)）；不影响主 App，可随时卸载。"
+  },
+  "input_channel": {
+    "final": "iPhone Mirroring 窗口点击转发（AppleScript System Events click at，Mac 点坐标）+ Universal Clipboard 中文搜索词 cmd+V 粘贴",
+    "output_channel": "xcrun devicectl device capture screenshot（1260x2736 真机原始截图）",
+    "xctest_ide_channel": {
+      "status": "FAILED_TO_BOOTSTRAP",
+      "symptom": "Runner 启动后 DTXConnection 'Connection peer refused channel request for dtxproxy:XCTestDriverInterface:XCTestManager_IDEInterface'，Runner 以 IDE disconnection 退出（code 74）",
+      "attempts": 4,
+      "ruled_out": [
+        "锁屏（未锁+屏幕亮仍复现）",
+        "CoreDevice/DDI（ddiServices contentIsCompatible=true 且已挂载）",
+        "CoreDevice/remotepairingd 服务重启后仍复现"
+      ],
+      "classification": "工具通道问题，非产品缺陷；与上一轮三次 DTX 拒绝同根因，未解决",
+      "artifact": "probe/（UseDestinationArtifacts=true 的 xctestrun + Runner），未安装主 App 即尝试复用已装目标"
+    }
+  },
+  "summary": {
+    "total_items": 33,
+    "passed": 33,
+    "failed": 0,
+    "pending": 0,
+    "blocked": 0,
+    "valid_empty": 0,
+    "notes": "33 项全部有真实数据渲染；无『参数暂未更新：』错误；全部行中心点击→正确详情→返回闭环成功"
+  },
+  "cross_checks": [
+    "瘦体重≈体重×(1−体脂率) 三指标互相自洽（数值脱敏）",
+    "BMI 与体重身高量级自洽；血压收缩/舒张配对合理",
+    "夜间 HRV（主睡眠中位数）与全天 HRV（日汇总）分开统计，未混用",
+    "单位换算（体脂×100、距离 m→km、睡眠 s→h、配速 秒→分′秒″）显示正确",
+    "原始记录按钮仅出现在 sampleType 指标上，派生指标无按钮——与代码口径一致"
+  ],
+  "evidence_root": "/Users/nortepro/.codex/visualizations/2026/10/17/healthmanager-v2-release-device-validation/zcode-physical-acceptance",
+  "evidence_files": {
+    "per_item_detail_screenshots": "evidence/items/NN-<id>-detail.png（33 张，1260x2736 真机截图）",
+    "entry_state": "evidence/00-directory-entry.png（全部参数目录）",
+    "weight_full_cycle": "evidence/items/25-weight-filtered.png / 25-weight-detail.png / 25-weight-returned.png（搜索过滤→详情→返回三步留样）",
+    "operation_log": "logs/session.log（每项起止时间戳）",
+    "pre_post_install_state": "logs/pre-run-installed-app-state.txt / logs/post-run-installed-apps.txt",
+    "completed_checklist": "ZCODE-REAL-DEVICE-CHECKLIST.completed.json（33 项逐项 7 检查回填）"
+  },
+  "finished_loading_evidence_note": "『本次读取／回溯计算：』标志位于详情页内容流末尾，部分项首屏截图未包含该行；判定依据为 TrainingMetricContent 仅在 snapshot 加载成功后渲染（代码 TrainingParameterViews.swift:82-94），截图显示数值/趋势即证明读取完成，weight/steps 等短内容页截图直接含该标志。",
+  "residual": [
+    "XCTest IDE 通道 DTX 拒绝根因未定位（Xcode 27.1 vs iOS 27.2 线索仍未验证）；不影响本次验收结论",
+    "未重跑次级入口（相关原始记录/来源与数据质量/年）真机路径——既有模拟器结果沿用，验收文档允许",
+    "iPhone Mirroring 窗口需保持前台且位置稳定；本次执行期间无中断"
+  ],
+  "notes_redacted": "所有真实健康数值已从仓库版移除，完整观察值仅存私有证据目录。"
+}

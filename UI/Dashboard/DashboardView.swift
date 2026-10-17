@@ -54,10 +54,12 @@ struct DashboardView: View {
                 DashboardCardEditor(store: layout)
             }
             .navigationDestination(for: MetricRoute.self) { route in
-                if let config = route.config {
+                if let metric = route.trainingMetric {
+                    TrainingMetricDetail(metric: metric)
+                } else if let config = route.config {
                     MetricDetailView(config: config)
                 } else {
-                    ActivityDetailView()
+                    TrainingActivityParameters()
                 }
             }
             .navigationDestination(isPresented: $showAlerts) { AlertsView() }
@@ -404,17 +406,6 @@ private struct DashboardQuickLinksSection: View {
             }
             .buttonStyle(.plain)
 
-            Divider().overlay(HMColors.separator).padding(.leading, 14)
-
-            NavigationLink {
-                WorkoutsView()
-            } label: {
-                dashboardLinkLabel(
-                    title: "运动记录",
-                    systemImage: "figure.run"
-                )
-            }
-            .buttonStyle(.plain)
         }
         .background(HMColors.surface, in: RoundedRectangle(cornerRadius: HMRadius.card, style: .continuous))
         .overlay(
@@ -444,6 +435,20 @@ private struct DashboardQuickLinksSection: View {
 /// Routes for each card -> detail screen.
 enum MetricRoute: Hashable {
     case activity, steps, activeKcal, restingHR, sleep, weight, bodyFat, bmi, diet, deficit, distance
+
+    var trainingMetric: TrainingMetric? {
+        switch self {
+        case .steps: return .steps
+        case .activeKcal: return .activeEnergy
+        case .restingHR: return .restingHeart
+        case .sleep: return .totalSleep
+        case .weight: return .weight
+        case .bodyFat: return .bodyFat
+        case .bmi: return .bmi
+        case .distance: return .distance
+        default: return nil
+        }
+    }
 
     var config: MetricDetailConfig? {
         switch self {
