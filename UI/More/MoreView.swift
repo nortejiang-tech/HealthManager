@@ -101,6 +101,14 @@ private struct MoreScreenContent: View {
                             destination: AnyView(SummaryView())
                         ),
                         MoreNavigationRow(
+                            title: "运动记录",
+                            detail: "Apple 健康与手工补录",
+                            systemImage: "figure.run",
+                            tone: .comparison,
+                            accessibilityIdentifier: "more-workouts",
+                            destination: AnyView(WorkoutsView())
+                        ),
+                        MoreNavigationRow(
                             title: "用药",
                             detail: "用药计划、记录与提醒",
                             systemImage: "pills",

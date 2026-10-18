@@ -49,8 +49,6 @@ final class TrainingRenderingUITests: XCTestCase {
             XCTAssertTrue(app.navigationBars["补录活动"].waitForExistence(timeout: 5))
             screenshot("v2-\(name)-manual-entry")
             app.buttons["取消"].tap()
-            app.tabBars.buttons["更多"].tap()
-            XCTAssertFalse(element(app, "more-workouts").exists)
             app.terminate()
         }
     }
