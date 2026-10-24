@@ -94,7 +94,7 @@ final class DailyReconcilerTests: XCTestCase {
 
     // MARK: - Conflict score
 
-    func test_conflict_singleSource_isOne() async throws {
+    func test_conflict_singleSource_withheldUntilAlignedValidation() async throws {
         try seedSample(hkType: "HKQuantityTypeIdentifierHeartRate", value: 70,
                        sourceBundle: "com.garmin.connect", offsetSeconds: 100)
         try seedSample(hkType: "HKQuantityTypeIdentifierHeartRate", value: 71,
@@ -102,10 +102,10 @@ final class DailyReconcilerTests: XCTestCase {
         let reconciler = DailyReconciler(database: db)
         _ = try await reconciler.run(windowDays: 1)
         let q = try fetchQuality()
-        XCTAssertEqual(q.conflictScore ?? 0, 1.0, accuracy: 1e-9)
+        XCTAssertNil(q.conflictScore, "Source coexistence alone is not a measured conflict score")
     }
 
-    func test_conflict_twoSourcesSameHour_drops() async throws {
+    func test_conflict_twoSourcesSameHour_doesNotPenalizeCoexistence() async throws {
         // Two distinct bundles writing into the same hour bucket → conflict.
         try seedSample(hkType: "HKQuantityTypeIdentifierHeartRate", value: 70,
                        sourceBundle: "com.garmin.connect", offsetSeconds: 100)
@@ -114,7 +114,7 @@ final class DailyReconcilerTests: XCTestCase {
         let reconciler = DailyReconciler(database: db)
         _ = try await reconciler.run(windowDays: 1)
         let q = try fetchQuality()
-        XCTAssertLessThan(q.conflictScore ?? 1.0, 1.0)
+        XCTAssertNil(q.conflictScore, "Dual wear must not produce an automatic conflict penalty")
     }
 
     // MARK: - Alerts

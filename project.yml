@@ -41,8 +41,8 @@ targets:
       path: App/Info.plist
       properties:
         CFBundleDisplayName: 健康管理
-        CFBundleShortVersionString: "0.8.1"
-        CFBundleVersion: "18"
+        CFBundleShortVersionString: "0.11.0"
+        CFBundleVersion: "28"
         LSRequiresIPhoneOS: true
         UILaunchScreen:
           UIColorName: ""

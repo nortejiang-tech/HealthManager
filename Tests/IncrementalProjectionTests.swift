@@ -289,14 +289,14 @@ final class IncrementalProjectionTests: XCTestCase {
             unit: unit,
             startAt: Int64(start.timeIntervalSince1970),
             endAt: Int64(end.timeIntervalSince1970),
-            sourceName: "fixture",
+            sourceName: type == bodyType ? "米家" : "fixture",
             sourceBundleId: "fixture.bundle",
             deviceName: nil,
             deviceModel: nil,
             ingestedAt: Int64(Date().timeIntervalSince1970),
             isDeleted: false,
             extraJson: extraJSON,
-            sourceOrigin: "unknown"
+            sourceOrigin: type == bodyType ? "xiaomiMijia" : "unknown"
         )
     }
 

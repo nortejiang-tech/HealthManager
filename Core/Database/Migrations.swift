@@ -704,6 +704,76 @@ enum Migrations {
             )
         }
 
+        // Preserve HealthKit UUID identity. Never resurrect tombstones from v7/v8:
+        // those rows may also represent actual user deletions.
+        migrator.registerMigration("v16_dual_source_and_garmin") { db in
+            try db.execute(sql: "DROP INDEX IF EXISTS idx_raw_active_reading_unique")
+            try db.create(table: "garmin_daily_metrics") { t in
+                t.column("id", .text).primaryKey()
+                t.column("date", .text).notNull()
+                t.column("metric", .text).notNull()
+                t.column("region", .text).notNull()
+                t.column("payload_json", .text)
+                t.column("observed_at", .double)
+                t.column("fetched_at", .double)
+                t.column("last_attempt_at", .double).notNull()
+                t.column("state", .text).notNull()
+                t.column("error_category", .text)
+            }
+            try db.create(index: "idx_garmin_date_metric", on: "garmin_daily_metrics", columns: ["date", "metric"])
+            for action in ["INSERT", "UPDATE", "DELETE"] {
+                let ref = action == "DELETE" ? "OLD" : "NEW"
+                try db.execute(sql: """
+                    CREATE TRIGGER bridge_garmin_daily_metrics_\(action.lowercased()) AFTER \(action) ON garmin_daily_metrics
+                    WHEN (SELECT enabled FROM bridge_state WHERE id=1)=1 BEGIN
+                      INSERT INTO bridge_changes(entity,record_key) VALUES('garmin_daily_metrics',\(ref).id);
+                    END;
+                    """)
+            }
+        }
+
+        migrator.registerMigration("v17_workout_event_projection") { db in
+            try db.create(table: "workout_events") { t in
+                t.column("id", .text).primaryKey()
+                t.column("date", .text).notNull().indexed()
+                t.column("payload_json", .text).notNull()
+            }
+            for action in ["INSERT", "UPDATE", "DELETE"] {
+                let ref = action == "DELETE" ? "OLD" : "NEW"
+                try db.execute(sql: """
+                    CREATE TRIGGER bridge_workout_events_\(action.lowercased()) AFTER \(action) ON workout_events
+                    WHEN (SELECT enabled FROM bridge_state WHERE id=1)=1 BEGIN
+                      INSERT INTO bridge_changes(entity,record_key) VALUES('workout_events',\(ref).id);
+                    END;
+                    """)
+            }
+        }
+
+        migrator.registerMigration("v18_health_brief_weight_contract") { db in
+            try db.execute(sql: """
+                CREATE TABLE summary_contract_archive(
+                  kind TEXT NOT NULL, report_key TEXT NOT NULL, original_json TEXT NOT NULL,
+                  archived_at INTEGER NOT NULL, PRIMARY KEY(kind,report_key));
+                CREATE TABLE health_brief_cache(
+                  snapshot_id TEXT PRIMARY KEY, day TEXT NOT NULL, phase TEXT NOT NULL,
+                  narrative_json TEXT, model TEXT NOT NULL, prompt_version TEXT NOT NULL,
+                  input_tokens INTEGER, output_tokens INTEGER, generated_at REAL NOT NULL);
+                CREATE INDEX idx_brief_cache_day ON health_brief_cache(day);
+                """)
+            // Preserve original report text/LLM commentary before lazy deterministic regeneration.
+            for (kind, table, key) in [("daily","daily_summaries","date"),("weekly","weekly_summaries","week_start_date")] {
+                for row in try Row.fetchAll(db, sql: "SELECT * FROM \(table)") {
+                    // DatabaseValue is not JSON: archive the original persisted record through its Codable model.
+                    let data: Data
+                    if kind == "daily" { data = try JSONEncoder().encode(DailySummary(row: row)) }
+                    else { data = try JSONEncoder().encode(WeeklySummary(row: row)) }
+                    try db.execute(sql: "INSERT INTO summary_contract_archive VALUES(?,?,?,?)",
+                        arguments: [kind, row[key] as String, String(decoding: data, as: UTF8.self), Int64(Date().timeIntervalSince1970)])
+                }
+                try db.execute(sql: "UPDATE \(table) SET llm_text=NULL,llm_model=NULL,llm_generated_at=NULL")
+            }
+        }
+
         return migrator
     }
 

@@ -298,8 +298,8 @@ struct SyncWorkStore: @unchecked Sendable {
                 if db.changesCount > 0 {
                     inserted += db.changesCount
                     changedKeys.formUnion(Self.projectionKeys(
-                        startAt: row.startAt,
-                        endAt: row.endAt,
+                        startAt: row.startAt - (row.hkType == TrainingTypes.workout ? 600 : (row.hkType == "HKQuantityTypeIdentifierBodyMass" ? 1800 : 0)),
+                        endAt: row.endAt + (row.hkType == TrainingTypes.workout ? 600 : (row.hkType == "HKQuantityTypeIdentifierBodyMass" ? 1800 : 0)),
                         calendar: page.calendar,
                         version: page.projectionVersion
                     ))
@@ -322,8 +322,8 @@ struct SyncWorkStore: @unchecked Sendable {
                 if db.changesCount > 0 {
                     deleted += db.changesCount
                     changedKeys.formUnion(Self.projectionKeys(
-                        startAt: existing.startAt,
-                        endAt: existing.endAt,
+                        startAt: existing.startAt - (existing.hkType == TrainingTypes.workout ? 600 : (existing.hkType == "HKQuantityTypeIdentifierBodyMass" ? 1800 : 0)),
+                        endAt: existing.endAt + (existing.hkType == TrainingTypes.workout ? 600 : (existing.hkType == "HKQuantityTypeIdentifierBodyMass" ? 1800 : 0)),
                         calendar: page.calendar,
                         version: page.projectionVersion
                     ))

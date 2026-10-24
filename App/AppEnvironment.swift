@@ -118,6 +118,8 @@ final class AppEnvironment: ObservableObject {
     static let shared = AppEnvironment()
 
     let database: DatabaseManager
+    let garmin: GarminSyncManager
+    let healthBrief: HealthBriefManager
     let mealStore: MealStore
     let personalFoodStore: PersonalFoodStore
     let personalMealTemplateStore: PersonalMealTemplateStore
@@ -133,7 +135,7 @@ final class AppEnvironment: ObservableObject {
     @Published private(set) var localDataTick: Int = 0
     @Published private(set) var isSyncStartupReady: Bool = false
     private let aggregateProjectionVersionKey = "aggregates.projectionVersion"
-    private let currentAggregateProjectionVersion = 4
+    private let currentAggregateProjectionVersion = 5
     private var syncStartupLifecycle = SyncStartupLifecycle()
     private var startupMaintenanceGate = StartupMaintenanceGate()
     private var bridgeExportPending = false
@@ -167,6 +169,8 @@ final class AppEnvironment: ObservableObject {
         )
 
         self.database = database
+        self.garmin = GarminSyncManager(database: database)
+        self.healthBrief = HealthBriefManager(database: database)
         self.mealStore = mealStore
         self.personalFoodStore = personalFoodStore
         self.personalMealTemplateStore = personalMealTemplateStore
@@ -180,7 +184,11 @@ final class AppEnvironment: ObservableObject {
         self.startupMetrics = startupMetrics
         let bridge = HealthBridgeManager(database: database)
         self.healthBridge = bridge
-        syncEngine.onDataSynchronized = { [weak self] in self?.requestBridgeExport() }
+        garmin.onDataChanged = { [weak self] in self?.notifyLocalDataChanged() }
+        syncEngine.onDataSynchronized = { [weak self] in
+            self?.requestBridgeExport()
+            Task { await self?.garmin.refresh() }
+        }
         startupMetrics.record(.environmentReady)
     }
 
@@ -271,7 +279,10 @@ final class AppEnvironment: ObservableObject {
         }
         guard decision?.needsCatchUp == true else { return }
         AppLogger.shared.info("Dashboard projections need refresh — running one-shot DailyAggregator(90).")
-        if await syncEngine.runCatchUpAggregation(windowDays: 90) {
+        let policyDays = Calendar.current.date(from: DateComponents(year: 2026, month: 10, day: 23)).map {
+            max(1, Calendar.current.dateComponents([.day], from: $0, to: Date()).day! + 1)
+        } ?? 1
+        if await syncEngine.runCatchUpAggregation(windowDays: storedVersion >= 4 ? min(90, policyDays) : 90) {
             UserDefaults.standard.set(targetVersion, forKey: aggregateProjectionVersionKey)
         }
     }
@@ -287,6 +298,7 @@ final class AppEnvironment: ObservableObject {
     /// HealthKit status check, so recovery/auth completion in any order still causes exactly
     /// one full-type check for this foreground epoch.
     func applicationDidBecomeActive() async {
+        if isSyncStartupReady { Task { await garmin.refresh() } }
         requestForegroundMaintenance()
         driveSyncStartup(.authorizationReady(false))
         driveSyncStartup(.becameActive)
@@ -330,6 +342,12 @@ final class AppEnvironment: ObservableObject {
         Task { @MainActor [weak self] in
             guard let self else { return }
             await self.backfillAggregatesIfNeeded()
+            do {
+                let count = try await WeightHistoryRebuilder.run(database: self.database)
+                if count > 0 { self.notifyLocalDataChanged(); self.requestBridgeExport() }
+            } catch {
+                AppLogger.shared.error("Weight contract catch-up incomplete; will retry next launch")
+            }
             await self.seedPersonalCatalogIfNeeded()
         }
         if action == .runInBackground || bridgeExportPending {

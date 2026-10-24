@@ -43,6 +43,27 @@ actor SummaryGenerator {
         try ActivityEnergyCalculator.cumulativeSum(db: db, hkType: hkType, start: start, end: end)
     }
 
+    private static func archive<T: Encodable>(db: Database, kind: String, key: String, record: T) throws {
+        let data = try JSONEncoder().encode(record)
+        try db.execute(sql: "INSERT OR IGNORE INTO summary_contract_archive(kind,report_key,original_json,archived_at) VALUES(?,?,?,?)",
+            arguments: [kind,key,String(decoding: data, as: UTF8.self),Int64(Date().timeIntervalSince1970)])
+    }
+
+    static func hasWeightContract(_ json: String?) -> Bool {
+        guard let data = json?.data(using: .utf8),
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return false }
+        return object["weightPolicyVersion"] as? String == WeightAggregationPolicy.version
+    }
+
+    func refreshHistoricalWeightReports() throws {
+        let keys = try database.read { db in
+            (try String.fetchAll(db, sql: "SELECT date FROM daily_summaries"),
+             try String.fetchAll(db, sql: "SELECT week_start_date FROM weekly_summaries"))
+        }
+        for key in keys.0 { _ = try currentDaily(for: key) }
+        for key in keys.1 { _ = try currentWeekly(weekStart: key) }
+    }
+
     // MARK: - Daily
 
     @discardableResult
@@ -57,6 +78,9 @@ actor SummaryGenerator {
             generatedAt: Int64(Date().timeIntervalSince1970)
         )
         try database.write { db in
+            if let existing = try DailySummary.fetchOne(db, key: date), !Self.hasWeightContract(existing.keyFindingsJson) {
+                try Self.archive(db: db, kind: "daily", key: date, record: existing)
+            }
             try summary.insert(db, onConflict: .replace)
         }
         return summary
@@ -71,7 +95,12 @@ actor SummaryGenerator {
         }) else {
             return nil
         }
-        if Self.hasCurrentNutritionContract(existing.keyFindingsJson) {
+        let sourceContractCurrent: Bool = {
+            guard date >= DailySourceProjection.effectiveDate else { return true }
+            guard let data = existing.keyFindingsJson?.data(using:.utf8), let object = try? JSONSerialization.jsonObject(with:data) as? [String:Any] else { return false }
+            return object["sourcePolicyVersion"] as? String == DailySourceProjection.version
+        }()
+        if Self.hasCurrentNutritionContract(existing.keyFindingsJson) && sourceContractCurrent && Self.hasWeightContract(existing.keyFindingsJson) {
             return existing
         }
         return try generateDaily(for: date)
@@ -102,6 +131,14 @@ actor SummaryGenerator {
                 perType[t] = (r["c"] ?? 0, r["avg_v"] ?? 0, r["sum_v"] ?? 0)
             }
 
+            if date >= DailySourceProjection.effectiveDate {
+                for type in [TrainingTypes.heart, TrainingTypes.resting, TrainingTypes.hrv, "HKQuantityTypeIdentifierVO2Max"] {
+                    if let current = perType[type], let selected = try DailySourceProjection.average(db: db, type: type, start: dayStart, end: dayEnd) {
+                        perType[type] = (current.count, selected, current.sum)
+                    }
+                }
+            }
+
             // Dominant-source dedup for the cumulative metrics shown in the report.
             // nil = no samples at all that day → render layer skips the line.
             let stepsDedup = perType["HKQuantityTypeIdentifierStepCount"] == nil
@@ -130,11 +167,13 @@ actor SummaryGenerator {
             let quality = try DataQualityDaily.fetchOne(db, key: date)
 
             return DailyStats(
+                weight: try WeightProjection.load(db: db, date: date),
                 perType: perType,
                 stepsDedup: stepsDedup,
                 activeEnergyDedup: activeEnergyDedup,
                 mealNutrition: mealNutrition,
                 medTakenCount: medCount,
+                garmin: try GarminStore.records(db:db,since:date).filter { $0.date == date },
                 quality: quality
             )
         }
@@ -143,11 +182,13 @@ actor SummaryGenerator {
     }
 
     private struct DailyStats {
+        let weight: WeightDayProjection
         let perType: [String: (count: Int, avg: Double, sum: Double)]
         let stepsDedup: Double?
         let activeEnergyDedup: Double?
         let mealNutrition: MealNutritionEvidenceWindow
         let medTakenCount: Int
+        let garmin: [GarminMetricRecord]
         let quality: DataQualityDaily?
     }
 
@@ -158,6 +199,15 @@ actor SummaryGenerator {
         ]
 
         lines.append("【\(date) 日报】")
+        if date >= DailySourceProjection.effectiveDate { findings["sourcePolicyVersion"] = DailySourceProjection.version }
+        for record in stats.garmin {
+            guard let value = record.payload?.primary else { continue }
+            let suffix = record.metric.unit.isEmpty ? "" : " \(record.metric.unit)"
+            let state = record.state == "available" ? "" : "（保留上次值，本次请求未提供新值）"
+            lines.append(String(format:"• Garmin %@：%.0f%@%@",record.metric.title,value,suffix,state))
+            findings["garmin.\(record.metric.rawValue)"] = value
+            findings["garmin.\(record.metric.rawValue).state"] = record.state
+        }
 
         if let steps = stats.stepsDedup {
             lines.append("• 步数：\(Int(steps)) 步")
@@ -175,8 +225,11 @@ actor SummaryGenerator {
             lines.append(String(format: "• 静息心率：%.0f bpm", resting))
             findings["restingHR"] = Int(resting)
         }
-        if let weight = stats.perType["HKQuantityTypeIdentifierBodyMass"]?.avg {
-            lines.append(String(format: "• 体重：%.2f kg", weight))
+        findings["weightPolicyVersion"] = WeightAggregationPolicy.version
+        findings["weightCoverageSlots"] = stats.weight.strata.count
+        findings["weightExcludedGarmin"] = stats.weight.excludedGarminCount
+        if let weight = stats.weight.mean {
+            lines.append(String(format: "• 体重分时均值：%.2f kg（%@）", weight, WeightProjection.caption(stats.weight)))
             findings["weightKg"] = weight
         }
 
@@ -238,6 +291,9 @@ actor SummaryGenerator {
             generatedAt: Int64(Date().timeIntervalSince1970)
         )
         try database.write { db in
+            if let existing = try WeeklySummary.fetchOne(db, key: weekStart), !Self.hasWeightContract(existing.findingsJson) {
+                try Self.archive(db: db, kind: "weekly", key: weekStart, record: existing)
+            }
             try summary.insert(db, onConflict: .replace)
         }
         return summary
@@ -251,7 +307,7 @@ actor SummaryGenerator {
         }) else {
             return nil
         }
-        if Self.hasCurrentNutritionContract(existing.findingsJson) {
+        if Self.hasCurrentNutritionContract(existing.findingsJson) && Self.hasWeightContract(existing.findingsJson) {
             return existing
         }
         return try generateWeekly(weekStart: weekStart)
@@ -276,6 +332,8 @@ actor SummaryGenerator {
             var minWeight: Double = .infinity
             var maxWeight: Double = -.infinity
             var weightSamples: Int = 0
+            var weightTotal: Double = 0
+            var weightSlots: Int = 0
             var mealNutrition: MealNutritionEvidenceWindow = .empty
             var medTaken: Int = 0
             var avgCompleteness: Double = 0
@@ -313,12 +371,19 @@ actor SummaryGenerator {
                 )
             }
 
-            // Non-cumulative (HR / weight) are unaffected by multi-source duplication —
-            // keep the simple window scan.
+            for day in weekDayKeys {
+                let weight = try WeightProjection.load(db: db, date: day)
+                if let mean = weight.mean {
+                    a.weightSamples += 1; a.weightTotal += mean
+                    a.minWeight = min(a.minWeight, mean); a.maxWeight = max(a.maxWeight, mean)
+                    a.weightSlots += weight.strata.count
+                }
+            }
+            // Heart rate retains its existing window scan; weight always uses day projections.
             let rows = try Row.fetchAll(db, sql: """
                 SELECT hk_type, value FROM health_samples_raw
                 WHERE is_deleted = 0 AND start_at BETWEEN ? AND ?
-                  AND hk_type IN ('HKQuantityTypeIdentifierHeartRate', 'HKQuantityTypeIdentifierBodyMass')
+                  AND hk_type = 'HKQuantityTypeIdentifierHeartRate'
                 """, arguments: [s, e])
             for r in rows {
                 let t: String = r["hk_type"] ?? ""
@@ -327,10 +392,6 @@ actor SummaryGenerator {
                 case "HKQuantityTypeIdentifierHeartRate":
                     a.avgHR += v
                     a.hrSamples += 1
-                case "HKQuantityTypeIdentifierBodyMass":
-                    a.minWeight = min(a.minWeight, v)
-                    a.maxWeight = max(a.maxWeight, v)
-                    a.weightSamples += 1
                 default:
                     break
                 }
@@ -369,6 +430,7 @@ actor SummaryGenerator {
             Self.nutritionEvidenceContractKey: Self.nutritionEvidenceContractVersion
         ]
 
+        findings["weightPolicyVersion"] = WeightAggregationPolicy.version
         lines.append("【\(weekStart) 起的一周】")
         lines.append("• 步数累计：\(Int(agg.stepsTotal)) 步（日均 \(Int(agg.stepsTotal / 7))）")
         findings["stepsTotal"] = Int(agg.stepsTotal)
@@ -381,7 +443,12 @@ actor SummaryGenerator {
             findings["avgHR"] = Int(avg)
         }
         if agg.weightSamples > 0, agg.minWeight.isFinite {
-            lines.append(String(format: "• 体重区间：%.2f – %.2f kg", agg.minWeight, agg.maxWeight))
+            lines.append(String(format: "• 体重日均值区间：%.2f – %.2f kg", agg.minWeight, agg.maxWeight))
+            let mean = agg.weightTotal / Double(agg.weightSamples)
+            lines.append(String(format: "• 周体重均值：%.2f kg（有效 %d/7 天，按天等权，%d 个实测时段）", mean, agg.weightSamples, agg.weightSlots))
+            findings["weightKg"] = mean
+            findings["weightValidDays"] = agg.weightSamples
+            findings["weightCoverageSlots"] = agg.weightSlots
             findings["weightMin"] = agg.minWeight
             findings["weightMax"] = agg.maxWeight
         }

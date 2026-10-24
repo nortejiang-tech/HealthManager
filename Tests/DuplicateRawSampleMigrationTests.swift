@@ -126,7 +126,7 @@ final class DuplicateRawSampleMigrationTests: XCTestCase {
     }
 
     func test_uniqueIndex_blocksReRecordingFloatNoiseDuplicate() throws {
-        let pool = try makePool()
+        let pool = try makePool(upTo: "v8_round_dedup_raw_samples")
         let s = Int64(1_700_000_000)
         try seedReading(pool: pool, uuid: "u-first", startAt: s, value: 82.84999847412109, origin: "xiaomiSports", ingestedAt: 100)
 
@@ -141,7 +141,7 @@ final class DuplicateRawSampleMigrationTests: XCTestCase {
     // MARK: - Prevention of future duplicates
 
     func test_uniqueIndex_blocksRecordingTheSameReadingAgain() throws {
-        let pool = try makePool()  // all migrations, index already present
+        let pool = try makePool(upTo: "v8_round_dedup_raw_samples")  // all migrations, index already present
         let s = Int64(1_700_000_000)
         try seedReading(pool: pool, uuid: "u-first", startAt: s, value: 82.8, origin: "xiaomiSports", ingestedAt: 100)
 
@@ -154,7 +154,7 @@ final class DuplicateRawSampleMigrationTests: XCTestCase {
     }
 
     func test_insertOrIgnore_skipsDuplicate_sameAsSyncPath() throws {
-        let pool = try makePool()
+        let pool = try makePool(upTo: "v8_round_dedup_raw_samples")
         let s = Int64(1_700_000_000)
         try seedReading(pool: pool, uuid: "u-first", startAt: s, value: 82.8, origin: "xiaomiSports", ingestedAt: 100)
 

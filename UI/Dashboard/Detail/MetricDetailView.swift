@@ -21,6 +21,7 @@ struct MetricDetailView: View {
     @State private var loadError: String?
     @State private var inspectedDate: Date?
     @State private var deficitBreakdown: DashboardLoader.DeficitBreakdown?
+    @State private var inspectedWeight: WeightDayProjection?
     @State private var dayMeasurements: [DashboardLoader.BodyMeasurementSample] = []
     /// Leading edge (oldest visible day) of the scrollable chart window. Drives the
     /// Apple-Health-style pan; stats/header recompute from whatever is currently visible.
@@ -110,7 +111,7 @@ struct MetricDetailView: View {
                 )
                 .fixedSize(horizontal: false, vertical: true)
                 if inspectedDate == nil {
-                    if canShowTrend && showsDirectionalTrend {
+                    if canShowTrend && showsDirectionalTrend && config.rawSamplesType != "HKQuantityTypeIdentifierBodyMass" {
                         let trendSeries = visiblePoints.compactMap { p -> DatedDouble? in
                             guard let v = p.value else { return nil }
                             return DatedDouble(date: p.date, value: v)
@@ -565,7 +566,11 @@ struct MetricDetailView: View {
                                 }
                             }
                         }
-                        if dayMeasurements.count > 1 {
+                        if config.rawSamplesType == "HKQuantityTypeIdentifierBodyMass" {
+                            Divider()
+                            LabeledContent("分时均值", value: inspectedWeight?.mean.map { measurementLabel($0) } ?? "无体重秤记录")
+                            Text(WeightProjection.caption(inspectedWeight)).font(.caption).foregroundStyle(.secondary)
+                        } else if dayMeasurements.count > 1 {
                             Divider()
                             HStack {
                                 Text("当日平均").font(.callout.weight(.semibold))
@@ -610,6 +615,10 @@ struct MetricDetailView: View {
         do {
             let loader = DashboardLoader(database: environment.database)
             let list = try await loader.loadDayMeasurements(hkType: hkType, day: target)
+            if hkType == "HKQuantityTypeIdentifierBodyMass" {
+                let key = DashboardLoader.dateKey.string(from: target)
+                inspectedWeight = try await environment.database.asyncRead { db in try WeightProjection.load(db: db, date: key) }
+            }
             await MainActor.run { dayMeasurements = list }
         } catch {
             await MainActor.run { dayMeasurements = [] }
@@ -802,8 +811,8 @@ struct MetricDetailConfig {
         theme: .body,
         chartStyle: .line,
         summary: .latest,
-        footnote: "数据来自 Apple 健康 · 每日多次称重取平均；点击某天可查看当天全部记录。",
-        format: { String(format: "%.1f", $0) },
+        footnote: "可信体重秤：同来源半小时内合并一次称重，四个六小时时段各取中位数，再对实测时段等权平均。缺测不补零；佳明手填体重排除。当天数值为暂定，测量时段不同不展示升降箭头。BMI／体脂为独立来源记录。",
+        format: { WeightAggregationPolicy.displayKilograms($0) },
         rawSamplesType: "HKQuantityTypeIdentifierBodyMass",
         lowerIsBetter: true
     )
@@ -862,7 +871,7 @@ struct MetricDetailConfig {
         theme: .heart,
         chartStyle: .line,
         summary: .latest,
-        footnote: "Apple 健康静息心率（多源时取均值）。",
+        footnote: "静息心率按所选来源统计；佳明优先，缺失时由其他可用来源补位。",
         format: { String(format: "%.0f", $0) },
         lowerIsBetter: true
     )

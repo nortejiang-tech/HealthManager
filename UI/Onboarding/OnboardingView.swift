@@ -46,7 +46,7 @@ private struct OnboardingContent: View {
             VStack(alignment: .leading, spacing: 28) {
                 HMEditorialHeader(
                     title: "把 Apple 健康作为数据入口",
-                    subtitle: "HealthManager 只连接 Apple 健康，不直接登录 Garmin、小米或其他第三方账户。"
+                    subtitle: "读取 Apple 健康中的运动与日常记录；佳明持续健康数据可在设置中通过中国区 Personal API 单独连接。"
                 )
                 .accessibilityIdentifier("onboarding-header")
 

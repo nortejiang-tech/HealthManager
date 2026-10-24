@@ -105,6 +105,7 @@ final class MealReuseUITests: XCTestCase {
 
         let copyRow = mealRow(matching: copyMarker, in: app)
         XCTAssertTrue(copyRow.waitForExistence(timeout: 5))
+        XCTAssertTrue(scrollToElement(withId: copyRow.identifier, in: app))
         copyRow.tap()
 
         XCTAssertTrue(app.navigationBars["编辑餐次"].waitForExistence(timeout: 5))
@@ -361,7 +362,8 @@ final class MealReuseUITests: XCTestCase {
             ? app.keyboards.firstMatch.frame.minY
             : bounds.maxY
         let frame = element.frame
-        let bottomBoundary = min(bounds.maxY, keyboardBoundary)
+        let tabBoundary = app.tabBars.firstMatch.isHittable ? app.tabBars.firstMatch.frame.minY : bounds.maxY
+        let bottomBoundary = min(bounds.maxY, keyboardBoundary, tabBoundary)
         return frame.minY >= topBoundary + 4 && frame.maxY <= bottomBoundary - 12
     }
 }

@@ -9,7 +9,7 @@ final class HealthBridgeSmokeTests: XCTestCase {
         app.tabBars.buttons["更多"].tap()
         let settings=app.descendants(matching:.any).matching(identifier:"more-settings").firstMatch
         XCTAssertTrue(settings.waitForExistence(timeout:10));settings.tap()
-        let bridge=app.buttons["健康管家同步（iCloud）"]
+        let bridge=app.descendants(matching:.any).matching(identifier:"settings-bridge").firstMatch
         for _ in 0..<4 { if bridge.isHittable { break };app.swipeUp() }
         XCTAssertTrue(bridge.exists);bridge.tap()
         XCTAssertTrue(app.navigationBars["健康管家同步"].waitForExistence(timeout:10))

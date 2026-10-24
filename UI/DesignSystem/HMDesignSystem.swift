@@ -408,6 +408,7 @@ struct HMProvenanceRail: View {
 }
 
 struct HMEmptyState: View {
+    @Environment(\.hmDisplayMode) private var displayMode
     let title: String
     let message: String
     let icon: String
@@ -453,10 +454,14 @@ struct HMEmptyState: View {
                 text: title,
                 systemImage: icon
             )
-            Text(message)
-                .font(.callout)
-                .foregroundStyle(.primary)
-                .fixedSize(horizontal: false, vertical: true)
+            if displayMode == .cards, tone != .actionRequired {
+                HMHelpText(text: message, title: "查看说明")
+            } else {
+                Text(message)
+                    .font(.callout)
+                    .foregroundStyle(.primary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
 
             if let primaryActionTitle, let primaryAction {
                 Button {
@@ -560,6 +565,7 @@ struct HMIconBadge: View {
 }
 
 struct HMEditorGuide: View {
+    @Environment(\.hmDisplayMode) private var displayMode
     let title: String
     let message: String
     let systemImage: String
@@ -573,15 +579,19 @@ struct HMEditorGuide: View {
                 Text(title)
                     .font(.headline)
                     .foregroundStyle(.primary)
-                Text(message)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+                if displayMode == .cards, tone != .actionRequired {
+                    HMHelpText(text: message)
+                } else {
+                    Text(message)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.vertical, 4)
-        .accessibilityElement(children: .combine)
+        .accessibilityElement(children: .contain)
     }
 }
 
@@ -771,11 +781,7 @@ struct HMLoadingSkeleton: View {
 
 extension View {
     func hmSurface(cornerRadius: CGFloat = HMRadius.panel) -> some View {
-        background(HMColors.surface, in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .stroke(HMColors.separator, lineWidth: 1)
-            }
+        modifier(HMSurfaceStyle(cornerRadius: cornerRadius))
     }
 
     @ViewBuilder
@@ -785,5 +791,19 @@ extension View {
         } else {
             self
         }
+    }
+}
+
+private struct HMSurfaceStyle: ViewModifier {
+    @Environment(\.hmDisplayMode) private var mode
+    let cornerRadius: CGFloat
+    func body(content: Content) -> some View {
+        let radius = mode == .cards ? max(24, cornerRadius) : cornerRadius
+        content
+            .background(HMColors.surface, in: RoundedRectangle(cornerRadius: radius, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: radius, style: .continuous)
+                    .stroke(HMColors.separator.opacity(mode == .cards ? 0.45 : 1), lineWidth: 1)
+            }
     }
 }

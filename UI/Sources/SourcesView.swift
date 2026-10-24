@@ -42,6 +42,12 @@ struct SourcesView: View {
 
     var body: some View {
         List {
+            Section("数据选择") {
+                Text("佳明优先 · Apple Watch 校验补全")
+                HMHelpText(text: "同一场运动只统计一次；佳明缺项或缺测时使用 Apple 有效数据，差异与来源可在运动详情查看。")
+                    .font(.footnote).foregroundStyle(.secondary)
+                NavigationLink("连接管理与设置") { SettingsView() }
+            }
             Section("窗口") {
                 Stepper("过去 \(windowDays) 天", value: $windowDays, in: 7...60, step: 7)
                     .onChange(of: windowDays) {
@@ -86,7 +92,7 @@ struct SourcesView: View {
                 } header: {
                     Text("来源")
                 } footer: {
-                    Text("Garmin、米家等来源通过 Apple 健康样本进入；本 App 不直接连接这些服务。")
+                    Text("此列表统计 Apple 健康中的原始来源。佳明持续健康指标另由中国区 Personal API 读取，可在设置中管理。")
                 }
             }
         }

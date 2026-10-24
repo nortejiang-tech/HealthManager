@@ -71,9 +71,9 @@ final class DashboardIndexMigrationTests: XCTestCase {
                 """, arguments: [todayKey, Int64(today.timeIntervalSince1970)])
             try db.execute(sql: """
                 INSERT INTO body_metrics_daily
-                  (date, weight_kg, bmi, computed_at)
-                VALUES (?, 72.5, 23.1, ?)
-                """, arguments: [todayKey, Int64(today.timeIntervalSince1970)])
+                  (date, weight_kg, bmi, computed_at, sources_json)
+                VALUES (?, 72.5, 23.1, ?, ?)
+                """, arguments: [todayKey, Int64(today.timeIntervalSince1970), try WeightProjection.json(WeightDayProjection(day: todayKey, mean: 72.5, strata: [.init(slot: 1, value: 72.5, eventCount: 1)], acceptedCount: 1, excludedGarminCount: 0, excludedOtherCount: 0, eventCount: 1, sources: ["mijia"]))])
             try db.execute(sql: """
                 INSERT INTO meal_records
                   (meal_type, eaten_at, calories_kcal, protein_g, fat_g, carbs_g, created_at)

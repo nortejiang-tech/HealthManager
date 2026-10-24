@@ -63,7 +63,7 @@ struct WorkoutsView: View {
                 } header: {
                     Text("最近运动（\(rows.count) 次）")
                 } footer: {
-                    Text("补录记录的消耗来自 MET × 体重 × 小时估算；同步记录按原始来源展示。")
+                    Text("补录记录的消耗来自 MET × 体重 × 小时估算；同步记录按同一运动合并，佳明优先、Apple 校验补全。")
                 }
             }
         }
@@ -108,17 +108,11 @@ struct WorkoutsView: View {
             let earliest = cal.date(byAdding: .day, value: -windowDays, to: Date()) ?? Date()
             let earliestEpoch = Int64(earliest.timeIntervalSince1970)
             let loaded = try await environment.database.asyncRead { db -> [ActivityWorkoutRow] in
-                let dbRows = try Row.fetchAll(db, sql: """
-                    SELECT sample_uuid, start_at, end_at, value AS duration,
-                           extra_json, source_name, source_origin
-                    FROM health_samples_raw
-                    WHERE is_deleted = 0
-                      AND hk_type = ?
-                      AND start_at >= ?
-                    ORDER BY start_at DESC
-                    LIMIT 200
-                    """, arguments: ["HKWorkoutTypeIdentifier", earliestEpoch])
-                return dbRows.map(ActivityWorkoutRow.make(from:))
+                let raw = try HealthSampleRaw.fetchAll(db, sql: """
+                    SELECT * FROM health_samples_raw WHERE is_deleted=0 AND hk_type=? AND start_at>=?
+                    ORDER BY start_at DESC LIMIT 1000
+                    """, arguments: [TrainingTypes.workout, earliestEpoch])
+                return ActivityWorkoutRow.canonical(raw).prefix(200).map { $0 }
             }
             await MainActor.run {
                 rows = loaded

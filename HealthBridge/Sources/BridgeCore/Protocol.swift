@@ -43,7 +43,7 @@ public enum BridgeWire {
     public static func folder(_ m: BridgeManifest) -> String { "\(m.epoch)-\(String(format: "%012lld", m.sequence))" }
     public static let types = ["HKCategoryTypeIdentifierSleepAnalysis", "HKQuantityTypeIdentifierStepCount", "HKQuantityTypeIdentifierActiveEnergyBurned", "HKQuantityTypeIdentifierAppleExerciseTime", "HKQuantityTypeIdentifierHeartRate", "HKQuantityTypeIdentifierRestingHeartRate", "HKQuantityTypeIdentifierHeartRateVariabilitySDNN", "HKQuantityTypeIdentifierBodyMass", "HKWorkoutTypeIdentifier"]
     public static let tables: [(name: String, key: String)] = [
-        ("health_samples_raw", "sample_uuid"), ("meal_records", "id"), ("meal_items", "id"),
+        ("workout_events", "id"), ("garmin_daily_metrics", "id"), ("health_samples_raw", "sample_uuid"), ("meal_records", "id"), ("meal_items", "id"),
         ("medication_plans", "id"), ("medication_logs", "id"),
         ("activity_metrics_daily", "date"), ("body_metrics_daily", "date"), ("data_quality_daily", "date")
     ]

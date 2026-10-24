@@ -69,6 +69,9 @@ final class MealPersistenceUITests: XCTestCase {
         XCTAssertTrue(markerCreated)
 
         XCTAssertTrue(markerButton.waitForExistence(timeout: 5))
+        // Scroll history into view, then tap the row's center to cover its
+        // whitespace as well as visible text.
+        XCTAssertTrue(scrollToElement(withId: markerButton.identifier, in: app))
         markerButton.tap()
 
         XCTAssertTrue(app.navigationBars["编辑餐次"].waitForExistence(timeout: 5))
@@ -219,7 +222,8 @@ final class MealPersistenceUITests: XCTestCase {
             ? app.keyboards.firstMatch.frame.minY
             : bounds.maxY
         let frame = element.frame
-        let bottomBoundary = min(bounds.maxY, keyboardBoundary)
+        let tabBoundary = app.tabBars.firstMatch.isHittable ? app.tabBars.firstMatch.frame.minY : bounds.maxY
+        let bottomBoundary = min(bounds.maxY, keyboardBoundary, tabBoundary)
         return frame.minY >= topBoundary + 4 && frame.maxY <= bottomBoundary - 12
     }
 }

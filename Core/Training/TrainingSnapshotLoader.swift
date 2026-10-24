@@ -6,7 +6,7 @@ enum TrainingSnapshotLoader {
     static func load(database: DatabaseManager, now: Date = Date(), calendar: Calendar = .current) async throws -> TrainingSnapshot {
         let begin = calendar.date(byAdding: .day, value: -TrainingCalculator.inputHistoryDays,
                                   to: calendar.startOfDay(for: now))!
-        return try await database.asyncRead { db in
+        let input: (samples: [TrainingSample], parameters: [String: [TrainingMetricValue]]) = try await database.asyncRead { db in
             let placeholders = TrainingTypes.inputs.map { _ in "?" }.joined(separator: ",")
             var args = StatementArguments(TrainingTypes.inputs)
             args += StatementArguments([begin.timeIntervalSince1970, now.timeIntervalSince1970])
@@ -17,13 +17,19 @@ enum TrainingSnapshotLoader {
                 ORDER BY start_at, sample_uuid
                 """, arguments: args)
             let samples = raw.compactMap(sample)
-            var parameters = try TrainingParameterLoader.load(db, now: now, calendar: calendar)
-            let displayStart = calendar.date(byAdding: .day, value: -55, to: calendar.startOfDay(for: now))!
-            parameters[TrainingMetric.heart.id] = TrainingParameterLoader.heartSeries(samples, since: displayStart)
-            var snapshot = TrainingCalculator.snapshot(samples: samples, now: now, calendar: calendar)
-            snapshot.parameters = parameters
-            return snapshot
+            let parameters = try TrainingParameterLoader.load(db, now: now, calendar: calendar)
+            return (samples, parameters)
         }
+        // Release the consistent reader before CPU work, so historical calculations
+        // do not retain a database snapshot while live sync keeps writing.
+        try Task.checkCancellation()
+        var parameters = input.parameters
+        let displayStart = calendar.date(byAdding: .day, value: -55, to: calendar.startOfDay(for: now))!
+        parameters[TrainingMetric.heart.id] = TrainingParameterLoader.heartSeries(input.samples, since: displayStart)
+        var snapshot = TrainingCalculator.snapshot(samples: input.samples, now: now, calendar: calendar)
+        snapshot.parameters = parameters
+        try Task.checkCancellation()
+        return snapshot
     }
 
     static func session(database: DatabaseManager, id: String, now: Date = Date(), calendar: Calendar = .current) async throws -> TrainingSession? {
@@ -69,7 +75,7 @@ enum TrainingSnapshotLoader {
             sourceName: raw.sourceName ?? "来源未标注", origin: raw.sourceOrigin ?? "unknown",
             ingestedAt: Date(timeIntervalSince1970: Double(raw.ingestedAt)),
             activityType: (extra["activityType"] as? NSNumber)?.intValue,
-            duration: (extra["duration"] as? NSNumber)?.doubleValue,
+            duration: (extra["duration"] as? NSNumber)?.doubleValue ?? (raw.hkType == TrainingTypes.workout ? raw.value : nil),
             distance: (extra["totalDistanceMeters"] as? NSNumber)?.doubleValue, motionContext: context,
             energyKcal: (extra["totalEnergyKcal"] as? NSNumber)?.doubleValue)
     }

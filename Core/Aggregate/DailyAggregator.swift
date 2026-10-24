@@ -8,8 +8,8 @@ import GRDB
 /// cumulative quantity (step count / active energy / distance / flights / basal /
 /// exercise minutes / stand minutes / sleep seconds) is sourced from a *single*
 /// dominant device per day. Priority is `SourceAttribution.Origin.cumulativePriority`
-/// (Garmin > Apple > 小米 > …). Non-cumulative metrics (heart rate / HRV / VO2 Max)
-/// are unaffected — they average across all sources.
+/// (Garmin > Apple > 小米 > …). Since 2026-10-23 physiological metrics use the shared selected-source projection;
+/// Garmin overnight HRV remains a separate vendor metric.
 ///
 /// Hooks: invoked at the tail of `BackfillCoordinator.run` (days = 30) and
 /// `IncrementalSyncCoordinator.run` (days = 7). Idempotent — each day is UPSERTed.
@@ -54,8 +54,10 @@ actor DailyAggregator {
         var hrv: Double?
         var vo2Max: Double?
         var sleepSeconds: Double = 0
+        var sourcesJSON: String?
         // Body
         var weight: Double?
+        var bodySourcesJSON: String?
         var bodyFat: Double?
         var bmi: Double?
         var leanMass: Double?
@@ -68,38 +70,42 @@ actor DailyAggregator {
         let snap: DaySnapshot = try database.read { db in
             var d = DaySnapshot()
             d.steps           = try cumulativeSum(db: db, hkType: "HKQuantityTypeIdentifierStepCount", start: s, end: e)
-            d.activeEnergy    = try ActivityEnergyCalculator.dailyActiveEnergyKcal(db: db, start: s, end: e)
+            d.activeEnergy    = try ActivityEnergyCalculator.dailyActiveEnergyKcal(db: db, start: s, end: e, date: date)
             d.basalEnergy     = try cumulativeSum(db: db, hkType: "HKQuantityTypeIdentifierBasalEnergyBurned", start: s, end: e)
             d.distance        = try cumulativeSum(db: db, hkType: "HKQuantityTypeIdentifierDistanceWalkingRunning", start: s, end: e)
             d.exerciseMinutes = try cumulativeSum(db: db, hkType: "HKQuantityTypeIdentifierAppleExerciseTime", start: s, end: e)
             d.standMinutes    = try cumulativeSum(db: db, hkType: "HKQuantityTypeIdentifierAppleStandTime", start: s, end: e)
             d.flightsClimbed  = try cumulativeSum(db: db, hkType: "HKQuantityTypeIdentifierFlightsClimbed", start: s, end: e)
-            d.restingHR       = try avgValue(db: db, hkType: "HKQuantityTypeIdentifierRestingHeartRate", start: s, end: e)
-            d.avgHR           = try avgValue(db: db, hkType: "HKQuantityTypeIdentifierHeartRate", start: s, end: e)
-            d.hrv             = try avgValue(db: db, hkType: "HKQuantityTypeIdentifierHeartRateVariabilitySDNN", start: s, end: e)
-            d.vo2Max          = try avgValue(db: db, hkType: "HKQuantityTypeIdentifierVO2Max", start: s, end: e)
+            d.restingHR       = try avgValue(db: db, hkType: "HKQuantityTypeIdentifierRestingHeartRate", start: s, end: e, selectedPolicy: date >= DailySourceProjection.effectiveDate)
+            d.avgHR           = try avgValue(db: db, hkType: "HKQuantityTypeIdentifierHeartRate", start: s, end: e, selectedPolicy: date >= DailySourceProjection.effectiveDate)
+            d.hrv             = try avgValue(db: db, hkType: "HKQuantityTypeIdentifierHeartRateVariabilitySDNN", start: s, end: e, selectedPolicy: date >= DailySourceProjection.effectiveDate)
+            d.vo2Max          = try avgValue(db: db, hkType: "HKQuantityTypeIdentifierVO2Max", start: s, end: e, selectedPolicy: date >= DailySourceProjection.effectiveDate)
             d.sleepSeconds    = try sleepDuration(db: db, start: s, end: e)
-            // Body composition: average all of the day's measurements (PRD update — user
-            // may weigh in multiple times a day; the daily rollup is the mean, not the last).
-            d.weight          = try avgValue(db: db, hkType: "HKQuantityTypeIdentifierBodyMass", start: s, end: e)
+            if date >= DailySourceProjection.effectiveDate, let vendorSleep = try GarminStore.sleepSeconds(db:db,date:date) { d.sleepSeconds = vendorSleep }
+            // Weight uses trusted scales, repeated-event medians and equal observed clock slots.
+            let weight = try WeightProjection.load(db: db, date: date, calendar: calendar)
+            d.weight = weight.mean
+            d.bodySourcesJSON = try WeightProjection.json(weight)
             d.bodyFat         = try avgValue(db: db, hkType: "HKQuantityTypeIdentifierBodyFatPercentage", start: s, end: e)
             d.bmi             = try avgValue(db: db, hkType: "HKQuantityTypeIdentifierBodyMassIndex", start: s, end: e)
             d.leanMass        = try avgValue(db: db, hkType: "HKQuantityTypeIdentifierLeanBodyMass", start: s, end: e)
             // Height is essentially constant — keep the latest reading rather than averaging.
             d.height          = try latestValue(db: db, hkType: "HKQuantityTypeIdentifierHeight", start: s, end: e)
+            if date >= DailySourceProjection.effectiveDate { d.sourcesJSON = try DailySourceProjection.evidence(db:db,start:s,end:e) }
             return d
         }
 
         let computedAt = Int64(Date().timeIntervalSince1970)
         return try database.write { db in
             var changed = false
+            try WorkoutEventProjection.rebuild(db: db, date: date, start: s, end: e)
             try db.execute(sql: """
                 INSERT INTO activity_metrics_daily
                   (date, step_count, active_energy_kcal, basal_energy_kcal, distance_m,
                    exercise_minutes, stand_minutes, flights_climbed,
                    resting_hr_bpm, avg_hr_bpm, hrv_ms, vo2_max,
                    sleep_seconds, sleep_efficiency, sources_json, computed_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?)
                 ON CONFLICT(date) DO UPDATE SET
                   step_count = excluded.step_count,
                   active_energy_kcal = excluded.active_energy_kcal,
@@ -114,6 +120,7 @@ actor DailyAggregator {
                   vo2_max = excluded.vo2_max,
                   sleep_seconds = excluded.sleep_seconds,
                   sleep_efficiency = excluded.sleep_efficiency,
+                  sources_json = excluded.sources_json,
                   computed_at = excluded.computed_at
                 WHERE activity_metrics_daily.step_count IS NOT excluded.step_count
                    OR activity_metrics_daily.active_energy_kcal IS NOT excluded.active_energy_kcal
@@ -128,6 +135,7 @@ actor DailyAggregator {
                    OR activity_metrics_daily.vo2_max IS NOT excluded.vo2_max
                    OR activity_metrics_daily.sleep_seconds IS NOT excluded.sleep_seconds
                    OR activity_metrics_daily.sleep_efficiency IS NOT excluded.sleep_efficiency
+                   OR activity_metrics_daily.sources_json IS NOT excluded.sources_json
                 """, arguments: [
                     date,
                     snap.steps > 0 ? Int(snap.steps) : nil,
@@ -139,7 +147,7 @@ actor DailyAggregator {
                     snap.flightsClimbed > 0 ? Int(snap.flightsClimbed) : nil,
                     snap.restingHR, snap.avgHR, snap.hrv, snap.vo2Max,
                     snap.sleepSeconds > 0 ? Int(snap.sleepSeconds) : nil,
-                    computedAt
+                    snap.sourcesJSON, computedAt
                 ])
             changed = changed || db.changesCount > 0
 
@@ -148,7 +156,7 @@ actor DailyAggregator {
                   (date, weight_kg, body_fat_pct, bmi, lean_mass_kg, height_m,
                    basal_energy_kcal, visceral_fat_level, muscle_mass_kg, water_pct,
                    protein_pct, sources_json, computed_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, NULL, NULL, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, NULL, ?, ?)
                 ON CONFLICT(date) DO UPDATE SET
                   weight_kg = excluded.weight_kg,
                   body_fat_pct = excluded.body_fat_pct,
@@ -156,6 +164,7 @@ actor DailyAggregator {
                   lean_mass_kg = excluded.lean_mass_kg,
                   height_m = excluded.height_m,
                   basal_energy_kcal = excluded.basal_energy_kcal,
+                  sources_json = excluded.sources_json,
                   computed_at = excluded.computed_at
                 WHERE body_metrics_daily.weight_kg IS NOT excluded.weight_kg
                    OR body_metrics_daily.body_fat_pct IS NOT excluded.body_fat_pct
@@ -163,11 +172,12 @@ actor DailyAggregator {
                    OR body_metrics_daily.lean_mass_kg IS NOT excluded.lean_mass_kg
                    OR body_metrics_daily.height_m IS NOT excluded.height_m
                    OR body_metrics_daily.basal_energy_kcal IS NOT excluded.basal_energy_kcal
+                   OR body_metrics_daily.sources_json IS NOT excluded.sources_json
                 """, arguments: [
                     date,
                     snap.weight, snap.bodyFat, snap.bmi, snap.leanMass, snap.height,
                     snap.basalEnergy > 0 ? snap.basalEnergy : nil,
-                    computedAt
+                    snap.bodySourcesJSON, computedAt
                 ])
             changed = changed || db.changesCount > 0
             return changed
@@ -182,8 +192,12 @@ actor DailyAggregator {
         try ActivityEnergyCalculator.cumulativeSum(db: db, hkType: hkType, start: start, end: end)
     }
 
-    /// Average across all sources — heart rate / HRV / VO2 are instantaneous, no double-counting.
-    private func avgValue(db: Database, hkType: String, start: Int64, end: Int64) throws -> Double? {
+    /// Physiological metrics use selected sources after the effective date; body/legacy means retain their established behavior.
+    private func avgValue(db: Database, hkType: String, start: Int64, end: Int64, selectedPolicy: Bool = false) throws -> Double? {
+        let selectedTypes = [TrainingTypes.heart, TrainingTypes.resting, TrainingTypes.hrv, "HKQuantityTypeIdentifierVO2Max"]
+        if selectedTypes.contains(hkType), selectedPolicy {
+            return try DailySourceProjection.average(db: db, type: hkType, start: start, end: end)
+        }
         let row = try Row.fetchOne(db, sql: """
             SELECT AVG(value) AS v, COUNT(*) AS c
             FROM health_samples_raw

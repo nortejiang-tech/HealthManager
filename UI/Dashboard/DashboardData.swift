@@ -135,6 +135,7 @@ struct SleepCardData: Sendable, Equatable {
 
 struct BodyCardData: Sendable, Equatable {
     var latestWeight: Double?
+    var weightEvidence: WeightDayProjection?
     var latestBodyFatPct: Double?
     var latestLeanMass: Double?
     var latestBmi: Double?
@@ -251,15 +252,24 @@ struct DashboardLoader {
 
             // -- body (latest + 30d) --
             if let row = try Row.fetchOne(db, sql: """
-                SELECT weight_kg, body_fat_pct, lean_mass_kg, bmi
+                SELECT date, sources_json, weight_kg, body_fat_pct, lean_mass_kg, bmi
                 FROM body_metrics_daily
                 WHERE weight_kg IS NOT NULL OR body_fat_pct IS NOT NULL OR bmi IS NOT NULL
                 ORDER BY date DESC LIMIT 1
                 """) {
-                snap.body_.latestWeight = row["weight_kg"]
+                snap.body_.weightEvidence = WeightProjection.decode(row["sources_json"])
+                snap.body_.latestWeight = snap.body_.weightEvidence?.mean
                 snap.body_.latestBodyFatPct = row["body_fat_pct"]
                 snap.body_.latestLeanMass = row["lean_mass_kg"]
                 snap.body_.latestBmi = row["bmi"]
+            }
+            if let row = try Row.fetchOne(db, sql: """
+                SELECT sources_json FROM body_metrics_daily
+                WHERE weight_kg IS NOT NULL AND json_valid(sources_json)
+                  AND json_extract(sources_json,'$.weightPolicyVersion')=? ORDER BY date DESC LIMIT 1
+                """, arguments: [WeightAggregationPolicy.version]) {
+                snap.body_.weightEvidence = WeightProjection.decode(row["sources_json"])
+                snap.body_.latestWeight = snap.body_.weightEvidence?.mean
             }
             // BMI may live on a different day than weight, so back-fill from the
             // most recent BMI row if the latest weight-row had no BMI.
@@ -485,19 +495,26 @@ struct DashboardLoader {
 
         return try await database.asyncRead { db in
             let rows = try Row.fetchAll(db, sql: """
-                SELECT sample_uuid, start_at, value, source_name, source_origin
+                SELECT sample_uuid, start_at, value, source_name, source_origin, source_bundle_id
                 FROM health_samples_raw
                 WHERE hk_type = ? AND is_deleted = 0 AND start_at BETWEEN ? AND ?
                 ORDER BY start_at ASC
                 """, arguments: [hkType, s, e])
             return rows.map { r in
-                let origin = SourceAttribution.Origin(rawValue: r["source_origin"] ?? "unknown")?.label
+                let bundle: String = r["source_bundle_id"] ?? ""
+                let rawOrigin: String = r["source_origin"] ?? ""
+                let rawName: String = r["source_name"] ?? ""
+                let classified = SourceAttribution.classify(bundleId: bundle, sourceName: rawName)
+                let isGarmin = classified == .garmin || rawOrigin.lowercased().contains("garmin")
+                let trusted = classified == .xiaomiMijia || rawOrigin == "xiaomiMijia"
+                let suffix = hkType == "HKQuantityTypeIdentifierBodyMass" ? (isGarmin ? " · 手填体重，已排除" : (trusted ? " · 体重秤记录" : " · 未确认体重秤，已排除")) : ""
+                let origin = SourceAttribution.Origin(rawValue: rawOrigin)?.label
                 let sname: String? = r["source_name"]
                 return BodyMeasurementSample(
                     id: r["sample_uuid"] ?? UUID().uuidString,
                     time: Date(timeIntervalSince1970: TimeInterval(r["start_at"] ?? 0)),
                     value: r["value"] ?? 0,
-                    source: origin ?? sname ?? "未知来源"
+                    source: (origin ?? sname ?? "未知来源") + suffix
                 )
             }
         }
@@ -580,6 +597,7 @@ struct DashboardLoader {
         let rows = try Row.fetchAll(db, sql: """
             SELECT date, \(column) AS val FROM \(table)
             WHERE date BETWEEN ? AND ? AND \(column) IS NOT NULL
+              \(table == "body_metrics_daily" && column == "weight_kg" ? "AND json_valid(sources_json) AND json_extract(sources_json,'$.weightPolicyVersion')='weight-time-strata-v1'" : "")
             ORDER BY date ASC
             """, arguments: [fromKey, toKey])
         return rows.compactMap { row in

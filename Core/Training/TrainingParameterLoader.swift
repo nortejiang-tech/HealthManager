@@ -12,14 +12,14 @@ enum TrainingParameterLoader {
         for metric in TrainingMetric.allCases {
             if let daily = metric.daily {
                 // Column/table names come only from the closed metric catalog.
-                let rows = try Row.fetchAll(db, sql: "SELECT date, \(daily.column) AS value FROM \(daily.table) WHERE date >= ? AND date <= ? AND \(daily.column) IS NOT NULL ORDER BY date", arguments: [firstKey, lastKey])
+                let rows = try Row.fetchAll(db, sql: "SELECT date, \(daily.column) AS value FROM \(daily.table) WHERE date >= ? AND date <= ? AND \(daily.column) IS NOT NULL \(metric == .weight ? "AND json_valid(sources_json) AND json_extract(sources_json,'$.weightPolicyVersion')='weight-time-strata-v1'" : "") ORDER BY date", arguments: [firstKey, lastKey])
                 result[metric.id] = rows.compactMap { row in
                     guard let key: String = row["date"], let date = formatter.date(from: key),
                           let value: Double = row["value"], value.isFinite, value >= 0 else { return nil }
                     let converted = value * daily.multiplier
                     guard converted.isFinite else { return nil }
                     return TrainingMetricValue(id: key, date: date, value: converted,
-                        source: "daily", sourceName: "本机日汇总（可能含多来源）")
+                        source: "daily", sourceName: metric == .weight ? "可信秤 · 分时均值" : "本机日汇总（可能含多来源）")
                 }
             } else if let type = metric.rawType {
                 let rows = try HealthSampleRaw.fetchAll(db, sql: """

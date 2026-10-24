@@ -2,6 +2,7 @@ import SwiftUI
 
 struct RootView: View {
     @EnvironmentObject private var healthKit: HealthKitManager
+    @AppStorage(HMDisplayMode.storageKey) private var displayMode = HMDisplayMode.cards.rawValue
 
     var body: some View {
         Group {
@@ -17,6 +18,9 @@ struct RootView: View {
                 AuthorizationUnavailableView()
             }
         }
+        .environment(\.hmDisplayMode, HMDisplayMode.resolve(displayMode))
+        .fontDesign(HMDisplayMode.resolve(displayMode) == .cards ? .rounded : .default)
+        .tint(HMDisplayMode.resolve(displayMode) == .cards ? HMAccent.jade.color : HMColors.comparison)
         .onChange(of: healthKit.authorizationGate) { _, _ in
             AppEnvironment.shared.onAuthorizationChange()
         }

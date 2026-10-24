@@ -2,6 +2,8 @@
 
 iOS 健康数据管理 App。聚合 Apple Health 中各来源（Garmin / 米家 / Apple Watch / 华为 / 手动）的体重、活动、心血管、睡眠、饮食等数据，做自动同步、数据质量对账、日报/周报；可选接入 OpenAI-compatible LLM 做摘要评注和餐食图片营养估算。
 
+当前版本 **0.11.0（28）**：佳明中国区 Personal API、Garmin 优先的双源融合、健康速报与 AI 解读弹窗、分时体重统计。更新内容及验证边界见 [发布说明](docs/releases/v0.11.0.md)。
+
 V1 已交付：详见 `WORKLOG.md` 末尾「V1 交付摘要」节。
 
 ## 前置条件
@@ -112,7 +114,7 @@ find App Core UI -name "*.swift" -print0 | xargs -0 swiftc -typecheck \
 ## 关键技术点（看代码前先了解）
 
 - **HealthKit 不预过滤来源**（PRD §4.1）：`allReadSampleTypes` 全集订阅；归因只在采集后用 `SourceAttribution` 标签化，不删样本
-- **去重**：`health_samples_raw.sample_uuid` 是 PK，`INSERT OR IGNORE` 兜重复；v7/v8 起再按「规范读数」`(hk_type, start_at, ROUND(value,3), unit)` 加部分唯一索引（`WHERE is_deleted = 0`），两个 App 各自写入的**同一物理读数**（含 float 表示噪声，如 82.84999847 vs 82.85）也只保留一条（保留来源优先级更高者）
+- **原始记录与双源融合**：原始样本以 HealthKit UUID 保持身份。v16 移除跨来源规范读数唯一索引，保留多端证据；v17 的运动事件投影匹配同场记录，佳明有效数据优先，Apple 数据用于交叉校验和补全，避免重复累加。旧迁移中已被压掉的记录不会被无条件复活。
 - **删除**：HK 删的 UUID → `is_deleted = 1`（软删，不物理删除）
 - **Anchor 持久化**：`HKQueryAnchor` 走 `NSKeyedArchiver.archivedData(requiringSecureCoding: true)` 存 `sync_anchors.anchor_data` BLOB
 - **状态机**：`SyncStateMachine` 是 PRD §5 状态机；backfill / incremental / manual 三条路径都通过它

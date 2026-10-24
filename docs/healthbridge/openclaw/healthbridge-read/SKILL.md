@@ -1,6 +1,6 @@
 ---
 name: healthbridge-read
-description: Read the user's synced Apple Health, meals and medication records from the local HealthManagerBridge store when answering health-history questions.
+description: Read synced Apple Health, Garmin wellness, fused workouts, meals and medication records from the local HealthManagerBridge store when answering health-history questions.
 ---
 
 This is the health agent's established Apple Health path. When the user asks whether an Apple Health path exists, state that this local read-only HealthBridge path is available and run the status check; do not ask the user to supply a separate file path, URL, token, or third-party service unless this command itself is unavailable.
@@ -23,7 +23,11 @@ Tools and arguments:
 - health_records: category, from, to; optional source, type, offset, limit.
 - health_compare: metric, fromA, toA, fromB, toB.
 
-Dates use yyyy-MM-dd, inclusive. Metrics: weight, steps, active_energy, exercise_minutes, heart_rate, resting_heart_rate, hrv_daily_mean, sleep_duration, calorie_intake, calorie_deficit. Categories: health_samples_raw, meal_records, meal_items, medication_plans, medication_logs, activity_metrics_daily, body_metrics_daily, data_quality_daily. Page through results using offset and limit (1–1000) when the requested scope exceeds a page; only a completed stable replica is queryable.
+Dates use yyyy-MM-dd, inclusive. Metrics: weight, steps, active_energy, exercise_minutes, heart_rate, resting_heart_rate, hrv_daily_mean, sleep_duration, calorie_intake, calorie_deficit. Categories: health_samples_raw, meal_records, meal_items, medication_plans, medication_logs, activity_metrics_daily, body_metrics_daily, data_quality_daily, workout_events, garmin_daily_metrics. Page through results using offset and limit (1–1000) when the requested scope exceeds a page; only a completed stable replica is queryable.
+
+For Garmin HRV, Body Battery, stress or sleep scores, read `health_daily_summary.result.garmin` or the `garmin_daily_metrics` category. Preserve measurement date, request date, state and missing values; a historical payload retained after a failed refresh is not a new measurement. Garmin overnight HRV and HealthKit SDNN are separate measurements. Attribute account aggregates to Garmin Connect unless a device identifier proves CIRQA attribution.
+
+For workouts starting 2026-10-23, use `health_workouts` canonical events: Garmin valid evidence takes priority, Apple validates and fills missing fields or intervals, and a matched event counts once. Read contributor and source metadata for corrections. `pendingProjection=true` means processing is incomplete; original evidence remains in `health_records`. Earlier workout rows retain legacy behavior.
 
 For a daily food or calorie-balance question, call `health_daily_summary` first. Read its `nutrition` and `energyBalance` sections, then call `health_meals` only when the person asked for meal-by-meal detail. The fixed balance formula is basal energy + active energy − complete logged calorie intake. State a deficit only when `energyBalance.status` is `complete`; otherwise explain its returned status and do not turn missing or incomplete input into zero. Use `calorie_intake` or `calorie_deficit` history for date-range trends; preserve the returned gaps.
 

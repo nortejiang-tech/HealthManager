@@ -4,6 +4,8 @@ import SwiftUI
 /// 所有 DB 查询通过 `DatabaseManager.asyncRead` 走后台执行器，不阻塞主线程。
 struct DashboardView: View {
     @EnvironmentObject private var environment: AppEnvironment
+    @Environment(\.scenePhase) private var scenePhase
+    @AppStorage(HealthBriefManager.autoKey) private var autoBriefAI = false
     @EnvironmentObject private var sync: SyncEngine
 
     @StateObject private var layout = DashboardLayoutStore()
@@ -62,8 +64,17 @@ struct DashboardView: View {
             }
             .navigationDestination(isPresented: $showAlerts) { AlertsView() }
             .navigationDestination(isPresented: $showQuality) { DataQualityDetailView() }
-            .refreshable { await refresh() }
-            .task { await refresh() }
+            .refreshable { await refresh(); await environment.healthBrief.refresh(forceTraining: true) }
+            .onChange(of: scenePhase) { _, phase in if phase == .active { Task { await environment.healthBrief.refresh() } } }
+            .onChange(of: autoBriefAI) { _, _ in Task { await environment.healthBrief.refresh() } }
+            .task {
+                await refresh(); await environment.healthBrief.refresh()
+#if DEBUG
+                await environment.healthBrief.retryAuthorizedDeveloperRequestOnce()
+#endif
+            }
+            .onChange(of: environment.localDataTick) { _, _ in Task { await environment.healthBrief.refresh(forceTraining: true) } }
+            .onChange(of: sync.aggregationTick) { _, _ in Task { await environment.healthBrief.refresh(forceTraining: true) } }
             .onChange(of: sync.aggregationTick) { _, _ in
                 scheduleCoalescedRefresh()
             }
@@ -290,16 +301,16 @@ private struct DashboardLoadingHero: View {
 
 private struct DashboardCardGrid: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.dynamicTypeSize) private var typeSize
 
     let isLoading: Bool
     let visibleCards: [DashboardCardKind]
     let onMetricTap: (MetricRoute) -> Void
     let cardView: (DashboardCardKind) -> AnyView
 
-    private let cardGrid: [GridItem] = [
-        GridItem(.flexible(), spacing: 12),
-        GridItem(.flexible(), spacing: 12)
-    ]
+    private var cardGrid: [GridItem] {
+        Array(repeating: GridItem(.flexible(), spacing: 12), count: typeSize.isAccessibilitySize ? 1 : 2)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {

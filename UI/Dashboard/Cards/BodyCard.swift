@@ -7,14 +7,15 @@ struct BodyCard: View {
     var body: some View {
         DashboardCard(
             theme: .body, icon: "figure.arms.open", title: "体重 / 体成分",
-            accessory: { TrendChip(series: data.last30Days, lowerIsBetter: true, theme: .body) }
+            accessory: { Image(systemName: "clock").foregroundStyle(.secondary) }
         ) {
             if let w = data.latestWeight {
-                CardMetric(value: String(format: "%.1f", w), unit: "kg", theme: .body)
+                CardMetric(value: WeightAggregationPolicy.displayKilograms(w), unit: "kg", theme: .body)
             } else {
                 CardMetric(value: "—", unit: nil)
             }
 
+            Text((data.weightEvidence.map { $0.day + " · " } ?? "") + WeightProjection.caption(data.weightEvidence)).font(.caption2).foregroundStyle(.secondary)
             VStack(alignment: .leading, spacing: 1) {
                 if let fat = data.latestBodyFatPct {
                     Text(String(format: "体脂 %.1f%%", fat * 100))

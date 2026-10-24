@@ -35,6 +35,7 @@ enum NutritionFormatting {
 /// 「营养表」页：参考食材（个人参考表，可整理）与我的常吃两段切换。
 /// 页面只读目录与本地统计；只有「加入饮食」→ 编辑器 → 保存才走写链路（§3 导航合同）。
 struct NutritionView: View {
+    @Environment(\.hmDisplayMode) private var displayMode
     enum PageSegment: String, CaseIterable, Identifiable {
         case reference
         case frequent
@@ -242,6 +243,18 @@ struct NutritionView: View {
         ScrollViewReader { proxy in
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
+                    if displayMode == .cards {
+                        HStack(spacing: 14) {
+                            Image(systemName: "carrot.fill")
+                                .font(.largeTitle).foregroundStyle(HMAccent.coral.color)
+                                .accessibilityHidden(true)
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("吃得明白").font(.title2.weight(.bold))
+                                Text("参考食材 · 常吃配方").font(.subheadline).foregroundStyle(.secondary)
+                            }
+                        }.hmCard(accent: .coral)
+                        .accessibilityIdentifier("nutrition-vibrant-header")
+                    }
                     segmentPicker
 
                     if segment == .reference {
@@ -774,6 +787,8 @@ struct NutritionReferencePanel: View {
 
 /// 目录行：名称+生熟/加工状态、热量大数右对齐；第二行蛋白/脂肪/碳水。
 struct NutritionEntryRow: View {
+    @Environment(\.hmDisplayMode) private var displayMode
+    @Environment(\.dynamicTypeSize) private var typeSize
     let entry: FoodCatalogEntry
 
     var body: some View {
@@ -798,16 +813,25 @@ struct NutritionEntryRow: View {
                         .foregroundStyle(.secondary)
                 }
             }
-            HStack(spacing: 10) {
-                Text("蛋白质 \(NutritionFormatting.macro(entry.nutrients.proteinG)) g")
-                Text("脂肪 \(NutritionFormatting.macro(entry.nutrients.fatG)) g")
-                Text("碳水 \(NutritionFormatting.macro(entry.nutrients.carbsG)) g")
-                Spacer()
+            if displayMode == .cards {
+                let layout = typeSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: 6)) : AnyLayout(HStackLayout(spacing: 12))
+                layout {
+                    macroLabel("蛋白", entry.nutrients.proteinG, .coral)
+                    macroLabel("脂肪", entry.nutrients.fatG, .amber)
+                    macroLabel("碳水", entry.nutrients.carbsG, .sky)
+                }
+            } else {
+                HStack(spacing: 10) {
+                    Text("蛋白质 \(NutritionFormatting.macro(entry.nutrients.proteinG)) g")
+                    Text("脂肪 \(NutritionFormatting.macro(entry.nutrients.fatG)) g")
+                    Text("碳水 \(NutritionFormatting.macro(entry.nutrients.carbsG)) g")
+                    Spacer()
+                }
+                .font(.caption.monospacedDigit())
+                .foregroundStyle(.secondary)
             }
-            .font(.caption.monospacedDigit())
-            .foregroundStyle(.secondary)
             HStack(spacing: 4) {
-                Text("\(entry.basis.displayUnit) · \(entry.source) 官方成分表")
+                Text("\(entry.basis.displayUnit) · \(entry.source)\(displayMode == .classic ? " 官方成分表" : "")")
                 if NutritionFormatting.isEstimated(entry.nutrients.kcal) {
                     Text("含官方推定值")
                 }
@@ -819,6 +843,14 @@ struct NutritionEntryRow: View {
         .padding(.vertical, 10)
         .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(Rectangle())
+    }
+
+    private func macroLabel(_ title: String, _ nutrient: FoodCatalogNutrient, _ accent: HMAccent) -> some View {
+        HStack(spacing: 4) {
+            Circle().fill(accent.color).frame(width: 5, height: 5).accessibilityHidden(true)
+            Text("\(title) \(NutritionFormatting.macro(nutrient)) g")
+                .font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+        }
     }
 }
 

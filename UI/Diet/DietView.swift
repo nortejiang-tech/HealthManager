@@ -311,6 +311,8 @@ private struct DietDayPickerSheet: View {
 }
 
 private struct DietScreenContent: View {
+    @Environment(\.hmDisplayMode) private var displayMode
+    @Environment(\.dynamicTypeSize) private var typeSize
     let loadState: DietLoadState
     let meals: [MealRecord]
     let todayNutrition: MealNutritionEvidenceWindow?
@@ -333,10 +335,13 @@ private struct DietScreenContent: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
+                if displayMode == .cards { evidencePanel }
                 searchField
                 dayFilterChips
 
-                if loadState.hasUsableContent, !meals.isEmpty {
+                if displayMode == .cards {
+                    mealList
+                } else if loadState.hasUsableContent, !meals.isEmpty {
                     mealList
                     evidencePanel
                 } else {
@@ -396,11 +401,13 @@ private struct DietScreenContent: View {
     }
 
     private var dayFilterChips: some View {
-        HStack(spacing: 8) {
+        let stacked = displayMode == .cards && typeSize.isAccessibilitySize
+        let layout = stacked ? AnyLayout(VStackLayout(alignment: .leading, spacing: 8)) : AnyLayout(HStackLayout(spacing: 8))
+        return layout {
             chip(title: "全部日期", isSelected: filterDay == nil, action: onClearDayFilter)
             chip(title: "今天", isSelected: isTodayFilter, action: onPickToday)
             chip(title: filterDay == nil || isTodayFilter ? "选日期…" : selectedDayLabel, isSelected: !isTodayFilter && filterDay != nil, action: onOpenDayPicker)
-            Spacer()
+            if !stacked { Spacer() }
             if let totalCount {
                 Text("共 \(totalCount) 条")
                     .font(.caption.monospacedDigit())
@@ -460,6 +467,8 @@ private struct DietScreenContent: View {
 }
 
 private struct DietEvidencePanel: View {
+    @Environment(\.hmDisplayMode) private var displayMode
+    @Environment(\.dynamicTypeSize) private var typeSize
     let loadState: DietLoadState
     let nutrition: MealNutritionEvidenceWindow?
 
@@ -528,10 +537,12 @@ private struct DietEvidencePanel: View {
                 .accessibilityLabel("正在读取今日营养汇总")
             } else {
                 VStack(alignment: .leading, spacing: 12) {
-                    HStack(spacing: 4) {
+                    let stacked = displayMode == .cards && typeSize.isAccessibilitySize
+                    let layout = stacked ? AnyLayout(VStackLayout(alignment: .leading, spacing: 8)) : AnyLayout(HStackLayout(spacing: 4))
+                    layout {
                         Text("今日营养汇总")
                             .font(.title3.weight(.semibold))
-                        Spacer(minLength: 4)
+                        if !stacked { Spacer(minLength: 4) }
                         HMEvidenceTag(
                             tone: EvidenceTone.forDietLoadState(loadState, calories: nutrition?.calories),
                             text: statusHint,
@@ -540,7 +551,17 @@ private struct DietEvidencePanel: View {
                         .font(.footnote)
                     }
 
-                    HStack(spacing: 0) {
+                    if displayMode == .cards {
+                        Text(calText)
+                            .font(.system(.largeTitle, design: .rounded, weight: .bold))
+                            .monospacedDigit()
+                            .foregroundStyle(HMAccent.amber.color)
+                            .accessibilityIdentifier("diet-calorie-total")
+                        HMMacroStrip(protein: nutrition?.totals?.proteinG,
+                                     fat: nutrition?.totals?.fatG,
+                                     carbs: nutrition?.totals?.carbsG)
+                    } else {
+                        HStack(spacing: 0) {
                         DietMetricCell(label: "热量", value: calText)
                         Divider().overlay(HMColors.separator)
                         DietMetricCell(label: "蛋白", value: proteinText)
@@ -548,6 +569,7 @@ private struct DietEvidencePanel: View {
                         DietMetricCell(label: "脂肪", value: fatText)
                         Divider().overlay(HMColors.separator)
                         DietMetricCell(label: "碳水", value: carbText)
+                        }
                     }
 
                     if let totals = nutrition?.totals,
@@ -563,7 +585,12 @@ private struct DietEvidencePanel: View {
             }
         }
         .padding(16)
-        .hmSurface()
+        .background(displayMode == .cards ? HMAccent.amber.soft : HMColors.surface,
+                    in: RoundedRectangle(cornerRadius: displayMode == .cards ? 26 : HMRadius.card))
+        .overlay {
+            RoundedRectangle(cornerRadius: displayMode == .cards ? 26 : HMRadius.card)
+                .stroke(displayMode == .cards ? HMAccent.amber.color.opacity(0.18) : HMColors.separator, lineWidth: 1)
+        }
     }
 }
 
@@ -647,6 +674,10 @@ private struct DietMealListPanel: View {
                                 } label: {
                                     MealRow(meal: meal)
                                         .padding(.vertical, 2)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                        // Plain buttons hit-test their label. Keep the
+                                        // card's whitespace tappable after reducing text.
+                                        .contentShape(Rectangle())
                                 }
                                 .buttonStyle(.plain)
                                 .contentShape(Rectangle())
@@ -697,6 +728,7 @@ private struct DietMealListPanel: View {
 }
 
 private struct MealRow: View {
+    @Environment(\.hmDisplayMode) private var displayMode
     let meal: MealRecord
 
     var body: some View {
@@ -740,7 +772,16 @@ private struct MealRow: View {
                     Spacer()
                     Text(dateLabel).font(.footnote).foregroundStyle(.secondary)
                 }
-                HStack(spacing: 8) {
+                if displayMode == .cards {
+                    Text(nutritionText(meal.caloriesKcal, prefix: "", suffix: " kcal"))
+                        .font(.title3.weight(.semibold).monospacedDigit())
+                        .foregroundStyle(HMAccent.amber.color)
+                    if [meal.caloriesKcal, meal.proteinG, meal.fatG, meal.carbsG].contains(where: { MealNutritionProjection.validatedValue($0) == nil }) {
+                        Label("营养未完整", systemImage: "exclamationmark.circle")
+                            .font(.caption).foregroundStyle(HMColors.warning)
+                    }
+                } else {
+                    HStack(spacing: 8) {
                     Text(nutritionText(meal.caloriesKcal, prefix: "", suffix: " kcal"))
                     Text(nutritionText(meal.proteinG, prefix: "蛋白 ", suffix: "g"))
                     Text(nutritionText(meal.fatG, prefix: "脂肪 ", suffix: "g"))
@@ -753,9 +794,21 @@ private struct MealRow: View {
                 if let notes = meal.notes, !notes.isEmpty {
                     Text(notes).font(.footnote).foregroundStyle(.secondary).lineLimit(2)
                 }
+                }
             }
         }
         .padding(.vertical, 2)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(accessibilitySummary)
+    }
+
+    private var accessibilitySummary: String {
+        [meal.mealType.label, dateLabel,
+         nutritionText(meal.caloriesKcal, prefix: "热量 ", suffix: " kcal"),
+         nutritionText(meal.proteinG, prefix: "蛋白质 ", suffix: " g"),
+         nutritionText(meal.fatG, prefix: "脂肪 ", suffix: " g"),
+         nutritionText(meal.carbsG, prefix: "碳水 ", suffix: " g"), meal.notes ?? ""]
+            .filter { !$0.isEmpty }.joined(separator: "，")
     }
 
     private var dateLabel: String {

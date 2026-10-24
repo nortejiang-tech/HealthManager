@@ -1,7 +1,7 @@
 import Foundation
 
 /// Feature-local immutable inputs. No HealthKit queries or writes in the calculator.
-struct TrainingSample: Sendable {
+struct TrainingSample: Sendable, Hashable {
     var id: String
     var type: String
     var value: Double

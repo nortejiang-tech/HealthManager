@@ -34,6 +34,7 @@ public enum BridgeSource {
         """)
         try db.execute(sql: "INSERT INTO bridge_state(id,dataset) VALUES(1,?)", arguments: [UUID().uuidString])
         for spec in BridgeWire.tables {
+            guard try db.tableExists(spec.name) else { continue }
             for action in ["INSERT", "UPDATE", "DELETE"] {
                 let ref = action == "DELETE" ? "OLD" : "NEW"
                 try db.execute(sql: """
@@ -72,9 +73,9 @@ public enum BridgeSource {
         if table == "health_samples_raw" {
             let type: String = row["hk_type"]; let start: Double = row["start_at"]; let deleted: Bool = row["is_deleted"]
             if !BridgeWire.types.contains(type) || start < since || deleted { return BridgeRecord(table: table, key: key, json: nil) }
-        } else if BridgeWire.tables.first(where: { $0.name == table })?.key == "date" {
+        } else if row.hasColumn("date"), let day: String = row["date"] {
             let formatter = DateFormatter(); formatter.dateFormat = "yyyy-MM-dd"; formatter.timeZone = TimeZone(identifier: zone)
-            if key < formatter.string(from: Date(timeIntervalSince1970: since)) { return BridgeRecord(table: table, key: key, json: nil) }
+            if day < formatter.string(from: Date(timeIntervalSince1970: since)) { return BridgeRecord(table: table, key: key, json: nil) }
         }
         return BridgeRecord(table: table, key: key, json: try BridgeWire.json(object))
     }
@@ -99,6 +100,7 @@ public enum BridgeSource {
                 chunk.removeAll(keepingCapacity: true)
             }
             for spec in BridgeWire.tables {
+                guard try db.tableExists(spec.name) else { continue }
                 let rows = try Row.fetchCursor(db, sql: "SELECT *, CAST(\(spec.key) AS TEXT) AS bridge_key FROM \(spec.name) ORDER BY \(spec.key)")
                 while let row = try rows.next() {
                     // A snapshot can contain millions of rows in one writer task.

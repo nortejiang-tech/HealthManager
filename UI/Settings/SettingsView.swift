@@ -2,7 +2,7 @@ import SwiftUI
 import GRDB
 import UserNotifications
 
-struct SettingsView: View {
+struct AdvancedSettingsView: View {
     @EnvironmentObject private var environment: AppEnvironment
     @EnvironmentObject private var healthKit: HealthKitManager
     @EnvironmentObject private var backup: BackupManager
@@ -27,6 +27,15 @@ struct SettingsView: View {
 
     var body: some View {
         List {
+            Section("显示与连接") {
+                NavigationLink { AppearanceSettingsView() } label: {
+                    Label("显示模式", systemImage: "rectangle.grid.2x2")
+                }.accessibilityIdentifier("settings-appearance")
+                NavigationLink { GarminConnectionView(manager: environment.garmin) } label: {
+                    Label("佳明 Personal API", systemImage: "watchface.applewatch.case")
+                }
+                .accessibilityIdentifier("settings-garmin")
+            }
             Section {
                 HMDecisionLens(
                     title: "默认存本机，可选同步与 AI",
@@ -66,7 +75,7 @@ struct SettingsView: View {
             Section("健康管家") {
                 NavigationLink("健康管家同步（iCloud）") {
                     HealthBridgeSettingsView(bridge: environment.healthBridge)
-                }
+                }.accessibilityIdentifier("settings-bridge")
             }
 
             Section("应用") {
@@ -414,7 +423,7 @@ struct SettingsView: View {
 
 /// 数据备份区（独立子视图：选择位置 / 立即备份 / 恢复历史数据）。
 /// 契约见 docs/adr/ADR-003 与 docs/export-schema.md。
-private struct BackupSection: View {
+struct BackupSection: View {
     @EnvironmentObject private var backup: BackupManager
 
     @State private var showLocationPicker = false
@@ -528,7 +537,7 @@ private struct ExportDatabaseSnapshot: Identifiable {
     var id: String { url.absoluteString }
 }
 
-private struct AppleHealthPermissionEvidenceView: View {
+struct AppleHealthPermissionEvidenceView: View {
     @ObservedObject var healthKit: HealthKitManager
     @Environment(\.openURL) private var openURL
 

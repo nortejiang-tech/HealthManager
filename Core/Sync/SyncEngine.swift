@@ -559,6 +559,7 @@ final class SyncEngine: ObservableObject {
                     // No system statistic for this day → keep whatever DailyAggregator
                     // already projected. Never NULL out an aggregated value.
                     guard let stepCount else { continue }
+                    if try DailySourceProjection.hasSelectedRaw(db: db, date: date, type: "HKQuantityTypeIdentifierStepCount", calendar: calendar) { continue }
                     try db.execute(sql: """
                         INSERT INTO activity_metrics_daily (date, step_count, computed_at)
                         VALUES (?, ?, ?)
@@ -603,6 +604,7 @@ final class SyncEngine: ObservableObject {
                     // No system statistic for this day → keep whatever DailyAggregator
                     // already projected. Never NULL out an aggregated value.
                     guard let basalKcal else { continue }
+                    if try DailySourceProjection.hasSelectedRaw(db: db, date: date, type: "HKQuantityTypeIdentifierBasalEnergyBurned", calendar: calendar) { continue }
                     try db.execute(sql: """
                         INSERT INTO activity_metrics_daily (date, basal_energy_kcal, computed_at)
                         VALUES (?, ?, ?)

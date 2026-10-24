@@ -12,6 +12,7 @@ import UIKit
 struct LLMSettingsView: View {
     @Environment(\.dismiss) private var dismiss
 
+    @AppStorage(HealthBriefManager.autoKey) private var autoBriefAI = false
     @State private var enabled: Bool = LLMConfig.enabled
     @State private var baseURL: String = LLMConfig.baseURL
     @State private var textModel: String = LLMConfig.textModel
@@ -53,6 +54,14 @@ struct LLMSettingsView: View {
             } footer: {
                 Text("关闭后本地摘要、餐食手工编辑和保存仍可使用；不会自动请求任何模型服务。")
             }
+
+            Section {
+                Toggle("自动生成健康速报解读", isOn: $autoBriefAI)
+                    .accessibilityIdentifier("settings-health-brief-auto")
+                    .disabled(!enabled)
+                Text("启用后在 App 前台按新事实生成，每天最多三次。只发送睡眠评分、夜间 HRV 与基线、Body Battery 分段观测、近七／二十八夜统计和去重后的训练负荷摘要；包含日期及来源类别，不发送原始逐点样本、身份或用药信息。使用下方文本模型与 Key。手动点击速报的 AI 解读也会发送上述内容。")
+                    .font(.footnote).foregroundStyle(.secondary)
+            } header: { Text("健康速报") }
 
             profileSection
 

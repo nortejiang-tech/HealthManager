@@ -75,7 +75,8 @@ enum TrainingMetric: String, CaseIterable, Identifiable, Sendable {
         case .vo2, .runPace, .runHeart, .recovery60, .recovery120: return "心肺与跑步表现"
         case .steps, .distance, .activeEnergy, .exercise, .stand, .flights, .runDistance, .runMinutes: return "活动量"
         case .mainSleep, .totalSleep, .coreSleep, .deepSleep, .remSleep: return "睡眠"
-        case .weight, .bodyFat, .leanMass, .bmi: return "身体关联"
+        case .weight: return "可信体重秤分时均值：同源半小时合并、六小时时段中位数等权；佳明手填体重排除，缺测留空，不标记升降为改善或恶化。"
+        case .bodyFat, .leanMass, .bmi: return "身体关联"
         default: return "其他生理参数"
         }
     }
@@ -148,7 +149,8 @@ enum TrainingMetric: String, CaseIterable, Identifiable, Sendable {
         case .heart: return "按来源分开的30分钟心率中位数；保留日内时间，不把走动或压力解释为恢复。"
         case .totalSleep: return "沿用日汇总的睡眠去重口径，含该日记录的睡眠；不等于主睡眠，也不是睡眠效率。"
         case .dayHRV, .restingHeart: return "沿用本机日汇总平均值；可包含多个来源，不与同来源夜间中位数混用。"
-        case .weight, .bodyFat, .leanMass, .bmi: return "沿用本机日汇总平均值；缺测留空。数值变化本身不标记为健康改善或恶化。"
+        case .weight: return "可信体重秤分时均值：同源半小时合并、六小时时段中位数等权；佳明手填体重排除，缺测留空，不标记升降为改善或恶化。"
+        case .bodyFat, .leanMass, .bmi: return "沿用本机日汇总平均值；缺测留空。数值变化本身不标记为健康改善或恶化。"
         case .exercise: return "Apple 锻炼分钟日汇总，与 Workout 记录的时长不同。"
         case .distance: return "步行与跑步合计的日汇总距离，不等于跑步训练距离。"
         case .runDistance, .runMinutes: return "按已同步、去重的跑步记录统计；无记录不证明未运动，缺少距离不会填0。"

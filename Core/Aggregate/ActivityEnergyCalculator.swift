@@ -17,15 +17,34 @@ enum ActivityEnergyCalculator {
     struct DominantSourceSum: Equatable {
         let value: Double
         let sourceKey: String?
+        var selectionReason: String = "preferred_available_source"
     }
 
-    static func dailyActiveEnergyKcal(db: Database, start: Int64, end: Int64) throws -> Double {
+    static func dailyActiveEnergyKcal(db: Database, start: Int64, end: Int64, date: String? = nil) throws -> Double {
         let quantity = try dominantCumulativeSum(
             db: db,
             hkType: activeEnergyType,
             start: start,
             end: end
         )
+        let isNewPolicy = (date ?? DashboardLoader.dateKey.string(from: Date(timeIntervalSince1970: Double(start)))) >= DailySourceProjection.effectiveDate
+        if isNewPolicy {
+            var total = quantity.value
+            for event in try WorkoutEventProjection.events(db: db, start: start, end: end) {
+                let sample = event.selected
+                guard let energy = sample.energyKcal, energy.isFinite && energy >= 0 else { continue }
+                let hasRepresentation: Bool
+                if let source = quantity.sourceKey {
+                    hasRepresentation = try Bool.fetchOne(db, sql: """
+                        SELECT EXISTS(SELECT 1 FROM health_samples_raw WHERE hk_type=? AND is_deleted=0
+                          AND COALESCE(source_bundle_id,'unknown')=? AND start_at<? AND end_at>=?)
+                        """, arguments: [activeEnergyType,source,sample.end.timeIntervalSince1970,sample.start.timeIntervalSince1970]) ?? false
+                } else { hasRepresentation = false }
+                // Even an overlapping zero reading is an observation, not a gap.
+                if !hasRepresentation { total += energy }
+            }
+            return total
+        }
         let supplementalWorkout = try workoutEnergySupplement(
             db: db,
             start: start,
@@ -52,7 +71,7 @@ enum ActivityEnergyCalculator {
             SELECT
                 COALESCE(source_bundle_id, 'unknown') AS bid,
                 COALESCE(source_name, '') AS sname,
-                SUM(value) AS s
+                SUM(value) AS s, MIN(start_at) AS first_at, MAX(end_at) AS last_at
             FROM health_samples_raw
             WHERE hk_type = ?
               AND is_deleted = 0
@@ -73,6 +92,19 @@ enum ActivityEnergyCalculator {
                 bestPriority = p
                 bestSum = s
                 bestSourceKey = bid
+            }
+        }
+        // Whole-day fallback only: never sum overlapping device totals. This window-span
+        // heuristic detects clearly partial new-device days, not physiological accuracy/wear time.
+        if DashboardLoader.dateKey.string(from:Date(timeIntervalSince1970:Double(start))) >= DailySourceProjection.effectiveDate,
+           let primary = rows.first(where:{ ($0["bid"] as String?) == bestSourceKey }),
+           SourceAttribution.classify(bundleId:primary["bid"],sourceName:primary["sname"]) == .garmin,
+           let apple = rows.filter({ SourceAttribution.classify(bundleId:$0["bid"],sourceName:$0["sname"]) == .apple }).max(by:{ ($0["s"] as Double? ?? 0) < ($1["s"] as Double? ?? 0) }) {
+            let gStart: Int64 = primary["first_at"] ?? start, aStart: Int64 = apple["first_at"] ?? start
+            let gEnd: Int64 = primary["last_at"] ?? gStart, aEnd: Int64 = apple["last_at"] ?? aStart
+            let gSpan = max(0,min(end,gEnd)-max(start,gStart)), aSpan = max(0,min(end,aEnd)-max(start,aStart))
+            if aSpan > 0, gStart-aStart > 1800, Double(gSpan) < Double(aSpan)*0.8 {
+                return DominantSourceSum(value:apple["s"] ?? 0,sourceKey:apple["bid"],selectionReason:"apple_full_day_fallback_shorter_garmin_window")
             }
         }
         return DominantSourceSum(value: bestSum, sourceKey: bestSourceKey)

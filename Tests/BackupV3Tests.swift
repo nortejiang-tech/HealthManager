@@ -50,7 +50,7 @@ final class BackupV3Tests: XCTestCase {
         let packageURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("hm-backup-v3-\(UUID().uuidString)", isDirectory: true)
         let manifest = try await BackupExporter(database: source).export(to: packageURL)
-        XCTAssertEqual(manifest.formatVersion, 4)
+        XCTAssertEqual(manifest.formatVersion, BackupManifest.currentFormatVersion)
         let fileNames = Set(manifest.files.map(\.file))
         XCTAssertTrue(fileNames.contains("official_foods.jsonl"))
         XCTAssertTrue(fileNames.contains("official_food_versions.jsonl"))
@@ -119,17 +119,17 @@ final class BackupV3Tests: XCTestCase {
         XCTAssertNotNil(summary)
     }
 
-    func test_formatVersion5_rejected() async throws {
+    func test_futureFormatVersion_rejected() async throws {
         let dir = FileManager.default.temporaryDirectory
             .appendingPathComponent("hm-backup-v5-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        let v5 = BackupManifest(formatVersion: 5, appVersion: "9.9", exportedAt: 1, files: [])
+        let v5 = BackupManifest(formatVersion: BackupManifest.currentFormatVersion + 1, appVersion: "9.9", exportedAt: 1, files: [])
         try JSONEncoder().encode(v5).write(to: dir.appendingPathComponent("manifest.json"))
         do {
             _ = try await BackupImporter(database: DatabaseManager.makeInMemoryForTesting()).importPackage(from: dir)
-            XCTFail("formatVersion 5 必须被拒绝")
+            XCTFail("Future format must be rejected")
         } catch let error as BackupImportError {
-            guard case .unsupportedFormatVersion(5) = error else { return XCTFail("\(error)") }
+            guard case .unsupportedFormatVersion(let version) = error, version == BackupManifest.currentFormatVersion + 1 else { return XCTFail("\(error)") }
         }
     }
 

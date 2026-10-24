@@ -157,7 +157,8 @@ struct ManualActivityEntryView: View {
                 try Double.fetchOne(db, sql: """
                     SELECT weight_kg
                     FROM body_metrics_daily
-                    WHERE weight_kg IS NOT NULL
+                    WHERE weight_kg IS NOT NULL AND json_valid(sources_json)
+                      AND json_extract(sources_json,'$.weightPolicyVersion')='weight-time-strata-v1'
                     ORDER BY date DESC
                     LIMIT 1
                     """)

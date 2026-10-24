@@ -3,6 +3,7 @@ import SwiftUI
 /// Container for a dashboard tile. Matches the visual rhythm of Apple Health's摘要 cards:
 /// rounded rectangle, colored icon, bold title, content area with metric + sparkline.
 struct DashboardCard<Accessory: View, Content: View>: View {
+    @Environment(\.hmDisplayMode) private var displayMode
     let theme: CardTheme
     let icon: String
     let title: String
@@ -22,25 +23,35 @@ struct DashboardCard<Accessory: View, Content: View>: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: displayMode == .cards ? 14 : 8) {
             HStack(spacing: 6) {
                 Image(systemName: icon)
                     .font(.footnote.weight(.bold))
                     .foregroundStyle(theme.primary)
+                    .frame(width: displayMode == .cards ? 28 : nil, height: displayMode == .cards ? 28 : nil)
+                    .background(theme.primary.opacity(displayMode == .cards ? 0.12 : 0), in: Circle())
                 Text(title)
                     .font(.footnote.weight(.semibold))
-                    .foregroundStyle(theme.primary)
+                    .foregroundStyle(displayMode == .cards ? .primary : theme.primary)
                 Spacer(minLength: 4)
-                accessory()
+                accessory().fixedSize(horizontal: displayMode == .cards, vertical: false)
             }
 
             content()
         }
-        .padding(12)
+        .padding(displayMode == .cards ? 16 : 12)
+        .frame(minHeight: displayMode == .cards ? 180 : nil, alignment: .topLeading)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(HMColors.surface, in: RoundedRectangle(cornerRadius: HMRadius.card, style: .continuous))
+        .background {
+            RoundedRectangle(cornerRadius: displayMode == .cards ? 26 : HMRadius.card, style: .continuous)
+                .fill(HMColors.surface)
+                .overlay {
+                    RoundedRectangle(cornerRadius: 26, style: .continuous)
+                        .fill(theme.primary.opacity(displayMode == .cards ? 0.09 : 0))
+                }
+        }
         .overlay(
-            RoundedRectangle(cornerRadius: HMRadius.card, style: .continuous)
+            RoundedRectangle(cornerRadius: displayMode == .cards ? 26 : HMRadius.card, style: .continuous)
                 .stroke(theme.primary.opacity(0.08), lineWidth: 1)
         )
     }
@@ -80,13 +91,14 @@ struct CardMetric: View {
 
 /// Tiny placeholder used inside a card when its chart area has nothing to show.
 struct CardEmptyState: View {
+    @Environment(\.hmDisplayMode) private var displayMode
     let text: String
     var body: some View {
         HStack {
             Spacer()
             Text(text)
                 .font(.caption2)
-                .foregroundStyle(.tertiary)
+                .foregroundStyle(displayMode == .cards ? Color.secondary : Color(uiColor: .tertiaryLabel))
             Spacer()
         }
     }

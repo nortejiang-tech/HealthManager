@@ -39,7 +39,15 @@ public final class BridgeQuery {
     }
     private func rows(_ db: Database, epoch: String, entity: String) throws -> [[String: Any]] {
         try String.fetchAll(db, sql: "SELECT json FROM replica WHERE epoch=? AND entity=? ORDER BY record_key", arguments: [epoch,entity]).map {
-            guard let d = $0.data(using: .utf8), let o = try JSONSerialization.jsonObject(with: d) as? [String: Any] else { throw BridgeError.invalid("Corrupt replica JSON") }; return o
+            guard let d = $0.data(using: .utf8), var o = try JSONSerialization.jsonObject(with: d) as? [String: Any] else { throw BridgeError.invalid("Corrupt replica JSON") }
+            if entity == "health_samples_raw" { o = Self.weightUsage(o) }
+            if entity == "body_metrics_daily" {
+                let evidence = (o["sources_json"] as? String)?.data(using: .utf8).flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
+                if evidence?["weightPolicyVersion"] as? String != WeightAggregationPolicy.version {
+                    o["weight_kg"] = NSNull(); o["weightStatus"] = "projection_contract_pending"
+                } else { o["weightPolicyVersion"] = WeightAggregationPolicy.version }
+            }
+            return o
         }
     }
     private func filtered(_ records: [[String: Any]], entity: String, c: QueryContext, a: [String: Any]) -> [[String: Any]] {
@@ -79,8 +87,28 @@ public final class BridgeQuery {
             } else { all = filtered(all,entity:entity,c:c,a:a) }
             return try page(all,a:a)
         case "health_workouts":
-            var filter = a; filter["type"] = "HKWorkoutTypeIdentifier"
-            return try rawPage(db, epoch: epoch, c: c, a: filter)
+            let projected = try filtered(rows(db,epoch:epoch,entity:"workout_events"),entity:"workout_events",c:c,a:[:])
+            let canonical: [[String: Any]] = try projected.map { row in
+                guard let text = row["payload_json"] as? String, let data = text.data(using:.utf8),
+                      let object = try JSONSerialization.jsonObject(with:data) as? [String:Any] else { throw BridgeError.invalid("Corrupt workout projection") }
+                return object
+            }
+            let rawJSON = try String.fetchAll(db,sql:"SELECT json FROM replica WHERE epoch=? AND entity='health_samples_raw' AND json_extract(json,'$.hk_type')='HKWorkoutTypeIdentifier' AND json_extract(json,'$.start_at')<? AND json_extract(json,'$.end_at')>=?",arguments:[epoch,c.end,c.start])
+            let raw = try rawJSON.map { try JSONSerialization.jsonObject(with:Data($0.utf8)) as! [String:Any] }
+            var eventCalendar = Calendar(identifier:.gregorian); eventCalendar.timeZone = TimeZone(identifier:c.zone)!
+            let cutoff = eventCalendar.date(from:DateComponents(year:2026,month:10,day:23))?.timeIntervalSince1970 ?? 0
+            let legacy = raw.filter { (($0["start_at"] as? NSNumber)?.doubleValue ?? cutoff) < cutoff }
+            let selected = (canonical + legacy).filter { row in
+                guard let source = a["source"] as? String else { return true }
+                return row["source_bundle_id"] as? String == source
+            }
+            var result = try page(selected.sorted { (($0["start_at"] as? NSNumber)?.doubleValue ?? 0) > (($1["start_at"] as? NSNumber)?.doubleValue ?? 0) },a:a)
+            let projectedIDs = Set(canonical.compactMap { $0["sample_uuid"] as? String })
+            let representedIDs = Set(canonical.flatMap { $0["contributor_ids"] as? [String] ?? [] }).union(projectedIDs)
+            result["pendingProjection"] = raw.contains { (($0["start_at"] as? NSNumber)?.doubleValue ?? 0) >= cutoff && !representedIDs.contains($0["sample_uuid"] as? String ?? "") }
+            result["sourcePolicy"] = "garmin-first-apple-completion-v1"
+            result["projectionBoundary"] = "Since 2026-10-23 canonical events; original records via health_records"
+            return result
         case "health_meals":
             let meals = filtered(try rows(db,epoch:epoch,entity:"meal_records"),entity:"meal_records",c:c,a:a)
             let items = try rows(db,epoch:epoch,entity:"meal_items")
@@ -108,6 +136,7 @@ public final class BridgeQuery {
             let activity = filtered(try rows(db,epoch:epoch,entity:"activity_metrics_daily"),entity:"activity_metrics_daily",c:c,a:a)
             let nutrition = Self.nutritionSummary(dayMeals)
             return ["activity":activity,
+                    "garmin":filtered(try rows(db,epoch:epoch,entity:"garmin_daily_metrics"),entity:"garmin_daily_metrics",c:c,a:a),
                     "body":filtered(try rows(db,epoch:epoch,entity:"body_metrics_daily"),entity:"body_metrics_daily",c:c,a:a),
                     "quality":filtered(try rows(db,epoch:epoch,entity:"data_quality_daily"),entity:"data_quality_daily",c:c,a:a),
                     "meals":mealResult,"medications":try execute("health_medications",db:db,epoch:epoch,context:c,a:a),
@@ -120,6 +149,16 @@ public final class BridgeQuery {
         default: throw BridgeError.invalid("Unsupported query")
         }
     }
+    private static func weightUsage(_ original: [String: Any]) -> [String: Any] {
+        var row = original
+        guard row["hk_type"] as? String == "HKQuantityTypeIdentifierBodyMass" else { return row }
+        let source = (row["source_bundle_id"] as? String ?? "") + "|" + (row["source_name"] as? String ?? "")
+        let reason = WeightAggregationPolicy.exclusionReason(source: source, origin: row["source_origin"] as? String ?? "")
+        row["weight_statistic_eligible"] = reason == nil
+        row["weight_exclusion_reason"] = reason as Any? ?? NSNull()
+        row["weightPolicyVersion"] = WeightAggregationPolicy.version
+        return row
+    }
     private func rawPage(_ db: Database, epoch: String, c: QueryContext, a: [String:Any]) throws -> [String:Any] {
         let offset = a["offset"] as? Int ?? 0; let limit = a["limit"] as? Int ?? 100
         guard offset >= 0, offset <= Int.max - 1000, limit > 0, limit <= 1000 else { throw BridgeError.invalid("Invalid pagination") }
@@ -130,7 +169,10 @@ public final class BridgeQuery {
         let total = try Int.fetchOne(db,sql:"SELECT COUNT(*) FROM replica WHERE " + whereSQL,arguments:args) ?? 0
         args += [limit,offset]
         let strings = try String.fetchAll(db,sql:"SELECT json FROM replica WHERE " + whereSQL + " ORDER BY json_extract(json,'$.start_at'),record_key LIMIT ? OFFSET ?",arguments:args)
-        let records = try strings.map { try JSONSerialization.jsonObject(with:Data($0.utf8)) }
+        let records = try strings.map { text -> [String: Any] in
+            guard let row = try JSONSerialization.jsonObject(with: Data(text.utf8)) as? [String: Any] else { throw BridgeError.invalid("Corrupt raw record") }
+            return Self.weightUsage(row)
+        }
         return ["records":records,"total":total,"nextOffset":offset+limit < total ? offset+limit as Any : NSNull()]
     }
     private func stats(_ v: [Double]) -> [String: Any] {
@@ -176,7 +218,7 @@ public final class BridgeQuery {
             day = c.calendar.date(byAdding:.day,value:1,to:day)!
         }
         let valid = values.filter { $0["value"] is NSNumber }.count
-        return ["metric":metric,"unit":spec.2,"method":"HealthManager daily projection; source policy preserved; no cross-device summation; sample count unavailable in projection","values":values,"validDays":valid,"missingDays":values.count-valid]
+        return ["metric":metric,"unit":spec.2,"method":metric == "weight" ? "weight-time-strata-v1: trusted Mijia scales only; Garmin weight excluded; anchored 30min event median, six-hour clock-slot medians, equal mean of occupied slots; period means weight valid days equally; gaps unknown" : "HealthManager daily projection; source policy preserved; no cross-device summation; sample count unavailable in projection","values":values,"validDays":valid,"missingDays":values.count-valid]
     }
     /// Accept only a finite, non-negative numeric value. Missing, non-numeric,
     /// negative, NaN and infinity all stay unknown (nil) and are never zero-filled.
@@ -285,10 +327,11 @@ public final class BridgeQuery {
             if effective.isSubset(of:[1,3,4,5]) { total += e-s; asleepIntervals.append((s,e)) }
         }
         let hrv = raw.filter { r in
-            guard r["hk_type"] as? String == "HKQuantityTypeIdentifierHeartRateVariabilitySDNN", let start = r["start_at"] as? Double else { return false }
+            guard r["hk_type"] as? String == "HKQuantityTypeIdentifierHeartRateVariabilitySDNN",
+                  r["source_bundle_id"] as? String == selected, let start = r["start_at"] as? Double else { return false }
             return asleepIntervals.contains { start >= $0.0 && start < $0.1 }
         }.compactMap { $0["value"] as? Double }
-        return ["wakeDate":c.fromDay,"window":"previous 18:00 to wake-date 18:00, local time; naps outside window excluded","source":selected,"otherSources":groups.keys.filter{$0 != selected}.sorted(),"totalSleepSeconds":asleepIntervals.isEmpty ? NSNull() as Any : total,"stages":stages,"stageStatus":conflicts > 0 ? "conflicting" : (stages["unspecified"] != nil ? "incomplete" : "observed"),"conflictIntervals":conflicts,"nightHRV":stats(hrv),"nightHRVUnit":"ms","nightHRVMethod":"samples overlapping non-conflicting asleep intervals; median distinct from daily mean"]
+        return ["wakeDate":c.fromDay,"window":"previous 18:00 to wake-date 18:00, local time; naps outside window excluded","source":selected,"otherSources":groups.keys.filter{$0 != selected}.sorted(),"totalSleepSeconds":asleepIntervals.isEmpty ? NSNull() as Any : total,"stages":stages,"stageStatus":conflicts > 0 ? "conflicting" : (stages["unspecified"] != nil ? "incomplete" : "observed"),"conflictIntervals":conflicts,"nightHRV":stats(hrv),"nightHRVUnit":"ms","nightHRVMethod":"HealthKit SDNN from the selected sleep source only; Garmin overnight HRV remains in garmin_daily_metrics"]
     }
 }
 private struct QueryContext {

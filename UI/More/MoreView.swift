@@ -1,9 +1,13 @@
 import SwiftUI
 
 struct MoreView: View {
+    @Environment(\.hmDisplayMode) private var displayMode
     var body: some View {
         NavigationStack {
-            MoreScreenContent()
+            Group {
+                if displayMode == .cards { VibrantMoreView() }
+                else { MoreScreenContent() }
+            }
                 .navigationTitle("更多")
                 .accessibilityIdentifier("more-screen")
         }

@@ -311,16 +311,25 @@ struct ActivityWorkoutRow: Identifiable, Hashable, Sendable {
     var id: String { sampleUUID }
 
     static func fetchToday(db: Database, start: Int64, end: Int64) throws -> [ActivityWorkoutRow] {
-        let dbRows = try Row.fetchAll(db, sql: """
-            SELECT sample_uuid, start_at, end_at, value AS duration,
-                   extra_json, source_name, source_origin
-            FROM health_samples_raw
-            WHERE is_deleted = 0
-              AND hk_type = ?
-              AND start_at >= ? AND start_at < ?
+        let raw = try HealthSampleRaw.fetchAll(db, sql: """
+            SELECT * FROM health_samples_raw WHERE is_deleted=0 AND hk_type=? AND start_at>=? AND start_at<?
             ORDER BY start_at DESC
-            """, arguments: [ActivityEnergyCalculator.workoutType, start, end])
-        return dbRows.map(make(from:))
+            """, arguments: [TrainingTypes.workout, start, end])
+        return canonical(raw)
+    }
+
+    static func canonical(_ raw: [HealthSampleRaw]) -> [ActivityWorkoutRow] {
+        WorkoutEventResolver.events(raw.compactMap(TrainingSnapshotLoader.sample)).map { event in
+            let s = event.selected
+            let extra = raw.first(where: { $0.sampleUUID == s.id })?.extraJson.flatMap { $0.data(using:.utf8) }
+                .flatMap { try? JSONSerialization.jsonObject(with:$0) as? [String:Any] }
+            let manual = ManualActivityKind.displayName(forRawValue: extra?["manualActivityKind"] as? String)
+            return ActivityWorkoutRow(sampleUUID:s.id,startAt:Int64(s.start.timeIntervalSince1970),endAt:Int64(s.end.timeIntervalSince1970),
+                durationSeconds:s.duration ?? 0,activityLabel:manual ?? WorkoutsView.label(for:s.activityType ?? 0),
+                energyKcal:s.energyKcal,distanceMeters:s.distance,
+                sourceLabel:(SourceAttribution.Origin(rawValue:s.origin)?.label ?? s.sourceName) + (event.contributors.count > 1 ? " · 多记录校验" : ""),
+                isManualEstimate:s.origin == "manual")
+        }.sorted { $0.startAt > $1.startAt }
     }
 
     static func make(from row: Row) -> ActivityWorkoutRow {

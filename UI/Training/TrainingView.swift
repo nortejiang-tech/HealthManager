@@ -6,6 +6,7 @@ struct TrainingView: View {
     @EnvironmentObject private var sync: SyncEngine
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.hmDisplayMode) private var displayMode
     @State private var snapshot: TrainingSnapshot?
     @State private var loadError: String?
     @State private var observationError: String?
@@ -15,39 +16,59 @@ struct TrainingView: View {
     @State private var section = "总览"
     @State private var showingMethod = false
     @State private var observation: AnyDatabaseCancellable?
+    @State private var snapshotTask: Task<TrainingSnapshot, Error>?
 
     private var refreshKey: String { "\(revision)-\(sync.aggregationTick)-\(environment.localDataTick)" }
 
     var body: some View {
         NavigationStack {
             ScrollView {
-                LazyVStack(alignment: .leading, spacing: 20) {
-                    header
+                // This overview has a bounded number of panels. A non-lazy outer
+                // stack avoids repeated height estimation when disclosures grow
+                // across the viewport; long directories own their lazy rows.
+                VStack(alignment: .leading, spacing: 20) {
+                    if displayMode == .classic { header }
                     if let error = loadError ?? observationError {
                         HMInlineRecovery(title: "锻炼数据暂未更新", message: "保留上次计算；恢复后重新读取。",
                             technicalDetails: error, actionTitle: "重新读取") {
                             Task { await refresh() }
                         }
                     }
+                    if snapshot == nil {
+                        garminPanel
+                    }
                     if let snapshot {
-                        Picker("锻炼分区", selection: $section) {
+                        if displayMode == .classic || section != "总览" {
+                          Picker("锻炼分区", selection: $section) {
                             Text("总览").tag("总览")
                             Text("趋势").tag("趋势")
                             Text("全部参数").tag("全部参数")
                         }.pickerStyle(.segmented).accessibilityIdentifier("training-sections")
+                        }
                         switch section {
                         case "趋势": TrainingTrendsPanel(snapshot: snapshot)
                         case "全部参数": TrainingParameterDirectory(snapshot: snapshot)
                         default:
-                            TrainingOverviewReadiness(snapshot: snapshot, isStale: loadError != nil || observationError != nil) { showingMethod = true }
+                          garminPanel
+                          if displayMode == .cards {
+                            VibrantTrainingOverview(snapshot: snapshot, isStale: loadError != nil || observationError != nil,
+                                onTrends: { section = "趋势" }, onParameters: { section = "全部参数" }, onMethod: { showingMethod = true })
+                          } else {
+                            DisclosureGroup("恢复准备度 · 实验") {
+                                TrainingOverviewReadiness(snapshot: snapshot, isStale: loadError != nil || observationError != nil) { showingMethod = true }
+                            }
                             TrainingCapabilityPanel(snapshot: snapshot)
                             TrainingStateInputsPanel(snapshot: snapshot)
                             TrainingVolumePanel(snapshot: snapshot)
                             records(snapshot)
                             Button("浏览全部运动参数") { section = "全部参数" }
                                 .font(.headline).accessibilityIdentifier("training-all-parameters")
+                          }
                         }
-                        freshness(snapshot)
+                        if displayMode == .cards {
+                            DisclosureGroup("数据时间与来源") { freshness(snapshot) }
+                                .font(.footnote).foregroundStyle(.secondary)
+                        } else { freshness(snapshot) }
                     } else if isLoading {
                         ProgressView("正在计算锻炼与恢复趋势…")
                             .frame(maxWidth: .infinity, minHeight: 220)
@@ -65,6 +86,10 @@ struct TrainingView: View {
             .accessibilityIdentifier("training-screen")
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
+                    NavigationLink { SettingsView() } label: { Image(systemName: "gearshape") }
+                        .accessibilityLabel("设置").accessibilityIdentifier("training-settings")
+                }
+                ToolbarItem(placement: .topBarTrailing) {
                     Button { showingMethod = true } label: { Image(systemName: "info.circle") }
                         .accessibilityLabel("计算依据与可信度")
                         .accessibilityIdentifier("training-method")
@@ -73,7 +98,10 @@ struct TrainingView: View {
             .sheet(isPresented: $showingMethod) { TrainingMethodView(readiness: snapshot?.readiness) }
             .refreshable { await refresh() }
             .onAppear { startObservation() }
-            .onDisappear { observation?.cancel(); observation = nil; generation &+= 1 }
+            .onDisappear {
+                observation?.cancel(); observation = nil; generation &+= 1
+                snapshotTask?.cancel(); snapshotTask = nil
+            }
             .task(id: refreshKey) {
                 do { try await Task.sleep(for: .milliseconds(350)) } catch { return }
                 await refresh()
@@ -89,6 +117,11 @@ struct TrainingView: View {
                 if phase == .active { revision &+= 1 }
             }
         }
+    }
+
+    @ViewBuilder private var garminPanel: some View {
+        if displayMode == .cards { GarminMetricCards(manager: environment.garmin) }
+        else { GarminTrainingPanel(manager: environment.garmin) }
     }
 
     private var header: some View {
@@ -167,10 +200,23 @@ struct TrainingView: View {
         generation &+= 1
         let request = generation
         isLoading = snapshot == nil
-        defer { if request == generation { isLoading = false } }
+        // Notifications can arrive while a snapshot is calculating. Share that work
+        // rather than enqueueing another full history calculation for every revision.
+        let work: Task<TrainingSnapshot, Error>
+        if let active = snapshotTask { work = active }
+        else {
+            let database = environment.database
+            work = Task { try await TrainingSnapshotLoader.load(database: database) }
+            snapshotTask = work
+        }
+        defer {
+            if request == generation { isLoading = false; snapshotTask = nil }
+        }
         do {
-            let loaded = try await TrainingSnapshotLoader.load(database: environment.database)
-            guard !Task.isCancelled, request == generation else { return }
+            let loaded = try await work.value
+            // The view lifetime is guarded by generation. A cancelled debounce task
+            // must not discard a completed shared snapshot while the view is visible.
+            guard request == generation else { return }
             snapshot = loaded
             loadError = nil
         } catch is CancellationError {

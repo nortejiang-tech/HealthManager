@@ -19,10 +19,10 @@ final class TrainingMetricTests: XCTestCase {
     func test_catalogHasUniqueStableIdsAndCanonicalDashboardRoutes() {
         XCTAssertEqual(Set(TrainingMetric.allCases.map(\.id)).count, TrainingMetric.allCases.count)
         XCTAssertTrue(TrainingMetric.allCases.allSatisfy { !$0.unit.isEmpty && !$0.definition.isEmpty })
-        XCTAssertEqual(MetricRoute.steps.trainingMetric, .steps)
-        XCTAssertEqual(MetricRoute.activeKcal.trainingMetric, .activeEnergy)
-        XCTAssertEqual(MetricRoute.sleep.trainingMetric, .totalSleep)
-        XCTAssertNil(MetricRoute.diet.trainingMetric)
+        XCTAssertEqual(MetricRoute.steps.config?.title, "步数")
+        XCTAssertEqual(MetricRoute.activeKcal.config?.title, "活动能量")
+        XCTAssertEqual(MetricRoute.sleep.config?.title, "睡眠")
+        XCTAssertEqual(MetricRoute.diet.config?.title, MetricDetailConfig.diet.title)
         XCTAssertNotNil(TrainingMetric.weight.extendedHistoryConfig)
         XCTAssertNil(TrainingMetric.readiness.extendedHistoryConfig)
     }

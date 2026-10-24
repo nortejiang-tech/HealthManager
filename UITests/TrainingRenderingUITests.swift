@@ -10,10 +10,21 @@ final class TrainingRenderingUITests: XCTestCase {
         ]
         for (name, arguments) in modes {
             let app = XCUIApplication()
-            app.launchArguments = ["-HM_DEBUG_BYPASS_ONBOARDING"] + arguments
+            app.launchArguments = ["-HM_DEBUG_BYPASS_ONBOARDING", "-hm.display.mode.v1", "classic"] + arguments
             app.launch()
             XCTAssertTrue(app.tabBars.buttons["锻炼"].waitForExistence(timeout: 15))
             app.tabBars.buttons["锻炼"].tap()
+            // TrainingView deliberately collapses local readiness inside a DisclosureGroup.
+            // Expand it before asserting the readiness score. No Garmin connection state is
+            // asserted here because no fixture data is available.
+            let readinessDisclosure = app.buttons["恢复准备度 · 实验"].firstMatch
+            for _ in 0..<10 {
+                if readinessDisclosure.exists && readinessDisclosure.isHittable { break }
+                app.swipeUp()
+            }
+            XCTAssertTrue(readinessDisclosure.exists && readinessDisclosure.isHittable,
+                          "Cannot reach readiness disclosure 恢复准备度 · 实验 in \(name) mode")
+            readinessDisclosure.tap()
             XCTAssertTrue(element(app, "training-readiness-score").waitForExistence(timeout: 20))
             XCTAssertFalse(app.staticTexts["训练计划"].exists)
             screenshot("v2-\(name)-overview")
@@ -22,15 +33,15 @@ final class TrainingRenderingUITests: XCTestCase {
             screenshot("v2-\(name)-method")
             app.buttons["training-method-done"].tap()
 
-            app.segmentedControls["training-sections"].buttons["趋势"].tap()
+            choose(app, control: "training-sections", label: "趋势")
             XCTAssertTrue(element(app, "training-trend-metric").waitForExistence(timeout: 5))
-            app.segmentedControls["training-window"].buttons["7天"].tap()
-            app.segmentedControls["training-window"].buttons["8周"].tap()
+            choose(app, control: "training-window", label: "7天")
+            choose(app, control: "training-window", label: "8周")
             screenshot("v2-\(name)-readiness-history")
-            app.segmentedControls.buttons["能力"].tap()
+            app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "能力")).firstMatch.tap()
             screenshot("v2-\(name)-capability-trend")
 
-            app.segmentedControls["training-sections"].buttons["全部参数"].tap()
+            choose(app, control: "training-sections", label: "全部参数")
             let search = app.textFields["training-parameter-search"]
             XCTAssertTrue(search.waitForExistence(timeout: 5))
             search.tap(); search.typeText("VO\n")
@@ -55,6 +66,18 @@ final class TrainingRenderingUITests: XCTestCase {
 
     private func element(_ app: XCUIApplication, _ id: String) -> XCUIElement {
         app.descendants(matching: .any).matching(identifier: id).firstMatch
+    }
+    private func choose(_ app: XCUIApplication, control id: String, label: String) {
+        let control = element(app, id)
+        for _ in 0..<10 {
+            if control.exists && control.isHittable { break }
+            app.swipeDown()
+        }
+        XCTAssertTrue(control.waitForExistence(timeout: 5), "Missing picker \(id)")
+        let option = control.descendants(matching: .any)
+            .matching(NSPredicate(format: "label == %@", label)).firstMatch
+        XCTAssertTrue(option.waitForExistence(timeout: 5), "Missing choice \(label)")
+        option.tap()
     }
     private func reveal(_ app: XCUIApplication, _ id: String, down: Bool = false) -> XCUIElement {
         let target = element(app, id)

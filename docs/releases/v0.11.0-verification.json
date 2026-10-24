@@ -1,0 +1,55 @@
+{
+  "version": "0.11.0",
+  "build": 28,
+  "date": "2026-10-24",
+  "distribution": "Public GitHub source release; not App Store or TestFlight",
+  "app_unit_tests": {
+    "status": "PASS",
+    "count": 538,
+    "failures": 0,
+    "run": "final release source"
+  },
+  "bridge_tests": {
+    "status": "PASS",
+    "count": 27,
+    "failures": 0,
+    "run": "final release source"
+  },
+  "health_brief_ui_tests": {
+    "status": "PASS",
+    "count": 6,
+    "failures": 0,
+    "evidence": "Latest unchanged runtime sources; synthetic simulator success, reopen, regenerate, failure and accessibility flows"
+  },
+  "physical_acceptance": {
+    "status": "PASS",
+    "method": "Maintainer manual acceptance of installed build 28; explicit release authorization"
+  },
+  "physical_xctest_automation": {
+    "status": "PENDING",
+    "reason": "Historical physical driver failed before application assertions; manual acceptance is separate evidence"
+  },
+  "release_archive": {
+    "status": "PASS",
+    "configuration": "Release",
+    "signature_verified": true,
+    "version_verified": true,
+    "personal_signed_artifact_uploaded": false,
+    "warnings": "Non-fatal Swift 6 concurrency compatibility, existing unused/await warnings, App Intents metadata extraction skipped; current project uses Swift 5 language mode."
+  },
+  "privacy": {
+    "scoped_scan": "PASS",
+    "raw_health_records_published": false,
+    "credentials_published": false,
+    "device_identifiers_published": false,
+    "personal_signed_app_published": false,
+    "owner_specific_device_test_excluded": true,
+    "weight_fixture_is_synthetic": true
+  },
+  "limitations": [
+    "Garmin workout fusion relies on records actually present in Apple Health.",
+    "Garmin official training readiness is not provided by the currently integrated public API.",
+    "Long-term simultaneous-device coverage and experimental heuristics remain observational.",
+    "Backup v6 and new migrations require compatible restore; old binary alone is not full rollback."
+  ]
+}

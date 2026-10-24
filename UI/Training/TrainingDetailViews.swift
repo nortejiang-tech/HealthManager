@@ -23,7 +23,7 @@ struct TrainingSessionDetail: View {
                     TrainingStatRow(label: "结束后1分钟心率下降", value: TrainingText.number(session.recovery60, unit: "bpm"))
                     TrainingStatRow(label: "结束后2分钟心率下降", value: TrainingText.number(session.recovery120, unit: "bpm"))
                     ForEach(session.notes, id: \.self) { Text($0).font(.footnote).foregroundStyle(HMColors.warning) }
-                    Text("负荷仅积分已支持的心率时段，每个读数最多支持30秒。恢复读数取目标时刻±15秒内最近的同来源样本；恢复姿势和是否走动未知。")
+                    Text("负荷仅积分已支持的心率时段，每个读数最多支持30秒。恢复读数取结束和目标时刻±15秒内同一采集来源的样本；恢复姿势和是否走动未知。")
                         .font(.caption).foregroundStyle(.secondary)
                 }
             }.padding(20)

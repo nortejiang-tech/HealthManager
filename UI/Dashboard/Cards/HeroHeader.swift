@@ -4,6 +4,9 @@ import SwiftUI
 /// v0.6 精简：原「四个今日大数」与下方指标卡片完全重复，已移除（§6.2）——
 /// 首页直接看到卡片趋势与进入详情的动作。
 struct HeroHeader: View {
+    @EnvironmentObject private var environment: AppEnvironment
+    @Environment(\.dynamicTypeSize) private var typeSize
+    @Environment(\.hmDisplayMode) private var displayMode
     let snapshot: DashboardSnapshot
     let onAlertsTap: () -> Void
     let onQualityTap: () -> Void
@@ -18,6 +21,29 @@ struct HeroHeader: View {
     }
 
     var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            if typeSize.isAccessibilitySize {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("\(greeting) · \(dateLabel)").font(.caption).foregroundStyle(.secondary)
+                    HStack { qualityPill; Spacer(); Button(action: onAlertsTap) { alertsBell.frame(minWidth: 44, minHeight: 44) }.buttonStyle(.plain).accessibilityLabel(alertsAccessibilityLabel) }
+                }
+            } else {
+                HStack(spacing: 8) {
+                    Text("\(greeting) · \(dateLabel)").font(.caption).foregroundStyle(.secondary)
+                    Spacer(minLength: 4)
+                    qualityPill
+                    Button(action: onAlertsTap) { alertsBell.frame(minWidth: 44, minHeight: 44) }
+                        .buttonStyle(.plain).accessibilityLabel(alertsAccessibilityLabel)
+                }
+            }
+            HealthBriefCard(manager: environment.healthBrief)
+
+        }
+        .hmCard(accent: .jade)
+        .accessibilityIdentifier(displayMode == .cards ? "dashboard-vibrant-header" : "dashboard-health-brief-classic")
+    }
+
+    private var classicHeader: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 2) {
@@ -52,6 +78,7 @@ struct HeroHeader: View {
             .background(.regularMaterial, in: Capsule())
         }
         .buttonStyle(.plain)
+        .frame(minHeight: displayMode == .cards ? 44 : nil)
         .accessibilityLabel("数据质量：\(qualityLabel)，点按查看数据质量明细")
         .accessibilityHint("前往数据质量页")
     }

@@ -229,7 +229,7 @@ actor DailyReconciler {
                   conflict_score = excluded.conflict_score,
                   missing_metrics_json = excluded.missing_metrics_json,
                   computed_at = excluded.computed_at
-                """, arguments: [date, completeness, freshness, conflict, missingJson, computedAt])
+                """, arguments: [date, completeness, freshness, date >= DailySourceProjection.effectiveDate ? nil : conflict, missingJson, computedAt])
         }
 
         // 7. Emit a threshold-level completeness alert, then per-metric missing alerts.
