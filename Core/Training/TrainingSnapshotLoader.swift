@@ -2,11 +2,11 @@ import Foundation
 import GRDB
 
 enum TrainingSnapshotLoader {
-    /// One consistent, bounded reader transaction. No new tables, writes or full-history scans.
+    /// One consistent, bounded reader transaction including persisted workout choices; no writes or full-history raw scans.
     static func load(database: DatabaseManager, now: Date = Date(), calendar: Calendar = .current) async throws -> TrainingSnapshot {
         let begin = calendar.date(byAdding: .day, value: -TrainingCalculator.inputHistoryDays,
                                   to: calendar.startOfDay(for: now))!
-        let input: (samples: [TrainingSample], parameters: [String: [TrainingMetricValue]]) = try await database.asyncRead { db in
+        let input: (samples: [TrainingSample], parameters: [String: [TrainingMetricValue]], choices: [WorkoutRecordChoice]) = try await database.asyncRead { db in
             let placeholders = TrainingTypes.inputs.map { _ in "?" }.joined(separator: ",")
             var args = StatementArguments(TrainingTypes.inputs)
             args += StatementArguments([begin.timeIntervalSince1970, now.timeIntervalSince1970])
@@ -18,7 +18,7 @@ enum TrainingSnapshotLoader {
                 """, arguments: args)
             let samples = raw.compactMap(sample)
             let parameters = try TrainingParameterLoader.load(db, now: now, calendar: calendar)
-            return (samples, parameters)
+            return (samples, parameters, try WorkoutChoiceStore.load(db: db))
         }
         // Release the consistent reader before CPU work, so historical calculations
         // do not retain a database snapshot while live sync keeps writing.
@@ -26,7 +26,7 @@ enum TrainingSnapshotLoader {
         var parameters = input.parameters
         let displayStart = calendar.date(byAdding: .day, value: -55, to: calendar.startOfDay(for: now))!
         parameters[TrainingMetric.heart.id] = TrainingParameterLoader.heartSeries(input.samples, since: displayStart)
-        var snapshot = TrainingCalculator.snapshot(samples: input.samples, now: now, calendar: calendar)
+        var snapshot = TrainingCalculator.snapshot(samples: input.samples, now: now, calendar: calendar, choices: input.choices)
         snapshot.parameters = parameters
         try Task.checkCancellation()
         return snapshot
@@ -44,7 +44,7 @@ enum TrainingSnapshotLoader {
                 SELECT * FROM health_samples_raw WHERE hk_type IN (\(types)) AND is_deleted = 0
                 AND start_at >= ? AND start_at <= ? AND end_at <= ? AND ingested_at <= ? ORDER BY start_at, sample_uuid
                 """, arguments: arguments)
-            return TrainingCalculator.recordDetail(id: id, samples: raw.compactMap(sample), now: now, calendar: calendar)
+            return TrainingCalculator.recordDetail(id: id, samples: raw.compactMap(sample), now: now, calendar: calendar, choices: try WorkoutChoiceStore.load(db: db))
         }
     }
 

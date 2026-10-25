@@ -774,6 +774,14 @@ enum Migrations {
             }
         }
 
+        migrator.registerMigration("v19_workout_record_choices") { db in
+            try db.execute(sql: """
+                CREATE TABLE workout_record_choices(
+                  id TEXT PRIMARY KEY, selected_id TEXT, member_ids_json TEXT NOT NULL,
+                  updated_at REAL NOT NULL);
+                """)
+        }
+
         return migrator
     }
 

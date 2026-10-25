@@ -97,7 +97,8 @@ public final class BridgeQuery {
             let raw = try rawJSON.map { try JSONSerialization.jsonObject(with:Data($0.utf8)) as! [String:Any] }
             var eventCalendar = Calendar(identifier:.gregorian); eventCalendar.timeZone = TimeZone(identifier:c.zone)!
             let cutoff = eventCalendar.date(from:DateComponents(year:2026,month:10,day:23))?.timeIntervalSince1970 ?? 0
-            let legacy = raw.filter { (($0["start_at"] as? NSNumber)?.doubleValue ?? cutoff) < cutoff }
+            let represented = Set(canonical.flatMap { $0["contributor_ids"] as? [String] ?? [] }).union(canonical.compactMap { $0["sample_uuid"] as? String })
+            let legacy = raw.filter { (($0["start_at"] as? NSNumber)?.doubleValue ?? cutoff) < cutoff && !represented.contains($0["sample_uuid"] as? String ?? "") }
             let selected = (canonical + legacy).filter { row in
                 guard let source = a["source"] as? String else { return true }
                 return row["source_bundle_id"] as? String == source
@@ -106,8 +107,8 @@ public final class BridgeQuery {
             let projectedIDs = Set(canonical.compactMap { $0["sample_uuid"] as? String })
             let representedIDs = Set(canonical.flatMap { $0["contributor_ids"] as? [String] ?? [] }).union(projectedIDs)
             result["pendingProjection"] = raw.contains { (($0["start_at"] as? NSNumber)?.doubleValue ?? 0) >= cutoff && !representedIDs.contains($0["sample_uuid"] as? String ?? "") }
-            result["sourcePolicy"] = "garmin-first-apple-completion-v1"
-            result["projectionBoundary"] = "Since 2026-10-23 canonical events; original records via health_records"
+            result["sourcePolicy"] = "workout-record-choice-v2"
+            result["projectionBoundary"] = "Canonical events since 2026-10-23, plus earlier manually selected groups; original records via health_records"
             return result
         case "health_meals":
             let meals = filtered(try rows(db,epoch:epoch,entity:"meal_records"),entity:"meal_records",c:c,a:a)

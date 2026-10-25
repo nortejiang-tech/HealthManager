@@ -16,9 +16,11 @@ import GRDB
 actor DailyAggregator {
 
     private let database: DatabaseManager
+    private let afterSnapshotBeforeWrite: (@Sendable () throws -> Void)?
 
-    init(database: DatabaseManager) {
+    init(database: DatabaseManager, afterSnapshotBeforeWrite: (@Sendable () throws -> Void)? = nil) {
         self.database = database
+        self.afterSnapshotBeforeWrite = afterSnapshotBeforeWrite
     }
 
     /// Recompute the past `days` days ending today (local tz). Older days unchanged.
@@ -42,6 +44,7 @@ actor DailyAggregator {
     // MARK: - Per-day rollup
 
     private struct DaySnapshot {
+        var workoutChoiceRevision: Double = 0
         var steps: Double = 0
         var activeEnergy: Double = 0
         var basalEnergy: Double = 0
@@ -69,6 +72,7 @@ actor DailyAggregator {
 
         let snap: DaySnapshot = try database.read { db in
             var d = DaySnapshot()
+            d.workoutChoiceRevision = try WorkoutChoiceStore.revision(db: db)
             d.steps           = try cumulativeSum(db: db, hkType: "HKQuantityTypeIdentifierStepCount", start: s, end: e)
             d.activeEnergy    = try ActivityEnergyCalculator.dailyActiveEnergyKcal(db: db, start: s, end: e, date: date)
             d.basalEnergy     = try cumulativeSum(db: db, hkType: "HKQuantityTypeIdentifierBasalEnergyBurned", start: s, end: e)
@@ -95,8 +99,10 @@ actor DailyAggregator {
             return d
         }
 
+        try afterSnapshotBeforeWrite?()
         let computedAt = Int64(Date().timeIntervalSince1970)
         return try database.write { db in
+            guard try WorkoutChoiceStore.revision(db: db) == snap.workoutChoiceRevision else { throw WorkoutChoiceError.changed }
             var changed = false
             try WorkoutEventProjection.rebuild(db: db, date: date, start: s, end: e)
             try db.execute(sql: """

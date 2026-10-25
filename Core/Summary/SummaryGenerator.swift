@@ -64,6 +64,20 @@ actor SummaryGenerator {
         for key in keys.1 { _ = try currentWeekly(weekStart: key) }
     }
 
+    static func hasPendingWorkoutSelection(_ json: String?) -> Bool {
+        guard let data = json?.data(using: .utf8), let object = try? JSONSerialization.jsonObject(with: data) as? [String:Any] else { return false }
+        return object["workoutSelectionPending"] as? Bool == true
+    }
+
+    func refreshPendingWorkoutReports() throws {
+        let keys = try database.read { db in
+            (try String.fetchAll(db, sql: "SELECT date FROM daily_summaries WHERE instr(COALESCE(key_findings_json,''),'workoutSelectionPending')>0"),
+             try String.fetchAll(db, sql: "SELECT week_start_date FROM weekly_summaries WHERE instr(COALESCE(findings_json,''),'workoutSelectionPending')>0"))
+        }
+        for key in keys.0 { _ = try currentDaily(for: key) }
+        for key in keys.1 { _ = try currentWeekly(weekStart: key) }
+    }
+
     // MARK: - Daily
 
     @discardableResult
@@ -100,7 +114,7 @@ actor SummaryGenerator {
             guard let data = existing.keyFindingsJson?.data(using:.utf8), let object = try? JSONSerialization.jsonObject(with:data) as? [String:Any] else { return false }
             return object["sourcePolicyVersion"] as? String == DailySourceProjection.version
         }()
-        if Self.hasCurrentNutritionContract(existing.keyFindingsJson) && sourceContractCurrent && Self.hasWeightContract(existing.keyFindingsJson) {
+        if Self.hasCurrentNutritionContract(existing.keyFindingsJson) && sourceContractCurrent && Self.hasWeightContract(existing.keyFindingsJson) && !Self.hasPendingWorkoutSelection(existing.keyFindingsJson) {
             return existing
         }
         return try generateDaily(for: date)
@@ -307,7 +321,7 @@ actor SummaryGenerator {
         }) else {
             return nil
         }
-        if Self.hasCurrentNutritionContract(existing.findingsJson) && Self.hasWeightContract(existing.findingsJson) {
+        if Self.hasCurrentNutritionContract(existing.findingsJson) && Self.hasWeightContract(existing.findingsJson) && !Self.hasPendingWorkoutSelection(existing.findingsJson) {
             return existing
         }
         return try generateWeekly(weekStart: weekStart)

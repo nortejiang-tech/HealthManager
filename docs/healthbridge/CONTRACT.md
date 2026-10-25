@@ -42,3 +42,5 @@ CLI: `healthbridge query TOOL --args JSON`; `healthbridge status`; MCP: `healthb
 
 ## Acceptance fixtures
 HealthBridge/Tests/BridgeCoreTests and Tests/HealthBridgeIntegrationTests contain synthetic sources; HealthBridge/scripts/smoke.py creates a temporary transport and database, exercises actual stdio and deletes its temporary fixture. No personal health data is checked in.
+
+Since App 0.11.1, canonical workout payloads expose selection_mode (manual/automatic), selected_record_id, selection_state, selection_id and selection_updated_at. A manual choice wins over device priority for this matched event; other sources only fill missing fields/heart gaps. Explicit automatic decisions persist. Earlier manually selected groups may also have canonical projections; their contributors must not be returned again as legacy raw workouts. Daily active energy replaces the represented matched-workout window for an unambiguous manual event, preserving non-workout energy; overlapping ambiguous sessions retain continuous quantity evidence and expose manualWorkoutEnergy.applied=false.

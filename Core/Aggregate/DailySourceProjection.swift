@@ -59,7 +59,12 @@ enum DailySourceProjection {
             if let source = selected.sourceKey { cumulative[type] = ["source":source,"reason":selected.selectionReason] }
         }
         let sleepSource = try GarminStore.sleepSeconds(db:db,date:DashboardLoader.dateKey.string(from:Date(timeIntervalSince1970:Double(start)))) != nil ? "garmin_cn_personal" : "healthkit_selected_source"
-        let data = try JSONSerialization.data(withJSONObject:["version":version,"sleepSource":sleepSource,"metricSources":details,"cumulativeSelections":cumulative,"heartWeight":"covered_seconds","otherWeight":"selected_source_sample_count"],options:[.sortedKeys])
+        let manualWorkouts = try WorkoutEventProjection.events(db: db, start: start, end: end)
+        let manualEnergy = manualWorkouts.filter(\.isManuallySelected).map { event -> [String:Any] in
+            ["record": event.selected.id, "source": event.selected.source, "applied": ActivityEnergyCalculator.manualEnergyWindow(event, amongst: manualWorkouts) != nil,
+             "method": "replace_represented_workout_window_keep_non_workout_energy"]
+        }
+        let data = try JSONSerialization.data(withJSONObject:["version":version,"sleepSource":sleepSource,"metricSources":details,"cumulativeSelections":cumulative,"heartWeight":"covered_seconds","otherWeight":"selected_source_sample_count","manualWorkoutEnergy":manualEnergy],options:[.sortedKeys])
         return String(decoding:data,as:UTF8.self)
     }
 

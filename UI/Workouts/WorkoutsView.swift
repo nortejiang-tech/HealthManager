@@ -63,7 +63,7 @@ struct WorkoutsView: View {
                 } header: {
                     Text("最近运动（\(rows.count) 次）")
                 } footer: {
-                    Text("补录记录的消耗来自 MET × 体重 × 小时估算；同步记录按同一运动合并，佳明优先、Apple 校验补全。")
+                    Text("补录记录的消耗来自 MET × 体重 × 小时估算；同步记录按同一运动合并，默认佳明优先，也可在运动详情中选择计入记录，其他来源补全缺失项。")
                 }
             }
         }
@@ -83,6 +83,7 @@ struct WorkoutsView: View {
         }
         .task { await refresh() }
         .refreshable { await refresh() }
+        .onChange(of: environment.localDataTick) { _, _ in Task { await refresh() } }
         .onChange(of: sync.aggregationTick) { _, _ in
             Task { await refresh() }
         }
@@ -112,7 +113,7 @@ struct WorkoutsView: View {
                     SELECT * FROM health_samples_raw WHERE is_deleted=0 AND hk_type=? AND start_at>=?
                     ORDER BY start_at DESC LIMIT 1000
                     """, arguments: [TrainingTypes.workout, earliestEpoch])
-                return ActivityWorkoutRow.canonical(raw).prefix(200).map { $0 }
+                return ActivityWorkoutRow.canonical(raw, choices: try WorkoutChoiceStore.load(db: db)).prefix(200).map { $0 }
             }
             await MainActor.run {
                 rows = loaded

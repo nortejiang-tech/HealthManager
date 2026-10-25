@@ -4,12 +4,14 @@ import GRDB
 enum WorkoutEventProjection {
     static func events(db: Database, start: Int64, end: Int64) throws -> [WorkoutEvent] {
         let raw = try HealthSampleRaw.fetchAll(db, sql: "SELECT * FROM health_samples_raw WHERE hk_type=? AND is_deleted=0 AND start_at BETWEEN ? AND ? ORDER BY sample_uuid", arguments: [TrainingTypes.workout, start - 600, end + 600])
-        return WorkoutEventResolver.events(raw.compactMap(TrainingSnapshotLoader.sample)).filter {
+        return WorkoutEventResolver.events(raw.compactMap(TrainingSnapshotLoader.sample), choices: try WorkoutChoiceStore.load(db: db)).filter {
             $0.selected.start.timeIntervalSince1970 >= Double(start) && $0.selected.start.timeIntervalSince1970 <= Double(end)
         }
     }
     static func rebuild(db: Database, date: String, start: Int64, end: Int64) throws {
-        guard date >= DailySourceProjection.effectiveDate else { return }
+        if date < DailySourceProjection.effectiveDate {
+            guard try !WorkoutChoiceStore.load(db: db).isEmpty else { return }
+        }
         let events = try events(db: db, start: start, end: end)
         var activeIDs = Set<String>()
         for event in events {
@@ -23,7 +25,10 @@ enum WorkoutEventProjection {
                 "activityType":s.activityType as Any? ?? NSNull(),"duration":s.duration as Any? ?? NSNull(),
                 "totalDistanceMeters":s.distance as Any? ?? NSNull(),"totalEnergyKcal":s.energyKcal as Any? ?? NSNull(),
                 "source_policy":WorkoutEventResolver.policyVersion,"value":s.duration ?? 0,"unit":"second","kind":"workout","is_deleted":false,"extra_json":extraJSON,
-                "contributor_ids":event.contributors.map(\.id).sorted(),"selection_notes":event.notes]
+                "contributor_ids":event.contributors.map(\.id).sorted(),"selection_notes":event.notes,
+                "selection_mode":event.isManuallySelected ? "manual" : "automatic",
+                "selected_record_id":s.id,"selection_state":event.choice?.selectedID != nil && !event.isManuallySelected ? "unavailable_fallback" : "available",
+                "selection_id":event.choice?.id as Any? ?? NSNull(),"selection_updated_at":event.choice?.updatedAt as Any? ?? NSNull()]
             let json = String(decoding: try JSONSerialization.data(withJSONObject: object, options: [.sortedKeys]), as: UTF8.self)
             try db.execute(sql: """
                 INSERT INTO workout_events(id,date,payload_json) VALUES(?,?,?)

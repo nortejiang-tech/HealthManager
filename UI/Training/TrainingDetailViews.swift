@@ -2,6 +2,13 @@ import SwiftUI
 
 struct TrainingSessionDetail: View {
     let session: TrainingSession
+    var body: some View { TrainingRecordedWorkoutDetail(id: session.id) }
+}
+
+private struct TrainingSessionContent: View {
+    let session: TrainingSession
+    let choiceContext: WorkoutChoiceContext?
+    let onChoose: () -> Void
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
@@ -15,6 +22,12 @@ struct TrainingSessionDetail: View {
                     TrainingStatRow(label: "观测峰值心率", value: TrainingText.number(session.peakHeartRate, unit: "bpm"))
                     TrainingStatRow(label: "心率时间覆盖", value: TrainingText.number(session.heartCoverage * 100, unit: "%"))
                     Text("来源：\(session.sourceName)").font(.footnote).foregroundStyle(.secondary)
+                    if let context = choiceContext, context.event.contributors.count > 1 || context.event.choice != nil {
+                        Button(action: onChoose) {
+                            Label("计入记录：" + context.label, systemImage: "checkmark.circle")
+                                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading).contentShape(Rectangle())
+                        }.accessibilityIdentifier("workout-source-picker")
+                    }
                 }
                 TrainingPanel(title: "负荷与恢复依据", icon: "waveform.path.ecg") {
                     TrainingStatRow(label: "心率负荷（实验）", value: TrainingText.number(session.load, unit: "bpm·min"))
@@ -106,19 +119,37 @@ struct TrainingRecordedWorkoutDetail: View {
     let id: String
     @EnvironmentObject private var environment: AppEnvironment
     @State private var session: TrainingSession?
+    @State private var choiceContext: WorkoutChoiceContext?
+    @State private var editor: WorkoutChoiceContext?
     @State private var error: String?
     @State private var loaded = false
     var body: some View {
         Group {
-            if let session { TrainingSessionDetail(session: session) }
-            else if let error { Text(error).padding() }
+            if let session {
+                TrainingSessionContent(session: session, choiceContext: choiceContext) { editor = choiceContext }
+            } else if let error { Text(error).padding() }
             else if loaded { Text("记录字段不足，无法读取运动详情。").padding() }
             else { ProgressView("正在读取运动与心率…") }
         }
-        .task {
-            do { session = try await TrainingSnapshotLoader.session(database: environment.database, id: id) }
-            catch { self.error = error.localizedDescription }
-            loaded = true
+        .task(id: environment.localDataTick) { await refresh() }
+        .sheet(item: $editor) { context in
+            WorkoutRecordChoiceSheet(options: context.event.contributors.map { sample in
+                WorkoutChoiceOption(id: sample.id, sourceName: sample.sourceName, start: sample.start,
+                    minutes: (sample.duration ?? 0) / 60, distanceKm: sample.distance.map { $0 / 1000 }, energyKcal: sample.energyKcal)
+            }, selectedID: context.selectedID,
+                unavailableMessage: context.event.choice?.selectedID != nil && !context.event.isManuallySelected ? "原选定记录已不可用，可重新选择或恢复自动。" : nil) { selectedID in
+                defer { environment.notifyLocalDataChanged() }
+                try await WorkoutChoiceStore.apply(database: environment.database, recordID: id, selectedID: selectedID)
+                await refresh()
+            }
         }
+    }
+    @MainActor private func refresh() async {
+        do {
+            session = try await TrainingSnapshotLoader.session(database: environment.database, id: id)
+            choiceContext = try await environment.database.asyncRead { db in try WorkoutChoiceStore.context(db: db, recordID: id) }
+            error = nil
+        } catch { self.error = error.localizedDescription }
+        loaded = true
     }
 }

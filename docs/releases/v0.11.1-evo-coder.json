@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "task": "v0.11.1 release execution only",
+  "date": "2026-10-25",
+  "runs": [],
+  "reason": "Privacy-sensitive publication scope review, release archive, git objects and publishing are Planner-owned. No new implementation in this release phase; implementation-stage local model reports remain local.",
+  "generated_tokens": 0,
+  "cloud_tokens_saved": 0,
+  "scope": "Release phase only; not cumulative feature development usage",
+  "evaluation": "No local coding execution in this phase; no coding-quality inference."
+}

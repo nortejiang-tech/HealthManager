@@ -315,11 +315,11 @@ struct ActivityWorkoutRow: Identifiable, Hashable, Sendable {
             SELECT * FROM health_samples_raw WHERE is_deleted=0 AND hk_type=? AND start_at>=? AND start_at<?
             ORDER BY start_at DESC
             """, arguments: [TrainingTypes.workout, start, end])
-        return canonical(raw)
+        return canonical(raw, choices: try WorkoutChoiceStore.load(db: db))
     }
 
-    static func canonical(_ raw: [HealthSampleRaw]) -> [ActivityWorkoutRow] {
-        WorkoutEventResolver.events(raw.compactMap(TrainingSnapshotLoader.sample)).map { event in
+    static func canonical(_ raw: [HealthSampleRaw], choices: [WorkoutRecordChoice] = []) -> [ActivityWorkoutRow] {
+        WorkoutEventResolver.events(raw.compactMap(TrainingSnapshotLoader.sample), choices: choices).map { event in
             let s = event.selected
             let extra = raw.first(where: { $0.sampleUUID == s.id })?.extraJson.flatMap { $0.data(using:.utf8) }
                 .flatMap { try? JSONSerialization.jsonObject(with:$0) as? [String:Any] }
@@ -327,7 +327,7 @@ struct ActivityWorkoutRow: Identifiable, Hashable, Sendable {
             return ActivityWorkoutRow(sampleUUID:s.id,startAt:Int64(s.start.timeIntervalSince1970),endAt:Int64(s.end.timeIntervalSince1970),
                 durationSeconds:s.duration ?? 0,activityLabel:manual ?? WorkoutsView.label(for:s.activityType ?? 0),
                 energyKcal:s.energyKcal,distanceMeters:s.distance,
-                sourceLabel:(SourceAttribution.Origin(rawValue:s.origin)?.label ?? s.sourceName) + (event.contributors.count > 1 ? " · 多记录校验" : ""),
+                sourceLabel:(SourceAttribution.Origin(rawValue:s.origin)?.label ?? s.sourceName) + (event.isManuallySelected ? " · 手动认定" : (event.contributors.count > 1 ? " · 多记录校验" : "")),
                 isManualEstimate:s.origin == "manual")
         }.sorted { $0.startAt > $1.startAt }
     }

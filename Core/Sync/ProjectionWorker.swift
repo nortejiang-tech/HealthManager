@@ -27,18 +27,22 @@ actor ProjectionWorker {
         self.onCalendarEvidenceScanStarted = onCalendarEvidenceScanStarted
     }
 
-    func hasPending(calendar: Calendar = .current) throws -> Bool {
+    func hasPending(calendar: Calendar = .current, onlyDates: Set<String>? = nil) throws -> Bool {
         let zone = calendar.timeZone.identifier
+        if onlyDates?.isEmpty == true { return false }
+        let filter = Self.dateFilter(onlyDates)
+        var args: StatementArguments = [zone,projectionVersion]
+        if let onlyDates { args += StatementArguments(onlyDates.sorted()) }
         return try database.read { db in
             try Bool.fetchOne(
                 db,
                 sql: """
                     SELECT EXISTS(
                         SELECT 1 FROM sync_projection_work
-                        WHERE time_zone = ? AND projection_version = ?
+                        WHERE time_zone = ? AND projection_version = ? \(filter)
                     )
                     """,
-                arguments: [zone, projectionVersion]
+                arguments: args
             ) ?? false
         }
     }
@@ -46,24 +50,29 @@ actor ProjectionWorker {
     func runBatch(
         limit: Int = 32,
         calendar: Calendar = .current,
+        onlyDates: Set<String>? = nil,
         afterRebuildBeforeAcknowledge: (() throws -> Void)? = nil
     ) async throws -> ProjectionRunResult {
-        guard limit > 0 else {
-            return ProjectionRunResult(processed: 0, changedDates: [], hasPending: try hasPending(calendar: calendar))
+        guard limit > 0, onlyDates?.isEmpty != true else {
+            return ProjectionRunResult(processed: 0, changedDates: [], hasPending: try hasPending(calendar: calendar, onlyDates: onlyDates))
         }
         try await prepareCalendarIfNeeded(calendar)
         let zone = calendar.timeZone.identifier
+        let filter = Self.dateFilter(onlyDates)
+        var args: StatementArguments = [zone,projectionVersion]
+        if let onlyDates { args += StatementArguments(onlyDates.sorted()) }
+        args += [limit]
         let captured: [SyncProjectionWork] = try database.read { db in
             try Row.fetchAll(
                 db,
                 sql: """
                     SELECT local_date, time_zone, projection_version, generation
                     FROM sync_projection_work
-                    WHERE time_zone = ? AND projection_version = ?
+                    WHERE time_zone = ? AND projection_version = ? \(filter)
                     ORDER BY local_date
                     LIMIT ?
                     """,
-                arguments: [zone, projectionVersion, limit]
+                arguments: args
             ).map { row in
                 SyncProjectionWork(
                     key: SyncProjectionWorkKey(
@@ -102,11 +111,17 @@ actor ProjectionWorker {
             changed.formUnion(dateChanges)
             processed += 1
         }
+        if processed > 0 { try await SummaryGenerator(database: database).refreshPendingWorkoutReports() }
         return ProjectionRunResult(
             processed: processed,
             changedDates: changed,
-            hasPending: try hasPending(calendar: calendar)
+            hasPending: try hasPending(calendar: calendar, onlyDates: onlyDates)
         )
+    }
+
+    private static func dateFilter(_ dates: Set<String>?) -> String {
+        guard let dates else { return "" }
+        return " AND local_date IN (" + Array(repeating: "?", count: dates.count).joined(separator: ",") + ")"
     }
 
     /// A timezone/version change queues only dates backed by raw evidence. Restored aggregate

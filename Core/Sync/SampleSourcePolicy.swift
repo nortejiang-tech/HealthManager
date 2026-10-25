@@ -31,7 +31,8 @@ enum SampleSourcePolicy {
         _ observations: [Observation],
         from: Date,
         to: Date,
-        maximumHold: TimeInterval = 30
+        maximumHold: TimeInterval = 30,
+        preferredSource: String? = nil
     ) -> [Segment] {
         guard to > from, maximumHold.isFinite, maximumHold > 0 else { return [] }
 
@@ -92,8 +93,8 @@ enum SampleSourcePolicy {
         func outranks(_ lhs: Int, _ rhs: Int) -> Bool {
             let left = coverage[lhs]
             let right = coverage[rhs]
-            if preferred(left, right) { return true }
-            if preferred(right, left) { return false }
+            if preferred(left, right, preferredSource: preferredSource) { return true }
+            if preferred(right, left, preferredSource: preferredSource) { return false }
             return lhs < rhs
         }
         func push(_ value: Int) {
@@ -150,10 +151,18 @@ enum SampleSourcePolicy {
 
     private static func preferred(
         _ lhs: (observation: Observation, start: Date, end: Date),
-        _ rhs: (observation: Observation, start: Date, end: Date)
+        _ rhs: (observation: Observation, start: Date, end: Date),
+        preferredSource: String? = nil
     ) -> Bool {
         let left = lhs.observation
         let right = rhs.observation
+        // An exact preferred-source match ranks ahead of origin priority for overlapping observations.
+        // Sources that merely differ do not get promoted, so gaps keep the original origin rules.
+        if let preferredSource, !preferredSource.isEmpty {
+            let leftMatches = left.source == preferredSource
+            let rightMatches = right.source == preferredSource
+            if leftMatches != rightMatches { return leftMatches }
+        }
         let leftPriority = priority(left.origin)
         let rightPriority = priority(right.origin)
         if leftPriority != rightPriority { return leftPriority > rightPriority }

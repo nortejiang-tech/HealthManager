@@ -1,0 +1,63 @@
+{
+  "version": "0.11.1",
+  "build": 29,
+  "date": "2026-10-25",
+  "distribution": "Public GitHub source release; not App Store or TestFlight",
+  "accepted_source_fingerprints": {
+    "status": "PASS",
+    "checked_paths": 27,
+    "changed_since_acceptance": 0
+  },
+  "app_unit_tests": {
+    "status": "PASS",
+    "count": 548,
+    "failures": 0,
+    "scope": "Accepted runtime and test sources, rechecked by SHA-256 at release"
+  },
+  "bridge_tests": {
+    "status": "PASS",
+    "count": 27,
+    "failures": 0
+  },
+  "rendered_ui": {
+    "status": "PASS",
+    "unique_cases": 2,
+    "final_save_flow_rerun": true,
+    "scope": "Synthetic simulator choose/cancel/save/restart/reset and accessibility large text"
+  },
+  "physical_acceptance": {
+    "status": "PASS",
+    "method": "Maintainer explicitly accepted installed build29 and authorized release"
+  },
+  "mac_consistency": {
+    "status": "PASS",
+    "scope": "Selected primary source, available primary values, local date and single-event count verified; raw records and private receipts kept locally"
+  },
+  "physical_xctest_automation": {
+    "status": "PENDING",
+    "reason": "Historical driver bootstrap restriction; manual acceptance and end-to-end readback are independent evidence"
+  },
+  "release_archive": {
+    "status": "PASS",
+    "configuration": "Release",
+    "version_verified": true,
+    "signature_verified": true,
+    "personal_signed_artifact_uploaded": false,
+    "warnings": "Non-fatal concurrency compatibility, unused/await and App Intents metadata warnings remain; project uses Swift 5 language mode."
+  },
+  "privacy": {
+    "scoped_review": "PASS",
+    "personal_health_records_published": false,
+    "private_acceptance_material_published": false,
+    "device_identifiers_published": false,
+    "credentials_published": false,
+    "signed_personal_binaries_published": false,
+    "new_tests_use_synthetic_data": true
+  },
+  "schema": {
+    "migration": "v19_workout_record_choices",
+    "backup_format": 7,
+    "older_backup_read_supported": true,
+    "old_binary_is_not_full_database_rollback": true
+  }
+}

@@ -28,11 +28,20 @@ enum ActivityEnergyCalculator {
             end: end
         )
         let isNewPolicy = (date ?? DashboardLoader.dateKey.string(from: Date(timeIntervalSince1970: Double(start)))) >= DailySourceProjection.effectiveDate
-        if isNewPolicy {
+        let events = try WorkoutEventProjection.events(db: db, start: start, end: end)
+        if isNewPolicy || events.contains(where: { $0.choice != nil }) {
             var total = quantity.value
-            for event in try WorkoutEventProjection.events(db: db, start: start, end: end) {
+            for event in events {
                 let sample = event.selected
                 guard let energy = sample.energyKcal, energy.isFinite && energy >= 0 else { continue }
+                if event.isManuallySelected {
+                    guard let range = manualEnergyWindow(event, amongst: events) else { continue }
+                    let represented = try overlappingActiveEnergy(db: db,
+                        workoutStart: Int64(range.0.timeIntervalSince1970), workoutEnd: Int64(range.1.timeIntervalSince1970),
+                        quantitySourceKey: quantity.sourceKey, dayStart: start, dayEnd: end)
+                    total += energy - represented
+                    continue
+                }
                 let hasRepresentation: Bool
                 if let source = quantity.sourceKey {
                     hasRepresentation = try Bool.fetchOne(db, sql: """
@@ -110,6 +119,18 @@ enum ActivityEnergyCalculator {
         return DominantSourceSum(value: bestSum, sourceKey: bestSourceKey)
     }
 
+    /// Replace only the represented workout window, retaining non-workout daily energy.
+    /// Ambiguous overlapping sessions keep the quantity total rather than subtracting twice.
+    static func manualEnergyWindow(_ event: WorkoutEvent, amongst events: [WorkoutEvent]) -> (Date, Date)? {
+        guard event.isManuallySelected, event.selected.energyKcal?.isFinite == true,
+              (event.selected.energyKcal ?? -1) >= 0,
+              let start = event.contributors.map(\.start).min(), let end = event.contributors.map(\.end).max() else { return nil }
+        guard !events.contains(where: { other in
+            other.selected.id != event.selected.id && other.contributors.contains { $0.start < end && $0.end > start }
+        }) else { return nil }
+        return (start,end)
+    }
+
     private struct WorkoutEnergyRow {
         let startAt: Int64
         let endAt: Int64
@@ -165,7 +186,9 @@ enum ActivityEnergyCalculator {
         db: Database,
         workoutStart: Int64,
         workoutEnd: Int64,
-        quantitySourceKey: String?
+        quantitySourceKey: String?,
+        dayStart: Int64 = Int64.min,
+        dayEnd: Int64 = Int64.max
     ) throws -> Double {
         guard let quantitySourceKey else { return 0 }
         let rows = try Row.fetchAll(db, sql: """
@@ -175,12 +198,12 @@ enum ActivityEnergyCalculator {
               AND is_deleted = 0
               AND COALESCE(source_bundle_id, 'unknown') = ?
               AND start_at <= ?
-              AND end_at >= ?
+              AND end_at >= ? AND start_at BETWEEN ? AND ?
             """, arguments: [
                 activeEnergyType,
                 quantitySourceKey,
                 workoutEnd,
-                workoutStart
+                workoutStart, dayStart, dayEnd
             ])
 
         return rows.reduce(0) { partial, row in

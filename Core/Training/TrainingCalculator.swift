@@ -17,7 +17,7 @@ enum TrainingCalculator {
     static let maximumHeartGap: TimeInterval = 30
 
     static func snapshot(samples input: [TrainingSample], health: [TrainingHealthMetric] = [],
-                         now: Date, calendar: Calendar) -> TrainingSnapshot {
+                         now: Date, calendar: Calendar, choices: [WorkoutRecordChoice] = []) -> TrainingSnapshot {
         let today = calendar.startOfDay(for: now)
         let begin = calendar.date(byAdding: .day, value: -(historyDays - 1), to: today)!
         let inputBegin = calendar.date(byAdding: .day, value: -inputHistoryDays, to: today)!
@@ -36,7 +36,7 @@ enum TrainingCalculator {
             $0.type == TrainingTypes.workout && $0.end > $0.start
                 && ($0.duration ?? 0) > 0 && ($0.duration ?? 0).isFinite
         }
-        let events = WorkoutEventResolver.events(workoutInputs)
+        let events = WorkoutEventResolver.events(workoutInputs, choices: choices)
         let workouts = events.map(\.selected)
         let allSessions = events.map { event in
             session(event.selected, hearts: WorkoutEventResolver.hearts(hearts, for: event, sortedByStart: true), resting: samples.filter { $0.type == TrainingTypes.resting },
@@ -44,7 +44,7 @@ enum TrainingCalculator {
         }.sorted { $0.start > $1.start }
         let sessions = allSessions.filter { $0.start >= begin }
         let history = readinessHistory(nights: nights, workouts: workoutInputs, hearts: heartsBySource,
-            resting: samples.filter { $0.type == TrainingTypes.resting }, now: now, calendar: calendar)
+            resting: samples.filter { $0.type == TrainingTypes.resting }, now: now, calendar: calendar, choices: choices)
         var current = history.last(where: { $0.assessment.observedAt != nil })?.assessment
             ?? readiness(nights: [], sessions: [], now: now)
         if let observed = current.observedAt, now.timeIntervalSince(observed) > 30 * 3600 {
@@ -81,10 +81,10 @@ enum TrainingCalculator {
         )
     }
 
-    static func recordDetail(id: String, samples: [TrainingSample], now: Date, calendar: Calendar) -> TrainingSession? {
+    static func recordDetail(id: String, samples: [TrainingSample], now: Date, calendar: Calendar, choices: [WorkoutRecordChoice] = []) -> TrainingSession? {
         let valid = samples.filter { $0.value.isFinite && $0.start <= now && $0.end <= now && $0.end >= $0.start && $0.ingestedAt <= now }
         let workouts = valid.filter { $0.type == TrainingTypes.workout && ($0.duration ?? 0) > 0 && ($0.duration ?? 0).isFinite && $0.end > $0.start }
-        guard let event = WorkoutEventResolver.events(workouts).first(where: { $0.contributors.contains(where: { $0.id == id }) }) else { return nil }
+        guard let event = WorkoutEventResolver.events(workouts, choices: choices).first(where: { $0.contributors.contains(where: { $0.id == id }) }) else { return nil }
         let workout = event.selected
         let hearts = valid.filter { $0.type == TrainingTypes.heart && (25...230).contains($0.value) }
             .sorted { $0.start == $1.start ? $0.id < $1.id : $0.start < $1.start }
@@ -93,7 +93,7 @@ enum TrainingCalculator {
             hrv: hrv, now: workout.start, calendar: calendar)
         return session(workout, hearts: WorkoutEventResolver.hearts(hearts, for: event),
             resting: valid.filter { $0.type == TrainingTypes.resting }, nights: nights,
-            workouts: deduplicatedWorkouts(workouts), calendar: calendar, event: event)
+            workouts: deduplicatedWorkouts(workouts, choices: choices), calendar: calendar, event: event)
     }
 
     static func dayKey(_ date: Date, _ calendar: Calendar) -> String {
@@ -111,8 +111,8 @@ enum TrainingCalculator {
         SampleSourcePolicy.priority(sample.origin)
     }
 
-    private static func deduplicatedWorkouts(_ workouts: [TrainingSample]) -> [TrainingSample] {
-        WorkoutEventResolver.events(workouts).map(\.selected)
+    private static func deduplicatedWorkouts(_ workouts: [TrainingSample], choices: [WorkoutRecordChoice] = []) -> [TrainingSample] {
+        WorkoutEventResolver.events(workouts, choices: choices).map(\.selected)
     }
 
     private static func session(_ w: TrainingSample, hearts: [TrainingSample], resting: [TrainingSample],
@@ -144,7 +144,7 @@ enum TrainingCalculator {
             $0.id != w.id && min($0.end, w.end).timeIntervalSince(max($0.start, w.start)) > 30
         }
         var covered = 0.0, weightedHeart = 0.0, excess = 0.0
-        let segments = SampleSourcePolicy.resolve(sourceHearts.map(WorkoutEventResolver.observation), from: w.start, to: w.end, maximumHold: maximumHeartGap)
+        let segments = SampleSourcePolicy.resolve(sourceHearts.map(WorkoutEventResolver.observation), from: w.start, to: w.end, maximumHold: maximumHeartGap, preferredSource: event?.isManuallySelected == true ? w.source : nil)
         var supplement = 0.0
         let referenceSources = Set(segments.map { $0.observation.source })
         var sourceReferences: [String: (value: Double, method: String)] = [:]
@@ -187,7 +187,7 @@ enum TrainingCalculator {
             if g.end <= a.end { gi += 1 } else { ai += 1 }
         }
         if compared > 0 { notes.append(String(format: "双端共同覆盖 %.0f 秒，心率平均绝对差 %.1f bpm（描述性校验）", compared, difference / compared)) }
-        if supplement > 0 { notes.append("心率由其他采集端补全 \(Int(supplement.rounded())) 秒；覆盖内优先佳明，不取双端均值") }
+        if supplement > 0 { notes.append("心率由其他采集端补全 \(Int(supplement.rounded())) 秒；覆盖内优先\(event?.isManuallySelected == true ? "所选来源" : "佳明")，不取双端均值") }
         if !consistentReference { notes.append("心率使用多端或补位来源，缺少可比来源基准，实验负荷未计算") }
         if coverage < 0.7 { notes.append("有效心率覆盖不足70%，负荷未计算") }
         if !consistentReference { notes.append("部分采集来源静息/睡眠基准不足7天或方法不一致，负荷未计算") }
@@ -204,6 +204,10 @@ enum TrainingCalculator {
                     .min { abs($0.start.timeIntervalSince(time)) < abs($1.start.timeIntervalSince(time)) }?.value
             }
             let recoverySources = Dictionary(grouping: sourceHearts, by: \.source).values.sorted {
+                if event?.isManuallySelected == true {
+                    let a = $0[0].source == w.source, b = $1[0].source == w.source
+                    if a != b { return a }
+                }
                 let a = priority($0[0]), b = priority($1[0]); return a == b ? $0[0].source < $1[0].source : a > b
             }
             for records in recoverySources {
@@ -326,7 +330,7 @@ enum TrainingCalculator {
     }
 
     private static func readinessHistory(nights: [TrainingNight], workouts: [TrainingSample],
-        hearts: [String: [TrainingSample]], resting: [TrainingSample], now: Date, calendar: Calendar) -> [TrainingReadinessPoint] {
+        hearts: [String: [TrainingSample]], resting: [TrainingSample], now: Date, calendar: Calendar, choices: [WorkoutRecordChoice]) -> [TrainingReadinessPoint] {
         let first = calendar.date(byAdding: .day, value: -(historyDays + 28 - 1), to: calendar.startOfDay(for: now))!
         let keyed = Dictionary(nights.map { ($0.dayKey, $0) }, uniquingKeysWith: { _, b in b })
         let allHearts: [TrainingSample] = hearts.values.flatMap { $0 }
@@ -346,7 +350,7 @@ enum TrainingCalculator {
             }
             let anchor = night.end
             let priorNights = nights.filter { $0.end <= anchor }
-            let priorEvents = WorkoutEventResolver.events(workouts.filter { $0.end <= anchor })
+            let priorEvents = WorkoutEventResolver.events(workouts.filter { $0.end <= anchor }, choices: choices)
             let priorWorkouts = priorEvents.map(\.selected)
             // Recompute the session evidence at this anchor so later overlapping workouts,
             // later HRR samples, and a different selection window cannot leak backward.

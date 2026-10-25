@@ -40,6 +40,7 @@ struct BackupTableSpec: Equatable, Sendable {
 struct BackupExporter {
 
     static let tables: [BackupTableSpec] = [
+        .init(table: "workout_record_choices", fileName: "workout_record_choices.jsonl", orderBy: "id", replaceOnConflict: false),
         .init(table: "summary_contract_archive", fileName: "summary_contract_archive.jsonl", orderBy: "kind, report_key", replaceOnConflict: false),
         .init(table: "workout_events", fileName: "workout_events.jsonl", orderBy: "id", replaceOnConflict: true),
         .init(table: "garmin_daily_metrics", fileName: "garmin_daily_metrics.jsonl", orderBy: "id", replaceOnConflict: true),

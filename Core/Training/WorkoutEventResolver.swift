@@ -1,16 +1,32 @@
 import Foundation
 
-struct WorkoutEvent {
+struct WorkoutEvent: Sendable {
     var selected: TrainingSample
     let contributors: [TrainingSample]
     var notes: [String]
+    /// Persisted user selection attached to this event group. nil means the automatic decision stands.
+    var choice: WorkoutRecordChoice? = nil
     var sourceIDs: Set<String> { Set(contributors.map(\.source)) }
+    /// True only when the persisted choice still names this event's primary record.
+    var isManuallySelected: Bool {
+        guard let chosen = choice?.selectedID else { return false }
+        return chosen == selected.id
+    }
+}
+
+/// Persistent user selection for one matched workout group. Pure value; no database access here.
+struct WorkoutRecordChoice: Codable, Hashable, Sendable {
+    let id: String
+    /// nil means an explicit decision to fall back to the automatic selection.
+    let selectedID: String?
+    let memberIDs: [String]
+    let updatedAt: Double
 }
 
 enum WorkoutEventResolver {
-    static let policyVersion = "garmin-first-apple-completion-v1"
-    static func events(_ workouts: [TrainingSample]) -> [WorkoutEvent] {
-        let ordered = workouts.filter { $0.end > $0.start && ($0.duration ?? 0) > 0 }.sorted {
+    static let policyVersion = "workout-record-choice-v2"
+    static func events(_ workouts: [TrainingSample], choices: [WorkoutRecordChoice] = []) -> [WorkoutEvent] {
+        let ordered = workouts.filter { $0.start.timeIntervalSince1970.isFinite && $0.end.timeIntervalSince1970.isFinite && $0.end > $0.start && ($0.duration ?? 0) > 0 && $0.duration?.isFinite == true && $0.value.isFinite }.sorted {
             let a = SampleSourcePolicy.priority($0.origin), b = SampleSourcePolicy.priority($1.origin)
             return a == b ? $0.id < $1.id : a > b
         }
@@ -20,22 +36,67 @@ enum WorkoutEventResolver {
             else { groups.append([sample]) }
         }
         return groups.map { records in
+            let memberIDs = Set(records.map(\.id))
+            // Grouping never depends on the preference; a choice is attached to a group only through
+            // member-ID intersection, and the freshest finite updatedAt wins with a deterministic id tie-break.
+            let choice = choices
+                .filter { $0.updatedAt.isFinite && $0.memberIDs.contains(where: { id in memberIDs.contains(id) }) }
+                .min {
+                    let a = $0.updatedAt, b = $1.updatedAt
+                    // Guard NaN/nonfinite timestamps: order them last, never let them win.
+                    let aValid = a.isFinite, bValid = b.isFinite
+                    if aValid != bValid { return aValid }
+                    if a != b { return a > b }
+                    return $0.id < $1.id
+                }
             var selected = records[0]
             var notes: [String] = []
+            let manual: Bool
+            if let choice {
+                if let chosenID = choice.selectedID, let match = records.first(where: { $0.id == chosenID }) {
+                    // Manual selection: keep the user's record exactly as stored; no complete-window fallback.
+                    selected = match
+                    manual = true
+                } else {
+                    // Missing or stale selection: keep the choice attached for the warning note and stay automatic.
+                    selected = records[0]
+                    manual = false
+                }
+            } else {
+                manual = false
+            }
+            if records.count > 1 {
+                let origins = Set(records.map(\.origin))
+                notes.append(origins.contains("garmin") && origins.contains("apple")
+                    ? (manual ? "双端运动已匹配，统计一次；采用手动选定主记录" : "双端运动已匹配，统计一次；优先参考佳明有效数据")
+                    : "多条运动记录已匹配，仅统计一次；记录条数不代表设备数量")
+            }
             let complete = records.max {
                 let a = $0.end.timeIntervalSince($0.start), b = $1.end.timeIntervalSince($1.start)
                 return a == b ? $0.id > $1.id : a < b
             }!
-            if records.count > 1 {
-                let origins = Set(records.map(\.origin))
-                notes.append(origins.contains("garmin") && origins.contains("apple")
-                    ? "双端运动已匹配，统计一次；优先参考佳明有效数据"
-                    : "多条运动记录已匹配，仅统计一次；记录条数不代表设备数量")
-            }
             let primaryElapsed = selected.end.timeIntervalSince(selected.start)
             let longest = complete.end.timeIntervalSince(complete.start)
-            // A substantially shorter Garmin auto-detected event cannot define the full session.
-            if selected.origin == "garmin", complete.origin == "apple", primaryElapsed < longest * 0.9 {
+            if !(selected.end > selected.start) || !primaryElapsed.isFinite || !longest.isFinite {
+                // Guard invalid/NaN spans: never let a broken window drive the automatic fallback.
+                selected.start = complete.start; selected.end = complete.end; selected.duration = complete.duration
+            } else if manual {
+                // Manual note first: the user's decision governs this record.
+                notes.insert("已手动选定：主记录来源 \(selected.sourceName)", at: 0)
+                // Never replace a shorter manual window with the complete Apple record; only fill
+                // genuinely missing or invalid metrics. Zero is an observed value and must remain.
+                if selected.distance == nil || selected.distance.map({ !$0.isFinite || $0 < 0 }) == true,
+                   let other = records.first(where: { ($0.distance ?? -1) >= 0 && ($0.distance ?? -1).isFinite }) {
+                    selected.distance = other.distance
+                    notes.append("距离缺失或无效，由 \(other.sourceName) 补位")
+                }
+                if selected.energyKcal == nil || selected.energyKcal.map({ !$0.isFinite || $0 < 0 }) == true,
+                   let other = records.first(where: { ($0.energyKcal ?? -1) >= 0 && ($0.energyKcal ?? -1).isFinite }) {
+                    selected.energyKcal = other.energyKcal
+                    notes.append("运动消耗缺失或无效，由 \(other.sourceName) 补位")
+                }
+            } else if selected.origin == "garmin", complete.origin == "apple", primaryElapsed < longest * 0.9 {
+                // A substantially shorter Garmin auto-detected event cannot define the full session.
                 selected.start = complete.start; selected.end = complete.end; selected.duration = complete.duration
                 selected.distance = complete.distance; selected.energyKcal = complete.energyKcal
                 notes.append("佳明运动窗口不全，时长/距离/运动消耗由 Apple 完整记录补位")
@@ -49,11 +110,17 @@ enum WorkoutEventResolver {
                     selected.energyKcal = other.energyKcal; notes.append("运动消耗由 \(other.sourceName) 补全")
                 }
             }
+            if let choice, choice.selectedID == nil {
+                // Explicit reset to automatic: keep the choice visible, do not resurrect an old record.
+                notes.append("已恢复自动选择")
+            } else if let choice, choice.selectedID != nil, !manual {
+                notes.append("手动选定记录不可用，已回退自动判定")
+            }
             let distances = records.compactMap { $0.distance }.filter { $0.isFinite && $0 > 0 }
             if let low = distances.min(), let high = distances.max(), high - low > max(100, high * 0.1) {
                 notes.append("双端距离存在差异，保留主值与原始记录；未取平均")
             }
-            return WorkoutEvent(selected: selected, contributors: records, notes: notes)
+            return WorkoutEvent(selected: selected, contributors: records, notes: notes, choice: choice)
         }.sorted { $0.selected.start == $1.selected.start ? $0.selected.id < $1.selected.id : $0.selected.start < $1.selected.start }
     }
     static func matches(_ a: TrainingSample, _ b: TrainingSample) -> Bool {

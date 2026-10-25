@@ -70,7 +70,7 @@ final class WeightContractTests: XCTestCase {
         _=try await WeightHistoryRebuilder.run(database:source)
         let dir=FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let manifest=try await BackupExporter(database:source).export(to:dir)
-        XCTAssertEqual(manifest.formatVersion,6)
+        XCTAssertEqual(manifest.formatVersion,7)
         let target=DatabaseManager.makeInMemoryForTesting();_=try await BackupImporter(database:target).importPackage(from:dir)
         try target.read { db in
             XCTAssertEqual(try String.fetchOne(db,sql:"SELECT original_json FROM summary_contract_archive"),"original text")

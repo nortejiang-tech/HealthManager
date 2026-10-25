@@ -141,6 +141,7 @@ struct BackupImporter {
             }
         }
 
+        try await WorkoutChoiceStore.reconcileAfterRestore(database: database)
         try await database.asyncWrite { try $0.execute(sql: "UPDATE bridge_state SET paused_reason=NULL WHERE id=1") }
         return BackupImportSummary(
             importedCounts: importedCounts,
